@@ -89,6 +89,15 @@ test("provider ingress schemas strip unknown fields and bound normalized values"
     membershipType: "pro",
   });
   assert.equal(cursor.individualUsage.plan?.totalPercentUsed, 100);
+
+  // Unlimited / team-pooled plans report null limits; they must not reject.
+  const unlimited = CursorUsageResponseSchema.parse({
+    membershipType: "enterprise",
+    individualUsage: { onDemand: { limit: null, used: null } },
+    teamUsage: { onDemand: { limit: 500000, used: 33623 } },
+  });
+  assert.equal(unlimited.individualUsage.onDemand?.limit, undefined);
+  assert.equal(unlimited.teamUsage.onDemand?.limit, 500000);
   assert.deepEqual(CursorUserResponseSchema.parse({ email: "a@example.com" }), {
     email: "a@example.com",
   });

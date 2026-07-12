@@ -92,12 +92,21 @@ export const CodexRefreshResponseSchema = z.object({
   refresh_token: BoundedString.optional(),
 });
 
+// `limit`/`used` come back null on unlimited or team-pooled plans; treat null
+// as "not reported" rather than rejecting the whole usage response.
+const CursorCount = z
+  .number()
+  .finite()
+  .nonnegative()
+  .nullish()
+  .transform((value) => value ?? undefined);
+
 const CursorMetric = z.object({
   apiPercentUsed: Percentage.optional(),
   autoPercentUsed: Percentage.optional(),
-  limit: z.number().finite().nonnegative().optional(),
+  limit: CursorCount,
   totalPercentUsed: Percentage.optional(),
-  used: z.number().finite().nonnegative().optional(),
+  used: CursorCount,
 });
 
 export const CursorUsageResponseSchema = z.object({
