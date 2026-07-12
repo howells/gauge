@@ -182,9 +182,9 @@ try {
       {
         code: normalized.code,
         details: redactDiagnosticValue(normalized.details, redactionContext),
-        message: String(
-          redactDiagnosticValue(normalized.message, redactionContext),
-        ),
+        message: normalized.trustedMessage
+          ? normalized.message
+          : String(redactDiagnosticValue(normalized.message, redactionContext)),
       },
       {
         format: requestedFormat,
@@ -289,6 +289,14 @@ function resolveAccountTarget(
     };
   }
 
+  // A lone provider keyword ("gauge add cursor") means "add a <provider>
+  // account" with the name still missing — carry that intent through so the
+  // command can guide, instead of treating "cursor"/"codex" as a Claude
+  // account name and silently opening a Claude browser login.
+  if (second === undefined && isProvider(first)) {
+    return { name: undefined, provider: first };
+  }
+
   return { name: first };
 }
 
@@ -325,6 +333,7 @@ function normalizeError(error: unknown): {
   details?: unknown;
   exitCode: number;
   message: string;
+  trustedMessage?: boolean;
 } {
   if (error instanceof CLIError) {
     return {
@@ -332,6 +341,7 @@ function normalizeError(error: unknown): {
       details: error.details,
       exitCode: error.exitCode,
       message: error.message,
+      trustedMessage: error.trustedMessage,
     };
   }
 

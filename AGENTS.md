@@ -41,3 +41,76 @@
 - `--no-credential-refresh` prohibits all credential writes, including external Codex auth changes.
 - Treat `profile/` as a best-effort browser cache; credential/config files are the committed state.
 - Arc can help plan larger CLI changes; Mastra does not belong in this CLI unless the product direction changes.
+
+## Command Reference
+
+Every canonical example, grouped by command. Prefer `--dry-run` before the real run.
+
+### status
+
+```bash
+gauge status --format json --fields recommendation.account.name,accounts.name
+gauge --quick --format json
+gauge status --provider codex --account work --quick --format json
+gauge status --format ndjson --page-size 1 --page-all
+```
+
+### list
+
+```bash
+gauge list --format json
+gauge list --format ndjson --page-size 10 --page-all
+```
+
+### describe
+
+```bash
+gauge describe --format json
+gauge describe add --fields commands.command,commands.raw_payload.schema
+```
+
+### add
+
+```bash
+gauge add personal --dry-run
+gauge add personal
+gauge add codex work --codex-home ~/.codex-work --dry-run
+gauge add codex work --codex-home ~/.codex-work
+gauge add cursor work --storage-state-file ./cursor-state.json --dry-run
+gauge add cursor work --storage-state-file ./cursor-state.json
+gauge add --json '{"name":"personal","storage_state_json":{"cookies":[],"origins":[]}}' --dry-run --format json
+gauge add --json '{"name":"personal","storage_state_json":{"cookies":[],"origins":[]}}' --format json
+```
+
+### refresh
+
+```bash
+gauge refresh personal --dry-run
+gauge refresh personal
+gauge refresh codex work --renews-at 2026-07-12 --dry-run
+gauge refresh codex work --renews-at 2026-07-12
+gauge refresh cursor work --storage-state-file ./cursor-state.json --dry-run
+gauge refresh cursor work --storage-state-file ./cursor-state.json
+```
+
+### remove
+
+```bash
+gauge remove personal --dry-run
+gauge remove personal
+gauge remove --json '{"name":"personal"}' --dry-run --format json
+gauge remove --json '{"name":"personal"}' --format json
+```
+
+### doctor
+
+```bash
+gauge doctor --format json
+```
+
+### migrate
+
+```bash
+gauge migrate --dry-run --format json
+gauge migrate --format json
+```

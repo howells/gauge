@@ -29,6 +29,7 @@ import { describeCommands } from "./schema.js";
 import { CLIError } from "./security.js";
 import { selectConfiguredAccounts } from "./services/account-selection.js";
 import { applyPendingCredentialUpdates } from "./services/credential-updates.js";
+import { missingAccountName } from "./services/onboarding.js";
 import { buildStatusResult } from "./services/status-result.js";
 import { UsageService } from "./services/usage-service.js";
 import {
@@ -204,6 +205,7 @@ export async function runAddCommand(
   name: string | undefined,
   options: CommandOptions,
 ): Promise<CommandResult> {
+  ensureAccountNamed("add", name, options);
   const payload = resolveMutationPayload(name, options, "add");
   const provider = resolveProvider(payload.provider);
   if (accountExists(payload.name, provider)) {
@@ -327,6 +329,7 @@ export async function runRefreshCommand(
   name: string | undefined,
   options: CommandOptions,
 ): Promise<CommandResult> {
+  ensureAccountNamed("refresh", name, options);
   const payload = resolveMutationPayload(name, options, "refresh");
   const provider = resolveProvider(payload.provider);
   if (!accountExists(payload.name, provider)) {
@@ -451,6 +454,7 @@ export function runRemoveCommand(
   name: string | undefined,
   options: CommandOptions,
 ): CommandResult {
+  ensureAccountNamed("remove", name, options);
   const payload = resolveMutationPayload(name, options, "remove");
   const provider = resolveProvider(payload.provider);
   if (!accountExists(payload.name, provider)) {
@@ -496,6 +500,25 @@ export function runRemoveCommand(
     },
     human: `✓ Account "${payload.name}" removed.\n`,
   };
+}
+
+/**
+ * Guide the interactive path when no account name was given. Agents pass a full
+ * payload through --json/--input-file, so those are left to wire validation.
+ */
+function ensureAccountNamed(
+  command: "add" | "refresh" | "remove",
+  name: string | undefined,
+  options: CommandOptions,
+): void {
+  if (name || options.json !== undefined || options.inputFile !== undefined) {
+    return;
+  }
+  const provider =
+    options.provider === undefined
+      ? undefined
+      : resolveProvider(options.provider);
+  throw missingAccountName(command, provider);
 }
 
 function resolveMutationPayload(

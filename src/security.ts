@@ -12,16 +12,28 @@ export class CLIError extends Error {
   code: string;
   exitCode: number;
   details?: unknown;
+  /**
+   * When true, the message is author-written guidance with no interpolated
+   * user data, so the path/token redactor must leave it intact (it would
+   * otherwise mangle example paths like `~/.codex` in onboarding help).
+   */
+  trustedMessage: boolean;
 
   constructor(
     message: string,
-    options?: { code?: string; exitCode?: number; details?: unknown },
+    options?: {
+      code?: string;
+      exitCode?: number;
+      details?: unknown;
+      trustedMessage?: boolean;
+    },
   ) {
     super(message);
     this.name = "CLIError";
     this.code = options?.code ?? "CLI_ERROR";
     this.exitCode = options?.exitCode ?? 1;
     this.details = options?.details;
+    this.trustedMessage = options?.trustedMessage ?? false;
   }
 }
 

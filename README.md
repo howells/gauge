@@ -1,242 +1,176 @@
 # gauge
 
-Agent-first CLI to check AI usage across multiple accounts.
+One dashboard for your AI usage across every Claude, Codex, and Cursor account
+you own — so you always know which one still has headroom.
 
-## Features
+```
+   gauge  5 accounts · 3 ready
 
-- Human dashboard in TTY mode
-- Structured JSON by default in non-TTY mode
-- NDJSON streaming for paginated reads
-- Raw JSON payloads for all mutating commands
-- Runtime schema introspection with `describe`
-- Field masks with `--fields`
-- `--dry-run` for all mutating commands
-- Headless auth via Playwright storage-state import
-- Output path sandboxing to the current working directory
+                          Claude                       Codex
+   personal               ████░░░░░░ 43% · 4h          ██░░░░░░░░ 16% · 2h
+                          Max 20x · wk 57% · 5d         Pro 20x · wk 35% · 6d
+   work                   ██████████ full · 1h         █░░░░░░░░░ 5% · 29d
+                          Max 20x · wk 20% · 6d         Free
 
-## Requirements
-
-- Node.js 20+
-- Chrome installed for browser-based auth
-- Codex usage reads the Codex CLI auth file from `~/.codex/auth.json` or `$CODEX_HOME/auth.json`
-- Cursor usage needs a Cursor cookie or Playwright storage state provided through environment variables
+   ─────────────────────────────────────────────────────────────────────────
+   → codex:work  ready now · Free
+```
 
 ## Install
 
-```bash
-npx @howells/gauge@latest
-```
+Requires **Node.js 20+** and **Google Chrome** (used for logging in).
 
 ```bash
 npm install -g @howells/gauge
 gauge
 ```
 
-## Human Usage
+Or run it once without installing:
+
+```bash
+npx @howells/gauge@latest
+```
+
+## Add your accounts
+
+Each provider has one command. Run it, and gauge remembers the account.
+
+**Claude** — opens a browser, you log in, done:
+
+```bash
+gauge add personal
+```
+
+**Cursor** — same browser login:
+
+```bash
+gauge add cursor work
+```
+
+**Codex** — reads a login you already have from the Codex CLI. Point gauge at
+the folder holding its `auth.json` (usually `~/.codex`):
+
+```bash
+gauge add codex work --codex-home ~/.codex
+```
+
+Add as many as you like — one per account. Give each a short name (`personal`,
+`work`, a client name). Then just run:
 
 ```bash
 gauge
-gauge --quick
-gauge status --provider codex --account work
-gauge list
-gauge add personal --dry-run
-gauge add personal
-gauge add codex work --codex-home ~/.codex-work --dry-run
-gauge add codex work --codex-home ~/.codex-work
-gauge add cursor work --storage-state-file ./cursor-state.json --dry-run
-gauge add cursor work --storage-state-file ./cursor-state.json
-gauge refresh codex work --renews-at 2026-07-12 --dry-run
-gauge refresh codex work --renews-at 2026-07-12
-gauge refresh personal --dry-run
-gauge refresh personal
-gauge refresh cursor work --storage-state-file ./cursor-state.json --dry-run
-gauge refresh cursor work --storage-state-file ./cursor-state.json
-gauge remove personal --dry-run
-gauge remove personal
 ```
 
-## Agent Usage
+`gauge` shows the live dashboard. Press `r` to refresh, `q` to quit.
 
-Inspect the runtime schema first:
+## Everyday use
 
 ```bash
-gauge describe --format json
+gauge                 # live dashboard of every account
+gauge --quick         # just the one account to use right now
+gauge list            # what's configured, without fetching usage
+gauge doctor          # check your setup is healthy
 ```
 
-Use structured output with field masks:
+Need to re-log-in an account whose session expired? `gauge` tells you exactly
+which one and what to run — usually:
 
 ```bash
-gauge status --format json \
-  --fields recommendation.account.name,accounts.name
+gauge refresh personal            # Claude / Cursor: re-open the browser
+gauge remove personal             # forget an account entirely
 ```
 
-Filter acquisition before any provider request:
+## Reading the dashboard
+
+- **The bar** is your current session window (the shorter limit). Green under
+  60%, amber past 60%, red past 90%. `full` means the limit is hit, with the
+  time until it resets.
+- **The line beneath** is the plan, the weekly window if there is one, and any
+  renewal date.
+- **The arrow** at the bottom is the recommendation: the account with the most
+  headroom right now.
+
+If an account shows **needs re-auth**, its login expired — gauge prints the
+exact `gauge refresh …` command to fix it underneath.
+
+## Renewal dates
+
+gauge reads renewal dates automatically for Claude and Cursor. Codex's login
+exposes usage but not billing, so set the date yourself if you want it shown:
 
 ```bash
-gauge status --provider codex --format json
-gauge status --provider codex --account work --format json
-gauge status --account work --quick --format json
+gauge refresh codex work --renews-at 2026-08-01
+gauge refresh codex work --renews-at none      # clear it
+```
+
+## Cursor without a browser login
+
+If you can't open a browser (a server, CI), gauge can read Cursor usage from a
+session you supply through an environment variable instead of `gauge add`:
+
+```bash
+export GAUGE_CURSOR_COOKIE='WorkosCursorSessionToken=…'
+gauge
+```
+
+Also accepted: `GAUGE_CURSOR_COOKIE_FILE`, `GAUGE_CURSOR_STORAGE_STATE_FILE`,
+`GAUGE_CURSOR_STORAGE_STATE_JSON`. The same works for Codex by pointing
+`CODEX_HOME` at an auth folder.
+
+## Where your data lives
+
+- Accounts live under `~/.gauge/accounts/v3/<provider>/<name>/`.
+- Each holds a `config.json`, a saved `storage-state.json`, and a browser
+  `profile/`. Credential files are owner-only and written atomically.
+- gauge only ever reads usage from the providers; it never sends your sessions
+  anywhere else.
+
+## Upgrading from an older gauge
+
+If you used gauge before the v3 storage layout, it won't touch your old files at
+startup. Migrate them once, explicitly:
+
+```bash
+gauge migrate --dry-run     # preview
+gauge migrate               # do it
+```
+
+The migration is journaled and resumable, and removes old files only after each
+account is safely in place.
+
+## Using gauge from a script or agent
+
+gauge is built to be driven programmatically. In a non-TTY context it emits
+JSON by default; every command takes `--format json` or `--format ndjson`.
+
+```bash
 gauge --quick --format json
-gauge status --format ndjson --page-size 1 --page-all
-```
-
-`--account` targets configured accounts only. Without `--provider`, the name
-must identify exactly one configured account. Provider-only status may include
-ambient Codex or Cursor sources after configured accounts.
-
-Stream paginated reads as NDJSON:
-
-```bash
-gauge list --format ndjson --page-size 1 --page-all
-gauge list --format json
+gauge status --provider codex --format json
 gauge list --format ndjson --page-size 10 --page-all
+gauge describe --format json          # the full machine-readable contract
 ```
 
-Pass raw payloads directly:
+- `--fields <mask>` trims structured output to the paths you name.
+- `--dry-run` previews any `add` / `refresh` / `remove` without writing.
+- `--output-file <path>` writes output to a file inside the current directory.
+- Structured output is sanitized by default; `--no-sanitize` opts out for a
+  trusted consumer. `--debug` adds redacted diagnostics.
+- `--no-credential-refresh` tries existing credentials once and blocks every
+  credential write.
+
+Accounts can also be added non-interactively by importing a Playwright storage
+state, which is handy in headless environments:
 
 ```bash
-gauge add --json '{"name":"personal","storage_state_file":"./state.json"}' --dry-run --format json
-gauge add --json '{"name":"personal","storage_state_file":"./state.json"}' --format json
-gauge add --json '{"name":"personal","storage_state_json":{"cookies":[],"origins":[]}}' --dry-run --format json
-gauge add --json '{"name":"personal","storage_state_json":{"cookies":[],"origins":[]}}' --format json
-gauge add --json '{"provider":"cursor","name":"work","storage_state_file":"./cursor-state.json"}' --dry-run --format json
-gauge add --json '{"provider":"cursor","name":"work","storage_state_file":"./cursor-state.json"}' --format json
-gauge add --json '{"provider":"codex","name":"work","codex_home":"./codex-home"}' --dry-run --format json
-gauge add --json '{"provider":"codex","name":"work","codex_home":"./codex-home"}' --format json
-gauge refresh --json '{"provider":"codex","name":"work","renews_at":"2026-07-12"}' --dry-run --format json
-gauge refresh --json '{"provider":"codex","name":"work","renews_at":"2026-07-12"}' --format json
-gauge refresh --input-file payload.json --dry-run --format json
-gauge refresh --input-file payload.json --format json
-```
-
-Write output to a sandboxed file inside the current working directory:
-
-```bash
-gauge describe --format json --output-file ./artifacts/gauge-schema.json
-gauge describe add --fields commands.command,commands.raw_payload.schema
-```
-
-## Headless Auth
-
-Import Playwright storage state without opening Chrome:
-
-```bash
-gauge add --json '{"name":"personal","storage_state_file":"./state.json"}' --dry-run
 gauge add --json '{"name":"personal","storage_state_file":"./state.json"}'
 ```
 
-You can also use environment variables.
+Every status snapshot carries `summary.total/succeeded/failed/timed_out`.
+Complete and partial runs exit 0; a run where every source fails exits 1 with
+`ok: false`. `gauge doctor --format json` runs read-only, offline health checks.
 
-```bash
-export GAUGE_STORAGE_STATE_FILE=./state.json
-gauge add personal --dry-run --format json
-gauge add personal --format json
-```
-
-```bash
-export GAUGE_STORAGE_STATE_JSON='{"cookies":[],"origins":[]}'
-gauge refresh personal --dry-run --format json
-gauge refresh personal --format json
-```
-
-### Cursor Auth
-
-Cursor usage can be read from a named account with a Playwright storage state
-that contains `cursor.com` cookies:
-
-```bash
-gauge add cursor work --storage-state-file ./cursor-state.json --dry-run
-gauge add cursor work --storage-state-file ./cursor-state.json
-gauge status --format json
-```
-
-For ambient, non-configured Cursor usage, you can also provide a cookie header
-or storage state through environment variables:
-
-```bash
-export GAUGE_CURSOR_COOKIE='WorkosCursorSessionToken=...'
-gauge status --format json
-```
-
-```bash
-export GAUGE_CURSOR_STORAGE_STATE_FILE=./cursor-state.json
-gauge status --format json
-```
-
-Supported environment variables:
-
-- `GAUGE_CURSOR_COOKIE`
-- `GAUGE_CURSOR_COOKIE_FILE`
-- `GAUGE_CURSOR_STORAGE_STATE_FILE`
-- `GAUGE_CURSOR_STORAGE_STATE_JSON`
-
-## Subscription Renewals
-
-Gauge reads Claude renewal dates from Claude's authenticated subscription
-details endpoint when it is available. Cursor renewal dates come from Cursor's
-usage summary. Codex's CLI token currently exposes usage but not ChatGPT billing,
-so store a manual renewal date when needed:
-
-```bash
-gauge refresh codex work --renews-at 2026-07-12 --dry-run --format json
-gauge refresh codex work --renews-at 2026-07-12 --format json
-```
-
-Clear a manual renewal date with:
-
-```bash
-gauge refresh codex work --renews-at none --dry-run --format json
-gauge refresh codex work --renews-at none --format json
-```
-
-## Safety Posture
-
-- The agent is not a trusted operator.
-- Use `--dry-run` before mutating commands.
-- Use `--fields` on read commands to control context size.
-- Use `describe` instead of scraping `--help`.
-- Output files must stay inside the current working directory.
-- Structured output is sanitized by default. Disable with `--no-sanitize` only if you have a trusted downstream consumer.
-- `--no-credential-refresh` tries existing credentials once and prohibits every credential write, including external Codex auth updates.
-- Use `--debug` only for trusted diagnostics; Gauge redacts home/cwd paths and token-shaped values.
-
-## Migration from v2
-
-Gauge never migrates legacy state at startup. While v2 account files exist,
-only help, version, `describe`, `doctor`, and `migrate` are available. Use the
-exact recovery sequence:
-
-```bash
-gauge migrate --dry-run --format json
-gauge migrate --format json
-```
-
-Migration is journaled and resumable. Sources are verified before commit and
-removed only after the v3 account directory is visible.
-
-## Status Results and Exit Codes
-
-Every status snapshot includes `summary.total`, `succeeded`, `failed`, and
-`timed_out`. Complete and partial snapshots exit 0. If every selected source
-fails, Gauge still emits the snapshot with `ok: false`,
-`meta.result: "failed"`, and exits 1. `--quick` changes presentation only; it
-does not skip acquisition unless combined with provider/account filters.
-
-`gauge doctor --format json` performs read-only, non-networked runtime, Chrome,
-permission, account identity, credential-artifact, migration journal,
-tombstone, and provider-readiness checks. Warnings exit 0; failed checks exit 1.
-
-## Local Data
-
-- Configured accounts use `~/.gauge/accounts/v3/<provider>/<name>/`.
-- Each account may contain `config.json`, `storage-state.json`, and `profile/`.
-- Config and credential files are owner-only and replaced atomically per file.
-- Multi-artifact mutations are journaled/resumable; browser profiles are best-effort caches.
-
-## Agent Knowledge
-
-- [AGENTS.md](./AGENTS.md)
-- [skills/README.md](./skills/README.md)
+Deeper agent docs: [AGENTS.md](./AGENTS.md) and
+[skills/README.md](./skills/README.md).
 
 ## License
 

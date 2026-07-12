@@ -2,6 +2,7 @@ import chalk from "chalk";
 import type { Provider } from "../domain/account.js";
 import type { UsageRecommendation } from "../domain/recommendation.js";
 import type { AccountSnapshot } from "../domain/snapshot.js";
+import { ADD_STEPS } from "./onboarding.js";
 
 /** One account as mapped by the status result for presentation. */
 export interface StatusAccountView {
@@ -254,6 +255,26 @@ function errorLines(accounts: StatusAccountView[]): string[] {
   ];
 }
 
+function renderEmptyState(): string {
+  const width = Math.max(...ADD_STEPS.map((step) => step.label.length));
+  const rows = ADD_STEPS.map(
+    (step) =>
+      `${INDENT}${chalk.white(step.label.padEnd(width))}   ${chalk.dim(step.command)}`,
+  );
+  return [
+    "",
+    `${INDENT}${chalk.bold("gauge")}  ${chalk.dim("no accounts yet")}`,
+    "",
+    `${INDENT}${chalk.dim("Add an account to track its usage:")}`,
+    "",
+    ...rows,
+    "",
+    `${INDENT}${chalk.dim("Claude and Cursor open a browser to log in.")}`,
+    `${INDENT}${chalk.dim("Codex reads an existing Codex CLI login from a folder.")}`,
+    "",
+  ].join("\n");
+}
+
 // ─── Entry points ────────────────────────────────────────────────────────────
 
 /** Render the full human status dashboard. */
@@ -263,7 +284,7 @@ export function renderStatusDashboard(
   now: Date,
 ): string {
   if (accounts.length === 0) {
-    return "\nNo accounts configured.\nAdd one with: gauge add <name>\n";
+    return renderEmptyState();
   }
   const providers = PROVIDER_ORDER.filter((provider) =>
     accounts.some((account) => account.provider === provider),
