@@ -4,6 +4,7 @@ import { sanitizeForAgent, writeSandboxedOutput } from "./security.js";
 export type OutputFormat = "human" | "json" | "ndjson";
 
 export interface OutputOptions {
+  debug?: boolean;
   fields?: string;
   format?: string;
   outputFile?: string;
@@ -17,12 +18,15 @@ export interface CommandResult {
   command: string;
   data: unknown;
   dryRun?: boolean;
+  exitCode?: number;
   human: string;
+  ok?: boolean;
   paginated?: {
     items: unknown[];
     itemName: string;
     summary?: Record<string, unknown>;
   };
+  result?: "complete" | "failed" | "partial";
 }
 
 interface PagePayload {
@@ -58,7 +62,7 @@ export function resolveOutputFormat(
 }
 
 /** Parse a comma-separated field mask string into path segments. */
-export function parseFieldMask(fields: string | undefined): string[][] {
+function parseFieldMask(fields: string | undefined): string[][] {
   if (!fields || fields.trim().length === 0 || fields.trim() === "*") {
     return [];
   }
@@ -243,6 +247,8 @@ export function renderCommandResult(
       page.page_info,
       result.dryRun ?? false,
       sanitize,
+      result.ok ?? true,
+      result.result,
     ),
   );
 
@@ -252,7 +258,7 @@ export function renderCommandResult(
           structuredPages.length === 1
             ? structuredPages[0]
             : {
-                ok: true,
+                ok: result.ok ?? true,
                 command: result.command,
                 data: { pages: structuredPages.map((page) => page.data) },
                 meta: structuredPages[0]?.meta,
@@ -287,10 +293,12 @@ export function renderError(
     error: {
       code: error.code ?? "CLI_ERROR",
       message: error.message,
-      details:
-        (options.sanitize ?? true)
-          ? sanitizeForAgent(error.details)
-          : error.details,
+      ...(error.details !== undefined && {
+        details:
+          (options.sanitize ?? true)
+            ? sanitizeForAgent(error.details)
+            : error.details,
+      }),
     },
     meta: {
       format,
@@ -311,9 +319,11 @@ function buildEnvelope(
   pageInfo: PagePayload["page_info"],
   dryRun: boolean,
   sanitized: boolean,
+  ok: boolean,
+  result?: "complete" | "failed" | "partial",
 ): Record<string, unknown> {
   return {
-    ok: true,
+    ok,
     command,
     data,
     meta: {
@@ -321,6 +331,7 @@ function buildEnvelope(
       format: "structured",
       generated_at: new Date().toISOString(),
       page_info: pageInfo,
+      ...(result !== undefined && { result }),
       sanitized,
     },
   };

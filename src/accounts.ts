@@ -1,61 +1,53 @@
 import fs from "node:fs";
-import path from "node:path";
 import {
-  ensureDataDir,
-  getAccountPath,
-  getDataDir,
-  getProfileDir,
-  getStorageStatePath,
-  lockFile,
-} from "./paths.js";
+  type AccountConfigV3,
+  type AccountId,
+  encodeAccountId,
+  type Provider,
+} from "./domain/account.js";
+import { getDataDir } from "./paths.js";
 import {
-  parseStorageStateJson,
+  type AccountPaths,
+  AccountRepository,
+} from "./persistence/account-repository.js";
+import type { PlaywrightStorageState } from "./storage-state.js";
+import {
+  parseStorageStateJsonValue,
   readStorageStateFile,
 } from "./storage-state.js";
-import type { AccountConfig, Provider } from "./types.js";
 
-export interface AccountDetails extends AccountConfig {
+export interface AccountDetails extends AccountConfigV3 {
+  accountPath: string;
   authKey: string;
   hasProfileDir: boolean;
   hasStorageState: boolean;
-  provider: Provider;
+  profileDir: string;
+  storagePath: string;
 }
 
-function normalizeProvider(provider: Provider | undefined): Provider {
-  return provider ?? "claude";
+function accountRepository(): AccountRepository {
+  return new AccountRepository({ dataRoot: getDataDir() });
 }
 
-function accountKey(name: string, provider: Provider | undefined): string {
-  const normalized = normalizeProvider(provider);
-  return normalized === "claude" ? name : `${normalized}-${name}`;
+function accountId(name: string, provider: Provider = "claude"): AccountId {
+  return { name, provider };
 }
 
-/** Return all saved accounts sorted by name. */
-export function listAccounts(): AccountConfig[] {
-  ensureDataDir();
-  const dir = getDataDir();
-  const files = fs.readdirSync(dir);
-  return files
-    .filter((f) => f.endsWith(".json") && !f.includes("-storage"))
-    .map((f) => {
-      const content = fs.readFileSync(path.join(dir, f), "utf-8");
-      const account = JSON.parse(content) as AccountConfig;
-      return {
-        ...account,
-        provider: normalizeProvider(account.provider),
-      };
-    })
-    .sort((a, b) =>
-      `${a.provider}:${a.name}`.localeCompare(`${b.provider}:${b.name}`),
-    );
+/** Return all configured v3 accounts in deterministic provider/name order. */
+export function listAccounts(): AccountConfigV3[] {
+  return accountRepository()
+    .list()
+    .map((record) => record.config);
 }
 
-/** Check whether a named account config file exists on disk. */
+/** Check whether a provider-qualified account exists. */
 export function accountExists(name: string, provider?: Provider): boolean {
-  return fs.existsSync(getAccountPath(accountKey(name, provider)));
+  return fs.existsSync(
+    accountRepository().pathsFor(accountId(name, provider)).directory,
+  );
 }
 
-/** Persist a new account config to the data directory. */
+/** Add or update account configuration through the v3 repository. */
 export function saveAccount(
   name: string,
   options: {
@@ -64,110 +56,121 @@ export function saveAccount(
     renewsAt?: string | null;
   } = {},
 ): void {
-  ensureDataDir();
-  const accountPath = getAccountPath(accountKey(name, options.provider));
-  const existing = readAccountIfExists(accountPath);
-  const config: AccountConfig = {
-    ...existing,
+  const repository = accountRepository();
+  const id = accountId(name, options.provider);
+  const write = {
     ...(options.codexHome !== undefined && { codexHome: options.codexHome }),
-    ...(options.renewsAt !== undefined &&
-      options.renewsAt !== null && { renewsAt: options.renewsAt }),
-    name,
-    provider: normalizeProvider(options.provider ?? existing?.provider),
-    addedAt: existing?.addedAt ?? new Date().toISOString(),
+    ...(options.renewsAt !== undefined && { renewsAt: options.renewsAt }),
   };
-  if (options.renewsAt === null) {
-    delete config.renewsAt;
+  if (fs.existsSync(repository.pathsFor(id).directory)) {
+    repository.refresh(id, write);
+  } else {
+    repository.add(id, write);
   }
-  fs.writeFileSync(accountPath, JSON.stringify(config, null, 2));
-  lockFile(accountPath);
 }
 
-function readAccountIfExists(accountPath: string): AccountConfig | null {
-  if (!fs.existsSync(accountPath)) return null;
-  const content = fs.readFileSync(accountPath, "utf-8");
-  return JSON.parse(content) as AccountConfig;
+/** Atomically expose a complete configured account. */
+export function createAccount(
+  name: string,
+  options: {
+    codexHome?: string;
+    provider?: Provider;
+    profileSource?: string;
+    renewsAt?: string | null;
+    storageState?: PlaywrightStorageState;
+  } = {},
+): void {
+  accountRepository().add(accountId(name, options.provider), {
+    codexHome: options.codexHome,
+    renewsAt: options.renewsAt,
+    profileSource: options.profileSource,
+    storageState: options.storageState,
+  });
 }
 
-/** Import a Playwright storage-state from JSON string or file path. */
+/** Atomically replace validated account config and credential files. */
+export function refreshAccount(
+  name: string,
+  options: {
+    codexHome?: string;
+    provider?: Provider;
+    renewsAt?: string | null;
+    storageState?: PlaywrightStorageState;
+  },
+): void {
+  accountRepository().refresh(accountId(name, options.provider), {
+    codexHome: options.codexHome,
+    renewsAt: options.renewsAt,
+    storageState: options.storageState,
+  });
+}
+
+/** Import validated Playwright storage state into an existing account. */
 export function importStorageState(
   name: string,
   options: { json?: string; filePath?: string },
   provider?: Provider,
 ): string {
-  ensureDataDir();
+  const repository = accountRepository();
+  const id = accountId(name, provider);
   const normalized =
     options.json === undefined
       ? readStorageStateFile(options.filePath ?? "")
-      : parseStorageStateJson(options.json);
-  const storagePath = getStorageStatePath(accountKey(name, provider));
-  fs.writeFileSync(storagePath, normalized, "utf8");
-  lockFile(storagePath);
-  return storagePath;
+      : JSON.stringify(parseStorageStateJsonValue(options.json));
+  repository.refresh(id, {
+    storageState: JSON.parse(normalized) as unknown,
+  });
+  return repository.pathsFor(id).storageState;
 }
 
-/** Return the file paths for all local artifacts belonging to an account. */
+/** Return all paths owned by a provider-qualified account. */
 export function getAccountArtifacts(
   name: string,
   provider?: Provider,
 ): {
-  authKey: string;
   accountPath: string;
-  storagePath: string;
-  profileDir: string;
-};
-export function getAccountArtifacts(
-  name: string,
-  provider?: Provider,
-): {
   authKey: string;
-  accountPath: string;
-  storagePath: string;
   profileDir: string;
+  storagePath: string;
 } {
-  const authKey = accountKey(name, provider);
-  return {
-    authKey,
-    accountPath: getAccountPath(authKey),
-    storagePath: getStorageStatePath(authKey),
-    profileDir: getProfileDir(authKey),
-  };
+  const id = accountId(name, provider);
+  const paths = accountRepository().pathsFor(id);
+  return mapPaths(id, paths);
 }
 
-/** List accounts with flags indicating which local auth artifacts exist. */
+/** List configured accounts with local artifact readiness. */
 export function listAccountDetails(provider?: Provider): AccountDetails[] {
-  return listAccounts()
-    .filter((account) => !provider || account.provider === provider)
-    .map((account) => {
-      const normalizedProvider = normalizeProvider(account.provider);
-      const artifacts = getAccountArtifacts(account.name, normalizedProvider);
-      return {
-        ...account,
-        authKey: artifacts.authKey,
-        provider: normalizedProvider,
-        hasStorageState: fs.existsSync(artifacts.storagePath),
-        hasProfileDir: fs.existsSync(artifacts.profileDir),
-      };
-    });
+  return accountRepository()
+    .list()
+    .filter(
+      (record) => provider === undefined || record.id.provider === provider,
+    )
+    .map((record) => ({
+      ...record.config,
+      ...mapPaths(record.id, record.paths),
+      hasProfileDir: record.hasProfile,
+      hasStorageState: record.hasStorageState,
+    }));
 }
 
-/** Delete an account and all its local artifacts. Returns false if not found. */
+/** Tombstone and remove a provider-qualified account. */
 export function removeAccount(name: string, provider?: Provider): boolean {
-  const artifacts = getAccountArtifacts(name, provider);
-  const accountPath = artifacts.accountPath;
-  const storagePath = artifacts.storagePath;
-  const profileDir = artifacts.profileDir;
+  return accountRepository().remove(accountId(name, provider));
+}
 
-  if (!fs.existsSync(accountPath)) {
-    return false;
-  }
-
-  fs.unlinkSync(accountPath);
-  if (fs.existsSync(storagePath)) {
-    fs.unlinkSync(storagePath);
-  }
-  if (fs.existsSync(profileDir)) {
-    fs.rmSync(profileDir, { recursive: true });
-  }
-  return true;
+function mapPaths(
+  id: AccountId,
+  paths: AccountPaths,
+): {
+  accountPath: string;
+  authKey: string;
+  profileDir: string;
+  storagePath: string;
+} {
+  return {
+    accountPath: paths.config,
+    authKey: encodeAccountId(id),
+    profileDir: paths.profile,
+    storagePath: paths.storageState,
+  };
 }

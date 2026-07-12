@@ -2,7 +2,10 @@
 
 import { createRequire } from "node:module";
 import process from "node:process";
-import { Command, CommanderError, Option } from "commander";
+import { CommanderError } from "commander";
+import { runDoctorCommand } from "./commands/doctor-handler.js";
+import { runMigrateCommand } from "./commands/migrate-handler.js";
+import { COMMAND_SPECS } from "./commands/specs.js";
 import {
   runAddCommand,
   runDescribeCommand,
@@ -11,16 +14,19 @@ import {
   runRemoveCommand,
   runStatusCommand,
 } from "./commands.js";
-import { migrateIfNeeded } from "./migrate.js";
+import type { Provider } from "./domain/account.js";
 import {
+  type CommandResult,
   type OutputOptions,
   renderCommandResult,
   renderError,
   resolveOutputFormat,
 } from "./output.js";
-import { CLIError } from "./security.js";
+import { getDataDir } from "./paths.js";
+import { type CommandHandlers, createProgram } from "./program.js";
+import { CLIError, redactDiagnosticValue } from "./security.js";
+import { assertStateCommandAllowed } from "./services/state-preflight.js";
 import { runTUI } from "./tui.js";
-import type { Provider } from "./types.js";
 
 const require = createRequire(import.meta.url);
 const packageJson = require("../package.json") as { version?: string };
@@ -39,281 +45,166 @@ const resolvedFormat =
     ? resolveOutputFormat(requestedFormat ?? "human", true)
     : resolveOutputFormat(requestedFormat, isTTY);
 
-const program = new Command();
-program
-  .name("gauge")
-  .description(
-    "At-a-glance usage dashboard for Claude, Codex, and Cursor accounts",
-  )
-  .version(packageJson.version ?? "0.0.0")
-  .showHelpAfterError(false)
-  .exitOverride()
-  .configureOutput({
-    writeErr: (str) => {
-      if (resolvedFormat === "human") {
-        process.stderr.write(str);
-      }
-    },
-    writeOut: (str) => {
-      if (resolvedFormat === "human") {
-        process.stdout.write(str);
-      }
-    },
-    outputError: (str, write) => {
-      if (resolvedFormat === "human") {
-        write(str);
-      }
-    },
-  });
+const handlers: CommandHandlers = {
+  status: async ({ options }) => {
+    assertStateCommandAllowed("status", getDataDir());
+    if (isTTY && !requestedFormat && !options.quick) {
+      await runTUI();
+      return;
+    }
+    await emitResult(
+      await runStatusCommand({
+        ...options,
+        quiet:
+          resolveOutputFormat(
+            typeof options.format === "string"
+              ? options.format
+              : requestedFormat,
+            isTTY,
+          ) !== "human",
+      }),
+      options,
+    );
+  },
+  list: ({ options }) => {
+    assertStateCommandAllowed("list", getDataDir());
+    emitResult(runListCommand(), options);
+  },
+  describe: ({ arguments: positional, options }) => {
+    emitResult(runDescribeCommand(positional.command), options);
+  },
+  add: async ({ arguments: positional, options }) => {
+    assertStateCommandAllowed("add", getDataDir());
+    const target = resolveAccountTarget(
+      positional.providerOrName,
+      positional.name,
+      options.provider,
+    );
+    await emitResult(
+      await runAddCommand(target.name, {
+        ...options,
+        provider: target.provider,
+        quiet:
+          resolveOutputFormat(
+            typeof options.format === "string"
+              ? options.format
+              : requestedFormat,
+            isTTY,
+          ) !== "human",
+      }),
+      options,
+    );
+  },
+  refresh: async ({ arguments: positional, options }) => {
+    assertStateCommandAllowed("refresh", getDataDir());
+    const target = resolveAccountTarget(
+      positional.providerOrName,
+      positional.name,
+      options.provider,
+    );
+    await emitResult(
+      await runRefreshCommand(target.name, {
+        ...options,
+        provider: target.provider,
+        quiet:
+          resolveOutputFormat(
+            typeof options.format === "string"
+              ? options.format
+              : requestedFormat,
+            isTTY,
+          ) !== "human",
+      }),
+      options,
+    );
+  },
+  remove: ({ arguments: positional, options }) => {
+    assertStateCommandAllowed("remove", getDataDir());
+    const target = resolveAccountTarget(
+      positional.providerOrName,
+      positional.name,
+      options.provider,
+    );
+    emitResult(
+      runRemoveCommand(target.name, {
+        ...options,
+        provider: target.provider,
+      }),
+      options,
+    );
+  },
+  doctor: ({ options }) => {
+    const outcome = runDoctorCommand(getDataDir());
+    emitResult(outcome.result, options);
+    process.exitCode = outcome.exitCode;
+  },
+  migrate: ({ options }) => {
+    emitResult(
+      runMigrateCommand(getDataDir(), options.dryRun === true),
+      options,
+    );
+  },
+};
 
-const migrated = migrateIfNeeded();
-if (migrated && resolvedFormat === "human") {
-  process.stdout.write("Migrated account data to ~/.gauge/\n");
-}
-
-addReadOptions(
-  program
-    .option("-q, --quick", "Just show the recommended account")
-    .action(async (...args) => {
-      const options = getOptionsFromActionArgs(args);
-      if (isTTY && !requestedFormat && !options.quick) {
-        await runTUI();
-        return;
-      }
-      await emitResult(
-        await runStatusCommand({
-          ...options,
-          quiet:
-            resolveOutputFormat(options.format ?? requestedFormat, isTTY) !==
-            "human",
-        }),
-        options,
-      );
-    }),
-);
-
-addReadOptions(
-  program
-    .command("status")
-    .description("Fetch AI usage for all configured accounts")
-    .option("-q, --quick", "Just show the recommended account")
-    .action(async (...args) => {
-      const options = getOptionsFromActionArgs(args);
-      if (isTTY && !requestedFormat && !options.quick) {
-        await runTUI();
-        return;
-      }
-      await emitResult(
-        await runStatusCommand({
-          ...options,
-          quiet:
-            resolveOutputFormat(options.format ?? requestedFormat, isTTY) !==
-            "human",
-        }),
-        options,
-      );
-    }),
-);
-
-addReadOptions(
-  program
-    .command("list")
-    .description("List configured accounts")
-    .action(async (...args) => {
-      const options = getOptionsFromActionArgs(args);
-      await emitResult(runListCommand(), options);
-    }),
-);
-
-addReadOptions(
-  program
-    .command("describe [command]")
-    .description("Show machine-readable schemas and guardrails for this CLI")
-    .action(async (...args) => {
-      const commandName = typeof args[0] === "string" ? args[0] : undefined;
-      const options = getOptionsFromActionArgs(args);
-      await emitResult(runDescribeCommand(commandName), options);
-    }),
-);
-
-addMutationOptions(
-  program
-    .command("add [providerOrName] [name]")
-    .description("Add a new account")
-    // Human hint preserved in source for packaging tests: gauge add <name>
-    .action(async (...args) => {
-      const first = typeof args[0] === "string" ? args[0] : undefined;
-      const second = typeof args[1] === "string" ? args[1] : undefined;
-      const options = getOptionsFromActionArgs(args);
-      const target = resolveAccountTarget(first, second, options.provider);
-      await emitResult(
-        await runAddCommand(target.name, {
-          ...options,
-          provider: target.provider,
-          quiet:
-            resolveOutputFormat(options.format ?? requestedFormat, isTTY) !==
-            "human",
-        }),
-        options,
-      );
-    }),
-);
-
-addMutationOptions(
-  program
-    .command("refresh [providerOrName] [name]")
-    .description("Re-authenticate an account")
-    .action(async (...args) => {
-      const first = typeof args[0] === "string" ? args[0] : undefined;
-      const second = typeof args[1] === "string" ? args[1] : undefined;
-      const options = getOptionsFromActionArgs(args);
-      const target = resolveAccountTarget(first, second, options.provider);
-      await emitResult(
-        await runRefreshCommand(target.name, {
-          ...options,
-          provider: target.provider,
-          quiet:
-            resolveOutputFormat(options.format ?? requestedFormat, isTTY) !==
-            "human",
-        }),
-        options,
-      );
-    }),
-);
-
-addMutationOptions(
-  program
-    .command("remove [providerOrName] [name]")
-    .description("Remove an account")
-    .action(async (...args) => {
-      const first = typeof args[0] === "string" ? args[0] : undefined;
-      const second = typeof args[1] === "string" ? args[1] : undefined;
-      const options = getOptionsFromActionArgs(args);
-      const target = resolveAccountTarget(first, second, options.provider);
-      await emitResult(
-        runRemoveCommand(target.name, {
-          ...options,
-          provider: target.provider,
-        }),
-        options,
-      );
-    }),
-);
+const program = createProgram({
+  handlers,
+  version: packageJson.version ?? "0.0.0",
+});
+program.configureOutput({
+  writeErr: (str) => {
+    if (resolvedFormat === "human") {
+      process.stderr.write(str);
+    }
+  },
+  writeOut: (str) => {
+    if (resolvedFormat === "human") {
+      process.stdout.write(str);
+    }
+  },
+  outputError: (str, write) => {
+    if (resolvedFormat === "human") {
+      write(str);
+    }
+  },
+});
 
 try {
   await program.parseAsync(parseArgv);
 } catch (error) {
   if (error instanceof CommanderError && isBenignCommanderExit(error)) {
-    process.exit(error.exitCode);
-  }
-
-  const normalized = normalizeError(error);
-  const rendered = renderError(
-    {
-      code: normalized.code,
-      details: normalized.details,
-      message: normalized.message,
-    },
-    {
-      format: requestedFormat,
-      outputFile: peekFlagValue(argv, "--output-file"),
-      sanitize: !argv.includes("--no-sanitize"),
-    },
-    {
-      command: detectCommandName(argv),
+    process.exitCode = error.exitCode;
+  } else {
+    const normalized = normalizeError(error);
+    const redactionContext = {
       cwd: process.cwd(),
-      isTTY,
-    },
-  );
+      home: process.env.HOME,
+    };
+    const rendered = renderError(
+      {
+        code: normalized.code,
+        details: redactDiagnosticValue(normalized.details, redactionContext),
+        message: String(
+          redactDiagnosticValue(normalized.message, redactionContext),
+        ),
+      },
+      {
+        format: requestedFormat,
+        outputFile: peekFlagValue(argv, "--output-file"),
+        sanitize: !argv.includes("--no-sanitize"),
+        debug: argv.includes("--debug"),
+      },
+      {
+        command: detectCommandName(argv),
+        cwd: process.cwd(),
+        isTTY,
+      },
+    );
 
-  emitRendered(rendered.content, rendered.outputPath);
-  process.exit(normalized.exitCode);
+    emitRendered(rendered.content, rendered.outputPath);
+    process.exitCode = normalized.exitCode;
+  }
 }
 
-function addReadOptions<T extends Command>(command: T): T {
-  return command
-    .addOption(formatOption())
-    .addOption(fieldsOption())
-    .addOption(outputFileOption())
-    .addOption(sanitizeOption())
-    .addOption(
-      new Option(
-        "--page <number>",
-        "Return a single page of results",
-      ).argParser(parseInteger),
-    )
-    .addOption(
-      new Option(
-        "--page-size <number>",
-        "Page size for structured read results",
-      ).argParser(parseInteger),
-    )
-    .option("--page-all", "Emit every page for structured read results");
-}
-
-function addMutationOptions<T extends Command>(command: T): T {
-  return command
-    .addOption(formatOption())
-    .addOption(fieldsOption())
-    .addOption(outputFileOption())
-    .addOption(sanitizeOption())
-    .option("--dry-run", "Validate the action without mutating local state")
-    .option("--json <payload>", "Raw JSON payload for the command")
-    .option(
-      "--input-file <path>",
-      "Path to a JSON payload file, or '-' to read JSON from stdin",
-    )
-    .option(
-      "--storage-state-file <path>",
-      "Use a Playwright storage-state JSON file instead of browser auth",
-    )
-    .option(
-      "--storage-state-json <payload>",
-      "Inline Playwright storage-state JSON instead of browser auth",
-    )
-    .option("--provider <provider>", "Account provider: claude, codex, cursor")
-    .option(
-      "--renews-at <timestamp>",
-      "Manual subscription renewal timestamp, or 'none' to clear",
-    )
-    .option("--codex-home <path>", "Codex home containing auth.json");
-}
-
-function formatOption(): Option {
-  return new Option("--format <format>", "Output format").choices([
-    "human",
-    "json",
-    "ndjson",
-  ]);
-}
-
-function fieldsOption(): Option {
-  return new Option(
-    "--fields <mask>",
-    "Comma-separated field mask for structured output",
-  );
-}
-
-function outputFileOption(): Option {
-  return new Option(
-    "--output-file <path>",
-    "Write output to a file inside the current working directory",
-  );
-}
-
-function sanitizeOption(): Option {
-  return new Option(
-    "--no-sanitize",
-    "Disable response sanitization in structured output",
-  );
-}
-
-function emitResult(
-  result:
-    | Awaited<ReturnType<typeof runStatusCommand>>
-    | ReturnType<typeof runListCommand>,
-  options: OutputOptions,
-): void {
+function emitResult(result: CommandResult, options: OutputOptions): void {
   const rendered = renderCommandResult(
     result,
     normalizeOutputOptions(options),
@@ -323,6 +214,9 @@ function emitResult(
     },
   );
   emitRendered(rendered.content, rendered.outputPath);
+  if (result.exitCode !== undefined) {
+    process.exitCode = result.exitCode;
+  }
 }
 
 function emitRendered(content: string, outputPath?: string): void {
@@ -355,12 +249,13 @@ function isMetaOutputRequest(args: string[]): boolean {
 }
 
 function detectCommandName(args: string[]): string {
-  for (const arg of args) {
-    if (!arg.startsWith("-")) {
-      return arg;
-    }
-  }
-  return "status";
+  return (
+    COMMAND_SPECS.find(
+      (spec) =>
+        args.includes(spec.name) ||
+        spec.aliases.some((alias) => args.includes(alias)),
+    )?.name ?? "status"
+  );
 }
 
 function peekFlagValue(args: string[], flag: string): string | undefined {
@@ -373,27 +268,6 @@ function peekFlagValue(args: string[], flag: string): string | undefined {
     }
   }
   return undefined;
-}
-
-function parseInteger(value: string): number {
-  const parsed = Number.parseInt(value, 10);
-  if (!Number.isInteger(parsed) || parsed < 1) {
-    throw new CLIError(`Expected a positive integer, received "${value}".`, {
-      code: "INVALID_NUMBER",
-      exitCode: 2,
-    });
-  }
-  return parsed;
-}
-
-function getOptionsFromActionArgs(
-  args: unknown[],
-): OutputOptions & Record<string, unknown> {
-  const last = args.at(-1);
-  if (last instanceof Command) {
-    return last.opts();
-  }
-  return (last as OutputOptions & Record<string, unknown>) ?? {};
 }
 
 function resolveAccountTarget(
@@ -472,7 +346,12 @@ function normalizeError(error: unknown): {
   if (error instanceof Error) {
     return {
       code: "CLI_ERROR",
-      details: error.stack,
+      details: argv.includes("--debug")
+        ? redactDiagnosticValue(error.stack, {
+            cwd: process.cwd(),
+            home: process.env.HOME,
+          })
+        : undefined,
       exitCode: 1,
       message: error.message,
     };

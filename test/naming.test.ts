@@ -18,20 +18,30 @@ test("package.json uses scoped gauge name and bin", () => {
 });
 
 test("CLI help text references gauge", () => {
-  const cliPath = path.join(root, "src", "cli.ts");
-  const cliSource = fs.readFileSync(cliPath, "utf-8");
-  assert.match(cliSource, /\.name\("gauge"\)/);
-  assert.match(cliSource, /gauge add/);
+  const programSource = fs.readFileSync(
+    path.join(root, "src", "program.ts"),
+    "utf-8",
+  );
+  const specsSource = fs.readFileSync(
+    path.join(root, "src", "commands", "specs.ts"),
+    "utf-8",
+  );
+  assert.match(programSource, /\.name\("gauge"\)/);
+  assert.match(specsSource, /gauge add/);
 });
 
-test("package ships dist and builds before publish", () => {
+test("package ships dist through deterministic prepack gates", () => {
   const pkg = readJson(path.join(root, "package.json"));
   assert.ok(Array.isArray(pkg.files));
   assert.ok(pkg.files.includes("dist"));
   assert.ok(pkg.files.includes("README.md"));
   assert.ok(pkg.files.includes("LICENSE"));
   assert.ok(pkg.files.includes("package.json"));
-  assert.equal(pkg.scripts?.prepublishOnly, "npm run build");
+  assert.equal(pkg.version, "3.0.0");
+  assert.equal(pkg.scripts?.prepare, undefined);
+  assert.match(pkg.scripts?.prepack, /build/);
+  assert.match(pkg.scripts?.prepack, /schema:check/);
+  assert.deepEqual(pkg.exports, { "./package.json": "./package.json" });
 });
 
 test("src CLI begins with shebang", () => {
@@ -40,10 +50,10 @@ test("src CLI begins with shebang", () => {
   assert.equal(firstLine, "#!/usr/bin/env node");
 });
 
-test("engines.node includes 18", () => {
+test("engines.node requires Node 20 or newer", () => {
   const pkg = readJson(path.join(root, "package.json"));
   assert.ok(pkg.engines?.node);
-  assert.match(pkg.engines.node, /18/);
+  assert.equal(pkg.engines.node, ">=20");
 });
 
 test("dependencies has playwright-core, not playwright", () => {

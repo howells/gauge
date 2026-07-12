@@ -17,8 +17,17 @@ version: 1
 
 ```bash
 gauge add --json '{"name":"personal","storage_state_file":"./state.json"}' --dry-run --format json
+gauge add --json '{"name":"personal","storage_state_file":"./state.json"}' --format json
 ```
 
 ```bash
+gauge remove --json '{"name":"personal"}' --dry-run --format json
 gauge remove --json '{"name":"personal"}' --format json
+```
+
+If Gauge returns `MIGRATION_REQUIRED`, use only:
+
+```bash
+gauge migrate --dry-run --format json
+gauge migrate --format json
 ```

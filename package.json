@@ -1,6 +1,6 @@
 {
   "name": "@howells/gauge",
-  "version": "2.0.1",
+  "version": "3.0.0",
   "description": "At-a-glance usage dashboard for Claude, Codex, and Cursor accounts",
   "license": "MIT",
   "repository": {
@@ -14,6 +14,9 @@
   "bin": {
     "gauge": "dist/cli.js"
   },
+  "exports": {
+    "./package.json": "./package.json"
+  },
   "files": [
     "dist",
     "AGENTS.md",
@@ -23,35 +26,48 @@
     "package.json"
   ],
   "scripts": {
-    "build": "tsc && node scripts/insert-shebang.js",
+    "clean": "node scripts/clean.js",
+    "build": "pnpm clean && tsc && node scripts/insert-shebang.js",
     "dev": "tsx src/cli.ts",
     "start": "node dist/cli.js",
     "test": "tsx --test test/**/*.test.ts",
-    "prepublishOnly": "npm run build",
+    "coverage": "c8 --check-coverage --all --include='src/**/*.ts' --exclude='src/cli.ts' --exclude='src/tui.ts' --exclude='src/types.ts' --exclude='src/providers/types.ts' --lines 85 --branches 80 --functions 80 tsx --test test/**/*.test.ts",
+    "coverage:critical": "c8 --check-coverage --per-file --all --include='src/security.ts' --include='src/migrate.ts' --include='src/persistence/**/*.ts' --include='src/commands/specs.ts' --include='src/commands/wire-schemas.ts' --include='src/program.ts' --lines 95 tsx --test test/**/*.test.ts",
+    "schema:check": "node scripts/schema-parity.js",
+    "docs:generate": "tsx scripts/generate-command-examples.ts",
+    "docs:check": "tsx --test test/command-specs.test.ts",
+    "package:smoke": "node scripts/package-smoke.js",
+    "knip": "knip --reporter compact",
+    "prepack": "pnpm build && pnpm schema:check",
     "lint": "howells-lint",
     "format": "howells-format",
-    "typecheck": "tsc --noEmit",
-    "prepare": "npm run build && (husky || true)"
+    "typecheck": "tsc --noEmit"
+  },
+  "lint-staged": {
+    "*.{js,ts,jsx,tsx,json,jsonc,css}": "howells-format"
   },
   "dependencies": {
     "chalk": "^5.3.0",
     "commander": "^12.1.0",
-    "playwright-core": "^1.49.0"
+    "playwright-core": "^1.49.0",
+    "zod": "^4.3.6"
   },
   "devDependencies": {
     "@howells/lint": "*",
     "@howells/typescript-config": "^0.1.2",
     "@types/node": "^22.10.0",
-    "husky": "9.1.7",
-    "lint-staged": "^16.4.0",
+    "c8": "10.1.3",
+    "knip": "6.26.0",
     "tsx": "^4.19.0",
     "typescript": "^5.9.3"
   },
   "engines": {
-    "node": ">=18"
+    "node": ">=20"
   },
   "packageManager": "pnpm@10.15.1",
-  "lint-staged": {
-    "*.{js,ts,jsx,tsx,json,jsonc,css}": "howells-format"
+  "pnpm": {
+    "overrides": {
+      "picomatch": "4.0.4"
+    }
   }
 }

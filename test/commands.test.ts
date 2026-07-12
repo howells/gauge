@@ -1,82 +1,39 @@
 import assert from "node:assert/strict";
+import fs from "node:fs";
+import os from "node:os";
+import path from "node:path";
 import { test } from "node:test";
-import { __test, runAddCommand } from "../src/commands.js";
-import type { AccountUsage, UsageResponse } from "../src/types.js";
-
-function buildUsage(
-  fiveHour: Partial<UsageResponse["five_hour"]> | null,
-  sevenDay: Partial<UsageResponse["seven_day"]> | null,
-): UsageResponse {
-  return {
-    five_hour: fiveHour as UsageResponse["five_hour"],
-    seven_day: sevenDay as UsageResponse["seven_day"],
-    seven_day_oauth_apps: null,
-    seven_day_opus: null,
-    seven_day_sonnet: null,
-    seven_day_cowork: null,
-    iguana_necktie: null,
-    extra_usage: null,
-  };
-}
-
-test("pickRecommendation returns an account window for available session usage", () => {
-  const inNinetyMinutes = new Date(Date.now() + 90 * 60 * 1000).toISOString();
-  const accounts: AccountUsage[] = [
-    {
-      name: "personal",
-      plan: "pro",
-      orgUuid: "org-1",
-      usage: buildUsage(
-        { utilization: 20, resets_at: inNinetyMinutes },
-        { utilization: 10, resets_at: inNinetyMinutes },
-      ),
-    },
-  ];
-
-  const recommendation = __test.pickRecommendation(accounts);
-  assert.equal(recommendation.account?.name, "personal");
-  assert.equal(recommendation.account_window?.basis, "available_session");
-  assert.match(recommendation.account_window?.label ?? "", /1h (29|30)m/);
-});
-
-test("pickRecommendation returns weekly window when session has not started", () => {
-  const inTwoDays = new Date(
-    Date.now() + 2 * 24 * 60 * 60 * 1000,
-  ).toISOString();
-  const accounts: AccountUsage[] = [
-    {
-      name: "siteinspire",
-      plan: "max_20x",
-      orgUuid: "org-2",
-      usage: buildUsage(
-        { utilization: 0, resets_at: null },
-        { utilization: 14, resets_at: inTwoDays },
-      ),
-    },
-  ];
-
-  const recommendation = __test.pickRecommendation(accounts);
-  assert.equal(recommendation.account?.name, "siteinspire");
-  assert.equal(recommendation.account_window?.basis, "available_weekly");
-  assert.match(recommendation.account_window?.label ?? "", /2d/);
-});
+import {
+  normalizeRenewalInput,
+  refreshWrites,
+  runAddCommand,
+} from "../src/commands.js";
 
 test("runAddCommand dry-runs provider-scoped Cursor accounts", async () => {
   const result = await runAddCommand("work", {
     dryRun: true,
     provider: "cursor",
-    storageStateFile: "./cursor-state.json",
+    storageStateJson: JSON.stringify({ cookies: [], origins: [] }),
   });
 
   assert.equal(result.dryRun, true);
   assert.equal(result.data.provider, "cursor");
   assert.equal(result.data.auth_mode, "headless-storage-state");
-  assert.match(JSON.stringify(result.data.writes), /cursor-work/);
+  assert.match(
+    JSON.stringify(result.data.writes),
+    /accounts\/v3\/cursor\/work/,
+  );
 });
 
 test("runAddCommand dry-runs provider-scoped Codex accounts", async () => {
+  const codexHome = fs.mkdtempSync(path.join(os.tmpdir(), "gauge-codex-"));
+  fs.writeFileSync(
+    path.join(codexHome, "auth.json"),
+    JSON.stringify({ tokens: { access_token: "test-token" } }),
+    { mode: 0o600 },
+  );
   const result = await runAddCommand("work", {
-    codexHome: "/tmp/codex-work",
+    codexHome,
     dryRun: true,
     provider: "codex",
     renewsAt: "2026-07-12",
@@ -86,11 +43,29 @@ test("runAddCommand dry-runs provider-scoped Codex accounts", async () => {
   assert.equal(result.data.provider, "codex");
   assert.equal(result.data.auth_mode, "codex-home");
   assert.equal(result.data.renews_at, "2026-07-12T00:00:00.000Z");
-  assert.match(JSON.stringify(result.data.writes), /codex-work/);
+  assert.match(JSON.stringify(result.data.writes), /accounts\/v3\/codex\/work/);
+});
+
+test("Codex dry-run validates referenced credentials without creating Gauge state", async () => {
+  const codexHome = fs.mkdtempSync(path.join(os.tmpdir(), "gauge-codex-"));
+  fs.writeFileSync(path.join(codexHome, "auth.json"), "{}");
+
+  await assert.rejects(
+    () =>
+      runAddCommand("invalid", {
+        codexHome,
+        dryRun: true,
+        provider: "codex",
+      }),
+    (error: unknown) =>
+      error instanceof Error &&
+      "code" in error &&
+      error.code === "INVALID_CODEX_AUTH",
+  );
 });
 
 test("refresh dry-run reports Codex renewal config writes", () => {
-  const writes = __test.refreshWrites(
+  const writes = refreshWrites(
     "codex",
     { name: "work", provider: "codex", renews_at: "2026-07-12T00:00:00.000Z" },
     {},
@@ -103,26 +78,61 @@ test("refresh dry-run reports Codex renewal config writes", () => {
   );
 
   assert.deepEqual(writes, ["/tmp/codex-work.json"]);
+  assert.deepEqual(
+    refreshWrites(
+      "codex",
+      { name: "work", provider: "codex" },
+      {},
+      {
+        accountPath: "/tmp/codex-work.json",
+        authKey: "codex-work",
+        profileDir: "/tmp/profile-codex-work",
+        storagePath: "/tmp/codex-work-storage.json",
+      },
+    ),
+    [],
+  );
+  assert.deepEqual(
+    refreshWrites(
+      "claude",
+      { name: "work", provider: "claude", renews_at: null },
+      {},
+      {
+        accountPath: "/tmp/work.json",
+        authKey: "work",
+        profileDir: "/tmp/profile-work",
+        storagePath: "/tmp/work-storage.json",
+      },
+    ),
+    ["/tmp/work-storage.json", "/tmp/work.json"],
+  );
 });
 
 test("manual renewal accepts null clearing values", () => {
-  assert.equal(__test.normalizeRenewalInput("none"), null);
-  assert.equal(__test.normalizeRenewalInput(null), null);
+  assert.equal(normalizeRenewalInput("none"), null);
+  assert.equal(normalizeRenewalInput("null"), null);
+  assert.equal(normalizeRenewalInput(" "), null);
+  assert.equal(normalizeRenewalInput(null), null);
+  assert.equal(normalizeRenewalInput(undefined), undefined);
+  assert.throws(() => normalizeRenewalInput(123), /date string or null/);
 });
 
 test("manual renewal rejects invalid timestamps", () => {
-  assert.throws(() => __test.normalizeRenewalInput("not-a-date"), {
+  assert.throws(() => normalizeRenewalInput("not-a-date"), {
     message: /Invalid renews_at/,
   });
 });
 
-test("runAddCommand rejects unsupported providers", async () => {
+test("runAddCommand rejects unsupported providers at the wire boundary", async () => {
   await assert.rejects(
     () =>
       runAddCommand("work", {
         dryRun: true,
         provider: "unknown",
       }),
-    /Unsupported provider/,
+    (error: unknown) =>
+      error instanceof Error &&
+      "code" in error &&
+      error.code === "INVALID_WIRE_INPUT",
   );
 });

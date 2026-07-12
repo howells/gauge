@@ -2,13 +2,37 @@ import fs from "node:fs";
 import os from "node:os";
 import path from "node:path";
 import type { AccountDetails } from "./accounts.js";
-import { getStorageStatePath } from "./paths.js";
-import type { RateWindow, UnifiedAccount } from "./types.js";
+import type { Provider } from "./domain/account.js";
+import {
+  CodexRefreshResponseSchema,
+  CodexUsageResponseSchema,
+  CursorUsageResponseSchema,
+  CursorUserResponseSchema,
+} from "./providers/upstream-schemas.js";
 
 const CODEX_TOKEN_REFRESH_URL = "https://auth.openai.com/oauth/token";
 const CODEX_OAUTH_CLIENT_ID = "app_EMoamEEZ73f0CkXaXp7hrann";
 const CODEX_TOKEN_REFRESH_AFTER_MS = 8 * 24 * 60 * 60 * 1000;
 const CURSOR_BASE_URL = "https://cursor.com";
+const MAX_PROVIDER_RESPONSE_BYTES = 1_000_000;
+
+interface RateWindow {
+  resetsAt: string;
+  usedPercent: number;
+}
+
+interface UnifiedAccount {
+  current?: boolean;
+  email: string;
+  error?: string;
+  label: string;
+  plan: string;
+  provider: Provider;
+  providerAccountId?: string;
+  renewsAt?: string | null;
+  session: RateWindow | null;
+  weekly: RateWindow | null;
+}
 
 interface CodexSource {
   email?: string;
@@ -22,6 +46,14 @@ interface CodexCredentials {
   accountId?: string;
   idToken?: string;
   lastRefresh?: Date;
+  refreshToken?: string;
+}
+
+export interface PendingCodexCredentialUpdate {
+  accessToken: string;
+  homePath: string;
+  idToken?: string;
+  lastRefresh: string;
   refreshToken?: string;
 }
 
@@ -76,7 +108,7 @@ function normalizeReset(value: unknown): string | null {
   return new Date(milliseconds).toISOString();
 }
 
-function toRateWindow(value: unknown): RateWindow | null {
+export function toRateWindow(value: unknown): RateWindow | null {
   if (!isRecord(value)) return null;
   const usedPercent = numberValue(
     value.used_percent ?? value.usedPercent ?? value.totalPercentUsed,
@@ -86,7 +118,9 @@ function toRateWindow(value: unknown): RateWindow | null {
   return { usedPercent, resetsAt };
 }
 
-function decodeJwtPayload(token: string | undefined): Record<string, unknown> {
+export function decodeJwtPayload(
+  token: string | undefined,
+): Record<string, unknown> {
   if (!token) return {};
   const part = token.split(".")[1];
   if (!part) return {};
@@ -107,7 +141,7 @@ function titleCaseWords(raw: string): string {
     .join(" ");
 }
 
-function formatCodexPlan(raw: unknown): string {
+export function formatCodexPlan(raw: unknown): string {
   const value = stringValue(raw)?.toLowerCase();
   if (!value) return "Pro";
   if (value === "pro") return "Pro 20x";
@@ -185,7 +219,10 @@ function loadCodexCredentials(homePath: string): CodexCredentials {
 }
 
 function shouldRefreshCodex(credentials: CodexCredentials): boolean {
-  if (!credentials.refreshToken || !credentials.lastRefresh) return false;
+  if (!credentials.refreshToken) return false;
+  // No last_refresh means the access token's age is unknown (e.g. homes
+  // managed by external tools) — treat unknown age as stale.
+  if (!credentials.lastRefresh) return true;
   return (
     Date.now() - credentials.lastRefresh.getTime() >
     CODEX_TOKEN_REFRESH_AFTER_MS
@@ -195,6 +232,8 @@ function shouldRefreshCodex(credentials: CodexCredentials): boolean {
 async function refreshCodexCredentials(
   source: CodexSource,
   credentials: CodexCredentials,
+  onCredentialUpdate?: (update: PendingCodexCredentialUpdate) => void,
+  signal?: AbortSignal,
 ): Promise<CodexCredentials> {
   if (!credentials.refreshToken) return credentials;
 
@@ -210,15 +249,16 @@ async function refreshCodexCredentials(
       "Content-Type": "application/json",
     },
     method: "POST",
+    signal,
   });
   if (!response.ok) {
     throw new Error(`Codex token refresh failed (${response.status})`);
   }
 
-  const body = (await response.json()) as unknown;
-  if (!isRecord(body)) throw new Error("Invalid Codex token refresh response");
-  const accessToken = stringValue(body.access_token);
-  if (!accessToken) throw new Error("Codex token refresh returned no token");
+  const body = CodexRefreshResponseSchema.parse(
+    await parseBoundedResponse(response),
+  );
+  const accessToken = body.access_token;
 
   const refreshed: CodexCredentials = {
     accessToken,
@@ -228,28 +268,17 @@ async function refreshCodexCredentials(
     refreshToken: stringValue(body.refresh_token) ?? credentials.refreshToken,
   };
 
-  writeRefreshedCodexAuth(source.homePath, refreshed);
-  return refreshed;
-}
-
-function writeRefreshedCodexAuth(
-  homePath: string,
-  credentials: CodexCredentials,
-): void {
-  const authPath = path.join(homePath, "auth.json");
-  const auth = readJson(authPath);
-  if (!isRecord(auth)) return;
-  const tokens = isRecord(auth.tokens) ? auth.tokens : {};
-  auth.tokens = {
-    ...tokens,
-    access_token: credentials.accessToken,
-    id_token: credentials.idToken,
-    last_refresh: credentials.lastRefresh?.toISOString(),
-    refresh_token: credentials.refreshToken,
-  };
-  fs.writeFileSync(authPath, `${JSON.stringify(auth, null, 2)}\n`, {
-    mode: 0o600,
+  onCredentialUpdate?.({
+    accessToken: refreshed.accessToken,
+    homePath: source.homePath,
+    lastRefresh:
+      refreshed.lastRefresh?.toISOString() ?? new Date().toISOString(),
+    ...(refreshed.idToken !== undefined && { idToken: refreshed.idToken }),
+    ...(refreshed.refreshToken !== undefined && {
+      refreshToken: refreshed.refreshToken,
+    }),
   });
+  return refreshed;
 }
 
 function codexBaseUrl(homePath: string): string {
@@ -277,6 +306,7 @@ function codexUsageUrl(baseUrl: string): string {
 async function fetchJson(
   url: string,
   headers: Record<string, string>,
+  signal?: AbortSignal,
 ): Promise<unknown> {
   const response = await fetch(url, {
     headers: {
@@ -284,16 +314,74 @@ async function fetchJson(
       "User-Agent": "gauge",
       ...headers,
     },
+    signal,
   });
   if (!response.ok) throw new Error(`HTTP ${response.status}`);
-  return response.json() as Promise<unknown>;
+  return parseBoundedResponse(response);
 }
 
-async function fetchCodexAccount(source: CodexSource): Promise<UnifiedAccount> {
+async function parseBoundedResponse(response: Response): Promise<unknown> {
+  const declaredLength = Number(response.headers.get("content-length"));
+  if (
+    Number.isFinite(declaredLength) &&
+    declaredLength > MAX_PROVIDER_RESPONSE_BYTES
+  ) {
+    throw new Error("Provider response exceeded the allowed size.");
+  }
+  const text = await readBoundedResponseText(response);
+  try {
+    return JSON.parse(text) as unknown;
+  } catch {
+    throw new Error("Provider returned invalid JSON.");
+  }
+}
+
+async function readBoundedResponseText(response: Response): Promise<string> {
+  if (!response.body) {
+    const text = await response.text();
+    if (Buffer.byteLength(text, "utf8") > MAX_PROVIDER_RESPONSE_BYTES) {
+      throw new Error("Provider response exceeded the allowed size.");
+    }
+    return text;
+  }
+
+  const reader = response.body.getReader();
+  const chunks: Uint8Array[] = [];
+  let total = 0;
+  try {
+    while (true) {
+      const { done, value } = await reader.read();
+      if (done) break;
+      total += value.byteLength;
+      if (total > MAX_PROVIDER_RESPONSE_BYTES) {
+        await reader.cancel();
+        throw new Error("Provider response exceeded the allowed size.");
+      }
+      chunks.push(value);
+    }
+  } finally {
+    reader.releaseLock();
+  }
+  return Buffer.concat(chunks, total).toString("utf8");
+}
+
+async function fetchCodexAccount(
+  source: CodexSource,
+  credentialRefresh: "refresh-if-stale" | "never" = "refresh-if-stale",
+  onCredentialUpdate?: (update: PendingCodexCredentialUpdate) => void,
+  signal?: AbortSignal,
+): Promise<UnifiedAccount> {
   const initialCredentials = loadCodexCredentials(source.homePath);
-  const credentials = shouldRefreshCodex(initialCredentials)
-    ? await refreshCodexCredentials(source, initialCredentials)
-    : initialCredentials;
+  const credentials =
+    credentialRefresh === "refresh-if-stale" &&
+    shouldRefreshCodex(initialCredentials)
+      ? await refreshCodexCredentials(
+          source,
+          initialCredentials,
+          onCredentialUpdate,
+          signal,
+        )
+      : initialCredentials;
   const identity = decodeJwtPayload(credentials.idToken);
   const email =
     source.email ??
@@ -307,12 +395,14 @@ async function fetchCodexAccount(source: CodexSource): Promise<UnifiedAccount> {
     headers["ChatGPT-Account-Id"] = credentials.accountId;
   }
 
-  const usage = await fetchJson(
-    codexUsageUrl(codexBaseUrl(source.homePath)),
-    headers,
+  const usage = CodexUsageResponseSchema.parse(
+    await fetchJson(
+      codexUsageUrl(codexBaseUrl(source.homePath)),
+      headers,
+      signal,
+    ),
   );
-  if (!isRecord(usage)) throw new Error("Invalid Codex usage response");
-  const rateLimit = isRecord(usage.rate_limit) ? usage.rate_limit : {};
+  const rateLimit = usage.rate_limit;
   const session = toRateWindow(rateLimit.primary_window);
   const weekly = toRateWindow(rateLimit.secondary_window);
   const label = source.label ?? (email ? labelFromEmail(email) : "codex");
@@ -330,6 +420,11 @@ async function fetchCodexAccount(source: CodexSource): Promise<UnifiedAccount> {
 
 export async function fetchCodexAccounts(
   configuredAccounts: AccountDetails[] = [],
+  options: {
+    credentialRefresh?: "refresh-if-stale" | "never";
+    onCredentialUpdate?: (update: PendingCodexCredentialUpdate) => void;
+    signal?: AbortSignal;
+  } = {},
 ): Promise<UnifiedAccount[]> {
   const configuredSources = codexSourcesFromAccounts(configuredAccounts);
   const sources =
@@ -337,7 +432,12 @@ export async function fetchCodexAccounts(
   const accounts = await Promise.all(
     sources.map(async (source) => {
       try {
-        return await fetchCodexAccount(source);
+        return await fetchCodexAccount(
+          source,
+          options.credentialRefresh,
+          options.onCredentialUpdate,
+          options.signal,
+        );
       } catch (error) {
         const message = error instanceof Error ? error.message : String(error);
         const label =
@@ -350,7 +450,7 @@ export async function fetchCodexAccounts(
   return uniquifyAccountLabels(accounts);
 }
 
-function parseStorageStateCookies(value: unknown): string | null {
+export function parseStorageStateCookies(value: unknown): string | null {
   if (!isRecord(value) || !Array.isArray(value.cookies)) return null;
   const pairs: string[] = [];
   for (const cookie of value.cookies) {
@@ -358,21 +458,34 @@ function parseStorageStateCookies(value: unknown): string | null {
     const name = stringValue(cookie.name);
     const cookieValue = stringValue(cookie.value);
     const domain = stringValue(cookie.domain) ?? "";
-    if (!name || !cookieValue) continue;
-    if (!/cursor\.(com|sh)$/i.test(domain.replace(/^\./, ""))) continue;
+    if (!name || !cookieValue || !isSafeCookiePair(name, cookieValue)) continue;
+    const normalizedDomain = domain.replace(/^\./, "").toLowerCase();
+    if (
+      !["cursor.com", "cursor.sh"].some(
+        (root) =>
+          normalizedDomain === root || normalizedDomain.endsWith(`.${root}`),
+      )
+    ) {
+      continue;
+    }
     pairs.push(`${name}=${cookieValue}`);
   }
   return pairs.length > 0 ? pairs.join("; ") : null;
 }
 
-function parseCookieFile(filePath: string): string | null {
+export function parseStorageStateCookieFile(filePath: string): string | null {
   const text = readFileIfExists(filePath);
   if (!text) return null;
   try {
-    return parseStorageStateCookies(JSON.parse(text)) ?? text.trim();
+    return parseStorageStateCookies(JSON.parse(text));
   } catch {
-    return text.trim();
+    return null;
   }
+}
+
+export function parseRawCookieFile(filePath: string): string | null {
+  const text = readFileIfExists(filePath);
+  return text ? normalizeRawCookieHeader(text) : null;
 }
 
 function cursorSessionsFromAccounts(
@@ -381,9 +494,8 @@ function cursorSessionsFromAccounts(
   const sessions: CursorSession[] = [];
   for (const account of accounts) {
     if (account.provider !== "cursor") continue;
-    const storagePath = getStorageStatePath(account.authKey);
     sessions.push({
-      cookieHeader: parseCookieFile(storagePath) ?? "",
+      cookieHeader: parseStorageStateCookieFile(account.storagePath) ?? "",
       label: account.name,
       renewsAt: account.renewsAt,
     });
@@ -404,16 +516,16 @@ function discoverCursorSessions(): CursorSession[] {
     sessions.push({ cookieHeader: trimmed, label });
   };
 
-  add(process.env.GAUGE_CURSOR_COOKIE, "cursor");
+  add(normalizeRawCookieHeader(process.env.GAUGE_CURSOR_COOKIE), "cursor");
   add(
     process.env.GAUGE_CURSOR_COOKIE_FILE
-      ? parseCookieFile(process.env.GAUGE_CURSOR_COOKIE_FILE)
+      ? parseRawCookieFile(process.env.GAUGE_CURSOR_COOKIE_FILE)
       : null,
     "cursor",
   );
   add(
     process.env.GAUGE_CURSOR_STORAGE_STATE_FILE
-      ? parseCookieFile(process.env.GAUGE_CURSOR_STORAGE_STATE_FILE)
+      ? parseStorageStateCookieFile(process.env.GAUGE_CURSOR_STORAGE_STATE_FILE)
       : null,
     "cursor",
   );
@@ -437,6 +549,41 @@ function parseJsonString(value: string): unknown | null {
   }
 }
 
+function isSafeCookiePair(name: string, value: string): boolean {
+  return (
+    /^[!#$%&'*+\-.^_`|~0-9A-Za-z]+$/.test(name) &&
+    !value.includes(";") &&
+    !hasControlCharacters(value)
+  );
+}
+
+function normalizeRawCookieHeader(value: string | undefined): string | null {
+  if (!value || hasControlCharacters(value)) return null;
+  const pairs = value.split(";").map((pair) => pair.trim());
+  if (
+    pairs.length === 0 ||
+    pairs.some((pair) => {
+      const separator = pair.indexOf("=");
+      if (separator <= 0) return true;
+      return !isSafeCookiePair(
+        pair.slice(0, separator),
+        pair.slice(separator + 1),
+      );
+    })
+  ) {
+    return null;
+  }
+  return pairs.join("; ");
+}
+
+function hasControlCharacters(value: string): boolean {
+  for (const character of value) {
+    const code = character.charCodeAt(0);
+    if (code <= 31 || code === 127) return true;
+  }
+  return false;
+}
+
 function ratioPercent(used: unknown, limit: unknown): number | undefined {
   const usedNumber = numberValue(used);
   const limitNumber = numberValue(limit);
@@ -450,7 +597,7 @@ function ratioPercent(used: unknown, limit: unknown): number | undefined {
   return (usedNumber / limitNumber) * 100;
 }
 
-function cursorUsagePercent(usage: Record<string, unknown>): number {
+export function cursorUsagePercent(usage: Record<string, unknown>): number {
   const individual = isRecord(usage.individualUsage)
     ? usage.individualUsage
     : {};
@@ -471,7 +618,7 @@ function cursorUsagePercent(usage: Record<string, unknown>): number {
   );
 }
 
-function cursorSecondaryPercent(
+export function cursorSecondaryPercent(
   usage: Record<string, unknown>,
 ): number | undefined {
   const individual = isRecord(usage.individualUsage)
@@ -513,6 +660,7 @@ function formatCursorPlan(raw: unknown): string {
 
 async function fetchCursorAccount(
   session: CursorSession,
+  signal?: AbortSignal,
 ): Promise<UnifiedAccount> {
   const cookieHeader = session.cookieHeader;
   if (!cookieHeader) {
@@ -521,26 +669,32 @@ async function fetchCursorAccount(
     );
   }
   const [usage, user] = await Promise.all([
-    fetchJson(`${CURSOR_BASE_URL}/api/usage-summary`, { Cookie: cookieHeader }),
-    fetchJson(`${CURSOR_BASE_URL}/api/auth/me`, { Cookie: cookieHeader }).catch(
-      () => null,
+    fetchJson(
+      `${CURSOR_BASE_URL}/api/usage-summary`,
+      { Cookie: cookieHeader },
+      signal,
     ),
+    fetchJson(
+      `${CURSOR_BASE_URL}/api/auth/me`,
+      { Cookie: cookieHeader },
+      signal,
+    ).catch(() => null),
   ]);
-  if (!isRecord(usage)) throw new Error("Invalid Cursor usage response");
-  const end = normalizeReset(usage.billingCycleEnd);
-  const secondaryPercent = cursorSecondaryPercent(usage);
-  const userInfo = isRecord(user) ? user : {};
-  const email = stringValue(userInfo.email) ?? "";
+  const validatedUsage = CursorUsageResponseSchema.parse(usage);
+  const end = normalizeReset(validatedUsage.billingCycleEnd);
+  const secondaryPercent = cursorSecondaryPercent(validatedUsage);
+  const userInfo = user === null ? {} : CursorUserResponseSchema.parse(user);
+  const email = userInfo.email ?? "";
 
   return {
     provider: "cursor",
     label: email ? labelFromEmail(email) : session.label,
     email,
-    plan: formatCursorPlan(usage.membershipType),
+    plan: formatCursorPlan(validatedUsage.membershipType),
     renewsAt: end ?? session.renewsAt,
     session: end
       ? {
-          usedPercent: cursorUsagePercent(usage),
+          usedPercent: cursorUsagePercent(validatedUsage),
           resetsAt: end,
         }
       : null,
@@ -556,6 +710,7 @@ async function fetchCursorAccount(
 
 export async function fetchCursorAccounts(
   configuredAccounts: AccountDetails[] = [],
+  options: { signal?: AbortSignal } = {},
 ): Promise<UnifiedAccount[]> {
   const configuredSessions = cursorSessionsFromAccounts(configuredAccounts);
   const sessions =
@@ -565,7 +720,7 @@ export async function fetchCursorAccounts(
   const accounts = await Promise.all(
     sessions.map(async (session) => {
       try {
-        return await fetchCursorAccount(session);
+        return await fetchCursorAccount(session, options.signal);
       } catch (error) {
         const message = error instanceof Error ? error.message : String(error);
         return errorAccount("cursor", session.label, message);
@@ -592,12 +747,3 @@ function uniquifyAccountLabels(accounts: UnifiedAccount[]): UnifiedAccount[] {
     };
   });
 }
-
-export const __test = {
-  cursorSecondaryPercent,
-  cursorUsagePercent,
-  decodeJwtPayload,
-  formatCodexPlan,
-  parseStorageStateCookies,
-  toRateWindow,
-};

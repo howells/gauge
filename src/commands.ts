@@ -1,26 +1,49 @@
 import fs from "node:fs";
+import os from "node:os";
+import path from "node:path";
+import chalk from "chalk";
 import {
+  type AccountDetails,
   accountExists,
+  createAccount,
   getAccountArtifacts,
-  importStorageState,
   listAccountDetails,
+  refreshAccount,
   removeAccount,
-  saveAccount,
 } from "./accounts.js";
-import { addAccount, addCursorAccount, fetchAllUsage } from "./api.js";
-import { markCurrentAccounts } from "./current-account.js";
-import { claudeToUnified, formatDashboard } from "./display.js";
+import { addAccount, addCursorAccount } from "./api.js";
+import {
+  AddWireSchema,
+  RefreshWireSchema,
+  RemoveWireSchema,
+} from "./commands/wire-schemas.js";
+import type { Provider } from "./domain/account.js";
 import type { CommandResult, OutputOptions } from "./output.js";
-import { fetchCodexAccounts, fetchCursorAccounts } from "./provider-usage.js";
+import { getDataDir } from "./paths.js";
+import { validateCodexHome } from "./persistence/external-credential-writer.js";
+import {
+  buildLocalSources,
+  createLocalAdapters,
+} from "./providers/local-adapters.js";
 import { describeCommands } from "./schema.js";
 import { CLIError } from "./security.js";
-import type { Provider, UnifiedAccount } from "./types.js";
+import { selectConfiguredAccounts } from "./services/account-selection.js";
+import { applyPendingCredentialUpdates } from "./services/credential-updates.js";
+import { buildStatusResult } from "./services/status-result.js";
+import { UsageService } from "./services/usage-service.js";
+import {
+  type PlaywrightStorageState,
+  parseStorageStateJsonValue,
+  readStorageStateFile,
+} from "./storage-state.js";
 
 interface CommandOptions extends OutputOptions {
+  account?: string;
   codexHome?: string;
   dryRun?: boolean;
   inputFile?: string;
   json?: string;
+  noCredentialRefresh?: boolean;
   provider?: string;
   quick?: boolean;
   quiet?: boolean;
@@ -38,109 +61,120 @@ interface MutationPayload {
   storage_state_json?: string;
 }
 
-interface RecommendationWindow {
-  basis:
-    | "available_session"
-    | "available_weekly"
-    | "blocked_until_available"
-    | "session_not_started"
-    | "unknown";
-  label: string;
-  milliseconds: number | null;
-  until: string | null;
-}
-
 /** Fetch usage for all accounts and build a status/recommendation result. */
 export async function runStatusCommand(
   options: CommandOptions,
 ): Promise<CommandResult> {
-  const quiet = options.quiet ?? false;
-
-  // Codex + Cursor use local provider auth, independent of Claude browser state.
-  if (!quiet) process.stdout.write("  Fetching codex...\n");
   const allConfigs = listAccountDetails();
-  const codexConfigs = allConfigs.filter(
-    (account) => account.provider === "codex",
+  const provider =
+    options.provider === undefined
+      ? undefined
+      : resolveProvider(options.provider);
+  const selectable = allConfigs.map((account, order) => ({
+    account,
+    id: { provider: account.provider, name: account.name },
+    order,
+  }));
+  const selected = selectConfiguredAccounts(selectable, {
+    account: options.account,
+    provider,
+  }).map((selection) => selection.account);
+  const providers = new Set<string>(
+    provider ? [provider] : ["claude", "codex", "cursor"],
   );
-  const cursorConfigs = allConfigs.filter(
-    (account) => account.provider === "cursor",
-  );
-
-  const codexAccounts = await fetchCodexAccounts(codexConfigs);
-
-  if (!quiet) process.stdout.write("  Fetching cursor...\n");
-  const cursorAccounts = await fetchCursorAccounts(cursorConfigs);
-
-  // Claude via Playwright (sequential per account)
-  const claudeConfigs = allConfigs.filter(
-    (account) => account.provider === "claude",
-  );
-  const claudeRaw =
-    claudeConfigs.length > 0
-      ? await fetchAllUsage(
-          claudeConfigs.map((account) => ({
-            authKey: account.authKey,
-            name: account.name,
-            renewsAt: account.renewsAt,
-          })),
-          { quiet },
-        )
-      : [];
-  const claudeAccounts = claudeRaw.map(claudeToUnified);
-
-  const groups = markCurrentAccounts(
-    {
-      ...(claudeAccounts.length > 0 && { claude: claudeAccounts }),
-      ...(codexAccounts.length > 0 && { codex: codexAccounts }),
-      ...(cursorAccounts.length > 0 && { cursor: cursorAccounts }),
-    },
-    allConfigs,
-  );
-
-  const allAccounts = Object.values(groups).flat().filter(Boolean);
-  const statusAccounts = allAccounts.map(addStatusNameAlias);
-  const statusGroups = mapStatusGroups(groups);
-  const recommendation =
-    claudeRaw.length > 0 ? pickRecommendation(claudeRaw) : null;
-
-  if (allAccounts.length === 0) {
-    return {
-      command: "status",
-      data: { accounts: [], recommendation: null },
-      human: "\nNo accounts configured.\nAdd one with: gauge add <name>\n",
-    };
-  }
-
-  return {
-    command: "status",
-    data: {
-      accounts: statusAccounts,
-      groups: statusGroups,
-      recommendation,
-    },
-    human: formatDashboard(groups),
-  };
+  const sources = buildLocalSources(selected, {
+    accountFiltered: options.account !== undefined,
+    providers,
+  });
+  const service = new UsageService({ adapters: createLocalAdapters(selected) });
+  const snapshot = await service.collect(sources, {
+    credentialRefresh: options.noCredentialRefresh
+      ? "never"
+      : "refresh-if-stale",
+  });
+  const credentialPolicy = options.noCredentialRefresh
+    ? "never"
+    : "refresh-if-stale";
+  applyPendingCredentialUpdates(snapshot.pendingCredentialUpdates, {
+    allowedCodexHomes: [
+      ...selected.flatMap((account) =>
+        account.provider === "codex" && account.codexHome
+          ? [account.codexHome]
+          : [],
+      ),
+      ...(sources.some(
+        (source) => source.provider === "codex" && source.source === "ambient",
+      )
+        ? [process.env.CODEX_HOME ?? path.join(os.homedir(), ".codex")]
+        : []),
+    ],
+    dataRoot: getDataDir(),
+    policy: credentialPolicy,
+  });
+  return buildStatusResult(snapshot, {
+    now: new Date(),
+    quick: options.quick ?? false,
+  });
 }
 
 /** List all configured accounts with their local artifact details. */
 export function runListCommand(): CommandResult {
   const accounts = listAccountDetails();
-  const human =
-    accounts.length === 0
-      ? "\nNo accounts configured.\nAdd one with: gauge add <name>\n"
-      : `\nConfigured accounts:\n${accounts
-          .map((account) => `  • ${account.provider}:${account.name}`)
-          .join("\n")}\n`;
-
   return {
     command: "list",
     data: { accounts },
-    human,
+    human: renderAccountList(accounts),
     paginated: {
       itemName: "accounts",
       items: accounts,
     },
   };
+}
+
+function renderAccountList(accounts: AccountDetails[]): string {
+  if (accounts.length === 0) {
+    return "\nNo accounts configured.\nAdd one with: gauge add <name>\n";
+  }
+  const providerNames = { claude: "Claude", codex: "Codex", cursor: "Cursor" };
+  const nameWidth = Math.max(...accounts.map((account) => account.name.length));
+  const lines: string[] = [""];
+  for (const provider of ["claude", "codex", "cursor"] as const) {
+    const group = accounts.filter((account) => account.provider === provider);
+    if (group.length === 0) continue;
+    lines.push(`   ${chalk.bold(providerNames[provider])}`);
+    for (const account of group) {
+      const artifacts = [
+        account.hasStorageState && "session",
+        account.hasProfileDir && "profile",
+        account.codexHome !== undefined && "codex home",
+      ].filter((value): value is string => typeof value === "string");
+      const detail = artifacts.length > 0 ? artifacts.join(" · ") : "no auth";
+      lines.push(
+        `     ${account.name.padEnd(nameWidth + 2)}${chalk.dim(detail)}`,
+      );
+    }
+    lines.push("");
+  }
+  return lines.join("\n");
+}
+
+function codexRefreshGuidance(name: string): string {
+  const home = listAccountDetails("codex").find(
+    (account) => account.name === name,
+  )?.codexHome;
+  const lines = [
+    `Account "${name}" reads its credentials from a Codex home;`,
+    "gauge cannot re-login there itself.",
+    "",
+    "Re-authenticate with the Codex CLI:",
+    ...(home
+      ? [`  CODEX_HOME=${JSON.stringify(home)} codex login`]
+      : ["  codex login   (with CODEX_HOME set to this account's home)"]),
+    "",
+    `Or point the account at a different home:`,
+    `  gauge refresh codex ${name} --codex-home <path>`,
+  ];
+  return `${lines.join("\n")}\n`;
 }
 
 /** Return the runtime CLI schema, optionally filtered to a single command. */
@@ -170,7 +204,7 @@ export async function runAddCommand(
   name: string | undefined,
   options: CommandOptions,
 ): Promise<CommandResult> {
-  const payload = resolveMutationPayload(name, options);
+  const payload = resolveMutationPayload(name, options, "add");
   const provider = resolveProvider(payload.provider);
   if (accountExists(payload.name, provider)) {
     throw new CLIError(`Account "${payload.name}" already exists.`, {
@@ -181,7 +215,20 @@ export async function runAddCommand(
   }
 
   const storageStateMode = resolveStorageStateMode(payload, options);
+  const storageState = validateStorageStateMode(storageStateMode);
   const artifacts = getAccountArtifacts(payload.name, provider);
+  const codexHome = payload.codex_home ?? options.codexHome;
+  let validatedCodexHome: string | undefined;
+  if (provider === "codex") {
+    if (!codexHome) {
+      throw new CLIError("Codex accounts require codex_home.", {
+        code: "CODEX_HOME_REQUIRED",
+        exitCode: 2,
+        details: { hint: "Use --codex-home /path/to/codex-home" },
+      });
+    }
+    validatedCodexHome = validateCodexHome(codexHome).homePath;
+  }
   if (options.dryRun) {
     return {
       command: "add",
@@ -207,16 +254,8 @@ export async function runAddCommand(
   }
 
   if (provider === "codex") {
-    const codexHome = payload.codex_home ?? options.codexHome;
-    if (!codexHome) {
-      throw new CLIError("Codex accounts require codex_home.", {
-        code: "CODEX_HOME_REQUIRED",
-        exitCode: 2,
-        details: { hint: "Use --codex-home /path/to/codex-home" },
-      });
-    }
-    saveAccount(payload.name, {
-      codexHome,
+    createAccount(payload.name, {
+      codexHome: validatedCodexHome,
       provider,
       renewsAt: payload.renews_at,
     });
@@ -233,9 +272,12 @@ export async function runAddCommand(
     };
   }
 
-  if (storageStateMode) {
-    saveAccount(payload.name, { provider, renewsAt: payload.renews_at });
-    importStorageState(payload.name, storageStateMode, provider);
+  if (storageState) {
+    createAccount(payload.name, {
+      provider,
+      renewsAt: payload.renews_at,
+      storageState,
+    });
     return {
       command: "add",
       data: {
@@ -249,40 +291,24 @@ export async function runAddCommand(
     };
   }
 
-  if (provider === "cursor") {
-    const success = await addCursorAccount(payload.name, {
-      authKey: artifacts.authKey,
-      quiet: options.quiet,
-    });
-    if (!success) {
-      throw new CLIError(`Failed to add Cursor account "${payload.name}".`, {
-        code: "ADD_FAILED",
-        exitCode: 1,
-      });
-    }
-    saveAccount(payload.name, { provider, renewsAt: payload.renews_at });
-    return {
-      command: "add",
-      data: {
-        action: "add",
-        name: payload.name,
+  const success = await authenticateWithTemporaryProfile(
+    provider,
+    payload.name,
+    options.quiet,
+    (storageState, profileSource) =>
+      createAccount(payload.name, {
+        profileSource,
         provider,
-        auth_mode: "browser",
-        account_saved: true,
-      },
-      human: `✓ Account "${payload.name}" added successfully.\n`,
-    };
-  }
-
-  const success = await addAccount(payload.name, { quiet: options.quiet });
+        renewsAt: payload.renews_at,
+        storageState,
+      }),
+  );
   if (!success) {
-    throw new CLIError(`Failed to add account "${payload.name}".`, {
+    throw new CLIError(`Failed to add ${provider} account "${payload.name}".`, {
       code: "ADD_FAILED",
       exitCode: 1,
     });
   }
-
-  saveAccount(payload.name, { provider, renewsAt: payload.renews_at });
   return {
     command: "add",
     data: {
@@ -301,7 +327,7 @@ export async function runRefreshCommand(
   name: string | undefined,
   options: CommandOptions,
 ): Promise<CommandResult> {
-  const payload = resolveMutationPayload(name, options);
+  const payload = resolveMutationPayload(name, options, "refresh");
   const provider = resolveProvider(payload.provider);
   if (!accountExists(payload.name, provider)) {
     throw new CLIError(`Account "${payload.name}" not found.`, {
@@ -312,8 +338,14 @@ export async function runRefreshCommand(
   }
 
   const storageStateMode = resolveStorageStateMode(payload, options);
+  const storageState = validateStorageStateMode(storageStateMode);
   const artifacts = getAccountArtifacts(payload.name, provider);
   const writes = refreshWrites(provider, payload, options, artifacts);
+  const codexHome = payload.codex_home ?? options.codexHome;
+  const validatedCodexHome =
+    provider === "codex" && codexHome
+      ? validateCodexHome(codexHome).homePath
+      : undefined;
   if (options.dryRun) {
     return {
       command: "refresh",
@@ -336,10 +368,12 @@ export async function runRefreshCommand(
   }
 
   if (provider === "codex") {
-    const codexHome = payload.codex_home ?? options.codexHome;
-    if (codexHome || payload.renews_at !== undefined) {
-      saveAccount(payload.name, {
-        ...(codexHome !== undefined && { codexHome }),
+    const updated = codexHome !== undefined || payload.renews_at !== undefined;
+    if (updated) {
+      refreshAccount(payload.name, {
+        ...(validatedCodexHome !== undefined && {
+          codexHome: validatedCodexHome,
+        }),
         provider,
         renewsAt: payload.renews_at,
       });
@@ -351,19 +385,20 @@ export async function runRefreshCommand(
         name: payload.name,
         provider,
         auth_mode: "codex-home",
-        session_refreshed: true,
+        session_refreshed: updated,
       },
       human: codexHome
         ? `Account "${payload.name}" Codex home updated.\n`
-        : `Account "${payload.name}" uses Codex home auth.\n`,
+        : codexRefreshGuidance(payload.name),
     };
   }
 
-  if (storageStateMode) {
-    importStorageState(payload.name, storageStateMode, provider);
-    if (payload.renews_at !== undefined) {
-      saveAccount(payload.name, { provider, renewsAt: payload.renews_at });
-    }
+  if (storageState) {
+    refreshAccount(payload.name, {
+      provider,
+      renewsAt: payload.renews_at,
+      storageState,
+    });
     return {
       command: "refresh",
       data: {
@@ -377,45 +412,25 @@ export async function runRefreshCommand(
     };
   }
 
-  if (provider === "cursor") {
-    const success = await addCursorAccount(payload.name, {
-      authKey: artifacts.authKey,
-      quiet: options.quiet,
-    });
-    if (!success) {
-      throw new CLIError(
-        `Failed to refresh Cursor account "${payload.name}".`,
-        {
-          code: "REFRESH_FAILED",
-          exitCode: 1,
-        },
-      );
-    }
-    if (payload.renews_at !== undefined) {
-      saveAccount(payload.name, { provider, renewsAt: payload.renews_at });
-    }
-    return {
-      command: "refresh",
-      data: {
-        action: "refresh",
-        name: payload.name,
+  const success = await authenticateWithTemporaryProfile(
+    provider,
+    payload.name,
+    options.quiet,
+    (nextStorageState) =>
+      refreshAccount(payload.name, {
         provider,
-        auth_mode: "browser",
-        session_refreshed: true,
-      },
-      human: `✓ Account "${payload.name}" refreshed successfully.\n`,
-    };
-  }
-
-  const success = await addAccount(payload.name, { quiet: options.quiet });
+        renewsAt: payload.renews_at,
+        storageState: nextStorageState,
+      }),
+  );
   if (!success) {
-    throw new CLIError(`Failed to refresh account "${payload.name}".`, {
-      code: "REFRESH_FAILED",
-      exitCode: 1,
-    });
-  }
-  if (payload.renews_at !== undefined) {
-    saveAccount(payload.name, { provider, renewsAt: payload.renews_at });
+    throw new CLIError(
+      `Failed to refresh ${provider} account "${payload.name}".`,
+      {
+        code: "REFRESH_FAILED",
+        exitCode: 1,
+      },
+    );
   }
 
   return {
@@ -436,7 +451,7 @@ export function runRemoveCommand(
   name: string | undefined,
   options: CommandOptions,
 ): CommandResult {
-  const payload = resolveMutationPayload(name, options);
+  const payload = resolveMutationPayload(name, options, "remove");
   const provider = resolveProvider(payload.provider);
   if (!accountExists(payload.name, provider)) {
     throw new CLIError(`Account "${payload.name}" not found.`, {
@@ -486,27 +501,68 @@ export function runRemoveCommand(
 function resolveMutationPayload(
   name: string | undefined,
   options: CommandOptions,
+  command: "add" | "refresh" | "remove",
 ): MutationPayload {
   const rawPayload = loadRawPayload(options);
-  return {
-    codex_home: rawPayload?.codex_home ?? options.codexHome,
+  const common = {
+    ...(rawPayload ?? {}),
     name: rawPayload?.name ?? name ?? "",
     provider: rawPayload?.provider ?? options.provider,
-    renews_at: normalizeRenewalInput(
-      rawPayload && Object.hasOwn(rawPayload, "renews_at")
-        ? rawPayload.renews_at
-        : options.renewsAt,
-    ),
-    storage_state_file:
-      rawPayload?.storage_state_file ?? options.storageStateFile,
+  };
+  const wire = validateMutationWire(
+    command,
+    command === "remove"
+      ? common
+      : {
+          ...common,
+          codex_home: rawPayload?.codex_home ?? options.codexHome,
+          renews_at:
+            rawPayload && Object.hasOwn(rawPayload, "renews_at")
+              ? rawPayload.renews_at
+              : options.renewsAt,
+          storage_state_file:
+            rawPayload?.storage_state_file ?? options.storageStateFile,
+          storage_state_json:
+            rawPayload?.storage_state_json ?? options.storageStateJson,
+        },
+  );
+  return {
+    codex_home: wire.codex_home,
+    name: wire.name,
+    provider: wire.provider,
+    renews_at: normalizeRenewalInput(wire.renews_at),
+    storage_state_file: wire.storage_state_file,
     storage_state_json:
-      normalizeStorageStateJson(
-        rawPayload?.storage_state_json ?? options.storageStateJson,
-      ) ?? getStorageStateJsonEnv(),
+      normalizeStorageStateJson(wire.storage_state_json) ??
+      getStorageStateJsonEnv(),
   };
 }
 
-function normalizeRenewalInput(value: unknown): string | null | undefined {
+async function authenticateWithTemporaryProfile(
+  provider: Provider,
+  name: string,
+  quiet: boolean | undefined,
+  commit: (storageState: PlaywrightStorageState, profileSource: string) => void,
+): Promise<boolean> {
+  const profileSource = fs.mkdtempSync(
+    path.join(os.tmpdir(), `gauge-${provider}-auth-`),
+  );
+  try {
+    const storageState =
+      provider === "cursor"
+        ? await addCursorAccount(name, { profileDir: profileSource, quiet })
+        : await addAccount(name, { profileDir: profileSource, quiet });
+    if (!storageState) return false;
+    commit(storageState, profileSource);
+    return true;
+  } finally {
+    fs.rmSync(profileSource, { force: true, recursive: true });
+  }
+}
+
+export function normalizeRenewalInput(
+  value: unknown,
+): string | null | undefined {
   if (value === undefined) return undefined;
   if (value === null) return null;
   if (typeof value !== "string") {
@@ -549,7 +605,9 @@ function resolveAuthMode(
   return "browser";
 }
 
-function loadRawPayload(options: CommandOptions): MutationPayload | null {
+function loadRawPayload(
+  options: CommandOptions,
+): Record<string, unknown> | null {
   let rawJson = options.json ?? null;
   if (!rawJson && options.inputFile) {
     rawJson =
@@ -563,7 +621,14 @@ function loadRawPayload(options: CommandOptions): MutationPayload | null {
   }
 
   try {
-    return JSON.parse(rawJson) as MutationPayload;
+    const parsed = JSON.parse(rawJson) as unknown;
+    if (!parsed || typeof parsed !== "object" || Array.isArray(parsed)) {
+      throw new CLIError("Raw payload must be a JSON object.", {
+        code: "INVALID_WIRE_INPUT",
+        exitCode: 2,
+      });
+    }
+    return parsed as Record<string, unknown>;
   } catch (error) {
     throw new CLIError("Raw payload is not valid JSON.", {
       code: "INVALID_JSON_INPUT",
@@ -571,6 +636,50 @@ function loadRawPayload(options: CommandOptions): MutationPayload | null {
       details: error instanceof Error ? error.message : String(error),
     });
   }
+}
+
+function validateMutationWire(
+  command: "add" | "refresh" | "remove",
+  value: Record<string, unknown>,
+): MutationPayload {
+  const parsed =
+    command === "add"
+      ? AddWireSchema.safeParse(value)
+      : command === "refresh"
+        ? RefreshWireSchema.safeParse(value)
+        : RemoveWireSchema.safeParse(value);
+  if (!parsed.success) {
+    throw new CLIError(
+      "Command input does not match the declared wire schema.",
+      {
+        code: "INVALID_WIRE_INPUT",
+        exitCode: 2,
+        details: {
+          issues: parsed.error.issues.map((issue) => ({
+            code: issue.code,
+            message: issue.message,
+            path: issue.path,
+          })),
+        },
+      },
+    );
+  }
+  if (command === "remove") {
+    const removal = RemoveWireSchema.parse(value);
+    return { name: removal.name, provider: removal.provider };
+  }
+  const session =
+    command === "add"
+      ? AddWireSchema.parse(value)
+      : RefreshWireSchema.parse(value);
+  return {
+    name: session.name,
+    provider: session.provider,
+    codex_home: session.codex_home,
+    renews_at: session.renews_at,
+    storage_state_file: session.storage_state_file,
+    storage_state_json: normalizeStorageStateJson(session.storage_state_json),
+  };
 }
 
 function resolveStorageStateMode(
@@ -593,7 +702,19 @@ function resolveStorageStateMode(
   return { filePath, json };
 }
 
-function refreshWrites(
+function validateStorageStateMode(
+  mode: { filePath?: string; json?: string } | null,
+): PlaywrightStorageState | undefined {
+  if (!mode) return undefined;
+  if (mode.json !== undefined) {
+    return parseStorageStateJsonValue(mode.json);
+  }
+  return JSON.parse(
+    readStorageStateFile(mode.filePath ?? ""),
+  ) as PlaywrightStorageState;
+}
+
+export function refreshWrites(
   provider: Provider,
   payload: MutationPayload,
   options: CommandOptions,
@@ -632,177 +753,3 @@ function normalizeStorageStateJson(value: unknown): string | undefined {
 
   return undefined;
 }
-
-function pickRecommendation(
-  accounts: Awaited<ReturnType<typeof fetchAllUsage>>,
-): {
-  account_window: RecommendationWindow | null;
-  account: { name: string; plan: string } | null;
-  status: string;
-} {
-  const available = accounts
-    .filter((account) => !account.error)
-    .map((account) => ({
-      account,
-      blocked:
-        (account.usage.five_hour?.utilization ?? 0) >= 100 ||
-        (account.usage.seven_day?.utilization ?? 0) >= 100,
-      score:
-        (account.usage.five_hour?.utilization ?? 0) +
-        (account.usage.seven_day?.utilization ?? 0),
-      waitUntil: Math.max(
-        account.usage.five_hour?.resets_at
-          ? new Date(account.usage.five_hour.resets_at).getTime()
-          : 0,
-        account.usage.seven_day?.resets_at
-          ? new Date(account.usage.seven_day.resets_at).getTime()
-          : 0,
-      ),
-    }))
-    .sort((left, right) => {
-      if (left.blocked !== right.blocked) {
-        return Number(left.blocked) - Number(right.blocked);
-      }
-      if (left.blocked) {
-        return left.waitUntil - right.waitUntil;
-      }
-      return left.score - right.score;
-    });
-
-  const best = available[0];
-  if (!best) {
-    return {
-      account_window: null,
-      account: null,
-      status: "No configured account is currently usable.",
-    };
-  }
-
-  return {
-    account_window: getRecommendationWindow(best.account, best.blocked),
-    account: {
-      name: best.account.name,
-      plan: best.account.plan,
-    },
-    status: best.blocked ? "wait" : "use_now",
-  };
-}
-
-function addStatusNameAlias(account: UnifiedAccount): UnifiedAccount & {
-  name: string;
-} {
-  return {
-    ...account,
-    name: account.label,
-  };
-}
-
-function mapStatusGroups(
-  groups: Partial<Record<string, UnifiedAccount[]>>,
-): Partial<Record<string, Array<UnifiedAccount & { name: string }>>> {
-  const result: Partial<
-    Record<string, Array<UnifiedAccount & { name: string }>>
-  > = {};
-  for (const [provider, accounts] of Object.entries(groups)) {
-    if (!accounts) continue;
-    result[provider] = accounts.map(addStatusNameAlias);
-  }
-  return result;
-}
-
-function getRecommendationWindow(
-  account: Awaited<ReturnType<typeof fetchAllUsage>>[number],
-  blocked: boolean,
-): RecommendationWindow {
-  const fiveHour = account.usage.five_hour;
-  const sevenDay = account.usage.seven_day;
-
-  if (blocked) {
-    const blockingReset = earliestFutureReset([
-      fiveHour?.utilization === 100 ? fiveHour.resets_at : null,
-      sevenDay?.utilization === 100 ? sevenDay.resets_at : null,
-    ]);
-    if (blockingReset) {
-      const milliseconds = Math.max(0, blockingReset.getTime() - Date.now());
-      return {
-        basis: "blocked_until_available",
-        label: formatDuration(milliseconds),
-        milliseconds,
-        until: blockingReset.toISOString(),
-      };
-    }
-  }
-
-  if (fiveHour?.resets_at) {
-    const resetAt = new Date(fiveHour.resets_at);
-    const milliseconds = Math.max(0, resetAt.getTime() - Date.now());
-    return {
-      basis: "available_session",
-      label: formatDuration(milliseconds),
-      milliseconds,
-      until: resetAt.toISOString(),
-    };
-  }
-
-  if (sevenDay?.resets_at) {
-    const resetAt = new Date(sevenDay.resets_at);
-    const milliseconds = Math.max(0, resetAt.getTime() - Date.now());
-    return {
-      basis: "available_weekly",
-      label: formatDuration(milliseconds),
-      milliseconds,
-      until: resetAt.toISOString(),
-    };
-  }
-
-  return {
-    basis: fiveHour?.utilization === 0 ? "session_not_started" : "unknown",
-    label: fiveHour?.utilization === 0 ? "session not started" : "unknown",
-    milliseconds: null,
-    until: null,
-  };
-}
-
-function earliestFutureReset(
-  timestamps: Array<string | null | undefined>,
-): Date | null {
-  const futureDates = timestamps
-    .filter((value): value is string => typeof value === "string")
-    .map((value) => new Date(value))
-    .filter((value) => !Number.isNaN(value.getTime()))
-    .filter((value) => value.getTime() > Date.now())
-    .sort((left, right) => left.getTime() - right.getTime());
-
-  return futureDates[0] ?? null;
-}
-
-function formatDuration(milliseconds: number): string {
-  if (milliseconds <= 0) {
-    return "now";
-  }
-
-  const totalMinutes = Math.floor(milliseconds / 60_000);
-  const days = Math.floor(totalMinutes / (60 * 24));
-  const hours = Math.floor((totalMinutes % (60 * 24)) / 60);
-  const minutes = totalMinutes % 60;
-  const parts: string[] = [];
-
-  if (days > 0) {
-    parts.push(`${days}d`);
-  }
-  if (hours > 0) {
-    parts.push(`${hours}h`);
-  }
-  if (minutes > 0 || parts.length === 0) {
-    parts.push(`${minutes}m`);
-  }
-
-  return parts.join(" ");
-}
-
-export const __test = {
-  getRecommendationWindow,
-  normalizeRenewalInput,
-  pickRecommendation,
-  refreshWrites,
-};

@@ -1,0 +1,39 @@
+name: Release v3
+
+on:
+  push:
+    tags: ["v3.0.0"]
+
+permissions:
+  contents: read
+  id-token: write
+
+jobs:
+  publish:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      - uses: pnpm/action-setup@v4
+        with:
+          version: 10.15.1
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 24
+          cache: pnpm
+          registry-url: https://registry.npmjs.org
+      - run: pnpm install --frozen-lockfile
+      - name: Verify tag matches package version
+        run: test "${GITHUB_REF_NAME}" = "v$(node -p "require('./package.json').version")"
+      - run: pnpm audit --audit-level high
+      - run: pnpm typecheck
+      - run: pnpm lint
+      - run: pnpm coverage
+      - run: pnpm coverage:critical
+      - run: pnpm build
+      - run: pnpm schema:check
+      - run: pnpm docs:check
+      - run: pnpm package:smoke
+      - run: pnpm knip
+      - run: pnpm publish --access public --provenance --no-git-checks

@@ -94,3 +94,27 @@ test("renderCommandResult emits ndjson pages", () => {
   assert.equal(first.ok, true);
   assert.equal(first.data.accounts[0]?.name, "a");
 });
+
+test("multi-page failed snapshots preserve failed envelope semantics", () => {
+  const rendered = renderCommandResult(
+    {
+      command: "status",
+      data: {},
+      exitCode: 1,
+      human: "",
+      ok: false,
+      paginated: {
+        itemName: "accounts",
+        items: [{ name: "a" }, { name: "b" }],
+      },
+      result: "failed",
+    },
+    { format: "json", pageAll: true, pageSize: 1 },
+    { cwd: process.cwd(), isTTY: false },
+  );
+
+  const envelope = JSON.parse(rendered.content);
+  assert.equal(envelope.ok, false);
+  assert.equal(envelope.meta.result, "failed");
+  assert.equal(envelope.data.pages.length, 2);
+});
