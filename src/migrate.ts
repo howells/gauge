@@ -442,11 +442,21 @@ function buildEntry(root: string, filename: string): LegacyMigrationEntry {
   };
 }
 
+/**
+ * Whether a file at the data root is a v2 account config awaiting migration.
+ *
+ * The test is "any .json here", because in v2 every account was one. That makes
+ * the exemption list load-bearing: a *new* v3 file dropped at the root reads as
+ * legacy state and locks every account-dependent command behind the migration
+ * gate until it is named here. `display.json` is one such file — reader
+ * preferences, written by v3 and never migrated from anything.
+ */
 function isLegacyConfigFilename(filename: string): boolean {
   return (
     filename.endsWith(".json") &&
     !filename.startsWith(".") &&
     filename !== "migration-v3.json" &&
+    filename !== "display.json" &&
     !filename.endsWith("-storage.json")
   );
 }

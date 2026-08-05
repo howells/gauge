@@ -1,7 +1,10 @@
+import fs from "node:fs";
+import path from "node:path";
 import chalk from "chalk";
 import type { Provider } from "../domain/account.js";
 import type { UsageRecommendation } from "../domain/recommendation.js";
 import type { AccountSnapshot } from "../domain/snapshot.js";
+import { getDataDir } from "../paths.js";
 import { ADD_STEPS } from "./onboarding.js";
 
 /** One account as mapped by the status result for presentation. */
@@ -118,6 +121,37 @@ function isProvider(value: string): value is Provider {
   return (PROVIDER_ORDER as string[]).includes(value);
 }
 
+/**
+ * The reader's own row order, from `display.json` in the data directory.
+ *
+ * Kept out of the per-account `config.json` files deliberately: those are
+ * schema-versioned account *state* that the migration and packing gates police,
+ * and which account a person likes to look at first is neither state nor an
+ * account's business. A missing or malformed file simply means "no preference",
+ * because a display nicety must never be able to stop a status reading.
+ *
+ * ```json
+ * { "accountOrder": ["gmail", "danielhowells", "materialinstruments"] }
+ * ```
+ */
+function preferredOrder(): string[] {
+  try {
+    const raw = fs.readFileSync(
+      path.join(getDataDir(), "display.json"),
+      "utf8",
+    );
+    const parsed: unknown = JSON.parse(raw);
+    if (typeof parsed !== "object" || parsed === null) return [];
+    const { accountOrder } = parsed as { accountOrder?: unknown };
+    if (!Array.isArray(accountOrder)) return [];
+    return accountOrder.filter(
+      (name): name is string => typeof name === "string",
+    );
+  } catch {
+    return [];
+  }
+}
+
 function buildRows(accounts: StatusAccountView[], now: Date): GridRow[] {
   const rows = new Map<string, GridRow>();
   for (const account of accounts) {
@@ -138,7 +172,19 @@ function buildRows(accounts: StatusAccountView[], now: Date): GridRow[] {
       ),
     );
   }
+  const preferred = preferredOrder();
   return [...rows.values()].sort((left, right) => {
+    // A named order wins outright when one is configured. Row order is a reading
+    // aid — which account you look for first is a fact about the person, not
+    // about the data — so it belongs to the reader and not to the sort below.
+    const leftRank = preferred.indexOf(left.label);
+    const rightRank = preferred.indexOf(right.label);
+    if (leftRank !== rightRank) {
+      // Unlisted names keep the computed order, after every listed one.
+      if (leftRank === -1) return 1;
+      if (rightRank === -1) return -1;
+      return leftRank - rightRank;
+    }
     if (left.minWaitMs !== right.minWaitMs) {
       return left.minWaitMs - right.minWaitMs;
     }
