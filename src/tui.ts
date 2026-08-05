@@ -389,14 +389,11 @@ export async function runTUI(): Promise<void> {
         // Direct manipulation: the cursor moves over the accounts already on
         // screen and Enter acts on the one under it, so there is no mode to be
         // in and no key to remember for a thing that is being looked at.
+        // Movement repaints from the last reading. Only `r`, and an action that
+        // changed something, ask a provider again.
         const move = (next: () => void): void => {
           next();
-          processing = true;
-          reload()
-            .catch(reject)
-            .finally(() => {
-              processing = false;
-            });
+          draw();
         };
         if (key.name === "up" || key.name === "k") {
           move(() => {
