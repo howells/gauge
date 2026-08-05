@@ -131,6 +131,50 @@ function codexLogin(home: string): MachineLogin | null {
 }
 
 /** Every tool on this machine whose signed-in account can be read locally. */
+/**
+ * Configured account names by Claude account UUID.
+ *
+ * The desktop app stores no address anywhere readable — its OAuth cache is
+ * encrypted — so an identifier is all that surface can offer. But gauge has
+ * already signed into these accounts itself, and the browser state it kept from
+ * doing so carries `account_uuid` in the clear. Matching one against the other
+ * turns "a different account" into the account's name, without a network call
+ * and without the app having to tell us anything.
+ *
+ * Scanned by pattern rather than parsed: these files are large, and the only
+ * thing wanted from them is an identifier that sits beside a known key. Both
+ * spellings appear, and both arrive escaped inside JSON-encoded values.
+ */
+export function claudeAccountNamesByUuid(dataDir: string): Map<string, string> {
+  const names = new Map<string, string>();
+  const root = path.join(dataDir, "accounts", "v3", "claude");
+  let accounts: string[];
+  try {
+    accounts = fs.readdirSync(root);
+  } catch {
+    return names;
+  }
+  const pattern =
+    /account_?[Uu]uid\\?"?\s*:\s*\\?"?([0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12})/gu;
+  for (const account of accounts) {
+    let raw: string;
+    try {
+      raw = fs.readFileSync(
+        path.join(root, account, "storage-state.json"),
+        "utf8",
+      );
+    } catch {
+      continue;
+    }
+    for (const match of raw.matchAll(pattern)) {
+      const uuid = match[1];
+      // First writer wins: the account whose own state carries the id owns it.
+      if (uuid && !names.has(uuid)) names.set(uuid, account);
+    }
+  }
+  return names;
+}
+
 export function readMachineLogins(
   homeDir: string = os.homedir(),
 ): MachineLogin[] {

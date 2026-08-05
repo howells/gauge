@@ -5,7 +5,10 @@ import type { Provider } from "../domain/account.js";
 import type { UsageRecommendation } from "../domain/recommendation.js";
 import type { AccountSnapshot } from "../domain/snapshot.js";
 import { getDataDir } from "../paths.js";
-import { readMachineLogins } from "./machine-logins.js";
+import {
+  claudeAccountNamesByUuid,
+  readMachineLogins,
+} from "./machine-logins.js";
 import { ADD_STEPS } from "./onboarding.js";
 
 /** One account as mapped by the status result for presentation. */
@@ -334,6 +337,7 @@ function machineLines(accounts: StatusAccountView[]): string[] {
     if (email) byEmail.set(email.toLowerCase(), account.name);
   }
   const claudeCode = logins.find((login) => login.surface === "Claude Code");
+  const byUuid = claudeAccountNamesByUuid(getDataDir());
 
   const width = Math.max(...logins.map((login) => login.surface.length));
   return [
@@ -348,14 +352,20 @@ function machineLines(accounts: StatusAccountView[]): string[] {
           : chalk.yellow("· not tracked here");
         return `${INDENT}${surface}  ${login.email}  ${tail}`;
       }
-      // Only an identifier is readable for this surface, so the useful fact is
-      // whether it is the same account as the CLI beside it.
+      // Only an identifier is readable for this surface. Name it from the state
+      // gauge kept when it signed into these accounts itself, and fall back to
+      // the one fact left — whether it is the CLI's account — when it matches
+      // nothing configured.
+      const named = login.accountId ? byUuid.get(login.accountId) : undefined;
+      if (named) {
+        return `${INDENT}${surface}  ${chalk.dim(`· ${named}`)}`;
+      }
       const sameAsCli =
         claudeCode?.accountId && login.accountId === claudeCode.accountId;
       const detail = sameAsCli
         ? chalk.dim(`same account as ${claudeCode?.surface}`)
         : chalk.yellow(
-            `a different account · ${(login.accountId ?? "unknown").slice(0, 8)}…`,
+            `an account not configured here · ${(login.accountId ?? "unknown").slice(0, 8)}…`,
           );
       return `${INDENT}${surface}  ${detail}`;
     }),
