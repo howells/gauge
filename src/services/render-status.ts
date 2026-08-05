@@ -395,10 +395,35 @@ function renderEmptyState(): string {
 // ─── Entry points ────────────────────────────────────────────────────────────
 
 /** Render the full human status dashboard. */
+/**
+ * The account rows in the order the dashboard draws them.
+ *
+ * Exported so a keyboard cursor can index the same sequence the reader sees.
+ * Deriving it separately is how a cursor comes to land on a different row from
+ * the one it highlights — the display is sorted by the reader's own preference,
+ * and any second ordering will disagree with it the moment that file exists.
+ */
+export function statusRowOrder(
+  accounts: StatusAccountView[],
+  now: Date,
+): string[] {
+  return buildRows(accounts, now).map((row) => row.label);
+}
+
 export function renderStatusDashboard(
   accounts: StatusAccountView[],
   recommendation: UsageRecommendation | null,
   now: Date,
+  /**
+   * The row a keyboard is currently on, when a reader is driving this.
+   *
+   * Passed only by the interactive view; every other caller renders the same
+   * dashboard with nothing marked. Selection lives here rather than in a second
+   * renderer because this one string is what `gauge status --format human`
+   * prints too, and two renderers for one grid is how the piped output and the
+   * one on screen come to disagree.
+   */
+  selected?: string,
 ): string {
   if (accounts.length === 0) {
     return renderEmptyState();
@@ -414,7 +439,14 @@ export function renderStatusDashboard(
   lines.push("");
   lines.push(columnHeader(providers));
   for (const row of rows) {
-    const label = pad(chalk.white(truncate(row.label, COL_LABEL)), COL_LABEL);
+    const active = selected !== undefined && row.label === selected;
+    const name = truncate(row.label, COL_LABEL - 2);
+    const label = pad(
+      active
+        ? `${chalk.cyan("›")} ${chalk.cyan.bold(name)}`
+        : `  ${chalk.white(name)}`,
+      COL_LABEL,
+    );
     const meters = providers
       .map((provider) => meterCell(row.accounts[provider], now))
       .join("  ");
