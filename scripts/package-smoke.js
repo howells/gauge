@@ -25,7 +25,15 @@ run("npm", ["install", "--ignore-scripts", tarball], smokeRoot);
 
 const bin = path.join(smokeRoot, "node_modules", ".bin", "gauge");
 const version = run(bin, ["--version"], smokeRoot);
-assert.equal(version.stdout.trim(), "3.0.0");
+// Against the version this repo declares, not a literal. The check that matters
+// is "the packed binary reports what we think we are shipping"; a frozen string
+// asserts something else — that the version never changes — so it failed on the
+// first bump after it was written, which is the one moment a packaging gate
+// most needs to be trusted.
+const expectedVersion = JSON.parse(
+  fs.readFileSync(path.join(root, "package.json"), "utf8"),
+).version;
+assert.equal(version.stdout.trim(), expectedVersion);
 
 const deepImport = spawnSync(
   process.execPath,

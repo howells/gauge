@@ -37,7 +37,9 @@ test("package ships dist through deterministic prepack gates", () => {
   assert.ok(pkg.files.includes("README.md"));
   assert.ok(pkg.files.includes("LICENSE"));
   assert.ok(pkg.files.includes("package.json"));
-  assert.equal(pkg.version, "3.0.0");
+  // Semver, not a fixed number: this test is about the packaging shape, and
+  // pinning the version here only guarantees a failure on the next release.
+  assert.match(pkg.version, /^\d+\.\d+\.\d+(?:-[\w.]+)?$/);
   assert.equal(pkg.scripts?.prepare, undefined);
   assert.match(pkg.scripts?.prepack, /build/);
   assert.match(pkg.scripts?.prepack, /schema:check/);

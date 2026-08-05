@@ -4,3 +4,7 @@ accounts/
 .env
 .DS_Store
 .claude/settings.local.json
+
+# Coverage and packaging-smoke artifacts are build output, not state.
+coverage/
+.package-smoke/

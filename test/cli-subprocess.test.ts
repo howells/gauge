@@ -7,6 +7,15 @@ import { test } from "node:test";
 import { fileURLToPath } from "node:url";
 
 const root = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..");
+/**
+ * The version this repo declares, so the version assertions below check that the
+ * CLI reports what we ship rather than that the number never changes. Frozen
+ * literals here failed on the first bump after they were written — the one
+ * moment a packaging assertion most needs to be trusted.
+ */
+const packageVersion = JSON.parse(
+  fs.readFileSync(path.join(root, "package.json"), "utf8"),
+).version as string;
 const tsxCli = path.join(root, "node_modules", "tsx", "dist", "cli.mjs");
 const sourceCli = path.join(root, "src", "cli.ts");
 const builtCli = path.join(root, "dist", "cli.js");
@@ -125,7 +134,7 @@ test("source CLI exposes stable help and package version", (t) => {
   const version = runSource(fixture, ["--version"]);
   assert.equal(version.status, 0);
   assert.equal(version.stderr, "");
-  assert.equal(version.stdout, "3.0.0\n");
+  assert.equal(version.stdout, `${packageVersion}\n`);
 });
 
 test("root and status aliases return the same empty structured status", (t) => {
@@ -484,5 +493,5 @@ test("built package bin executes via its shebang", (t) => {
   assert.equal(result.status, 0);
   assert.equal(result.signal, null);
   assert.equal(result.stderr, "");
-  assert.equal(result.stdout, "3.0.0\n");
+  assert.equal(result.stdout, `${packageVersion}\n`);
 });
