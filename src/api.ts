@@ -288,7 +288,7 @@ export async function fetchUsageForAccount(
   // end in a Chrome launch, a Cloudflare challenge and a login to sit through.
   // Null from here means "no token, or one that is no longer accepted", which
   // is a reason to fall through quietly and never a reason to fail an account.
-  const viaToken = await fetchUsageViaOAuth(name, renewsAt, runtime);
+  const viaToken = await fetchUsageViaOAuth(name, renewsAt);
   if (viaToken) {
     return viaToken;
   }
@@ -442,7 +442,6 @@ async function fetchUsageViaBrowser(
 async function fetchUsageViaOAuth(
   name: string,
   renewsAt: string | null | undefined,
-  runtime: ApiRuntime,
 ): Promise<AccountUsage | null> {
   try {
     const dataDir = getDataDir();
