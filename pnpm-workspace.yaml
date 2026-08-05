@@ -1,2 +1,9 @@
 onlyBuiltDependencies:
   - esbuild
+
+# Moved here from package.json's `pnpm.overrides`, which pnpm 10 no longer reads —
+# it warns "The following keys were ignored: pnpm.overrides" on every command and
+# resolves as though the pin were absent. It had already drifted: node_modules
+# carried picomatch@4.0.3 alongside the pinned 4.0.4.
+overrides:
+  picomatch: 4.0.4
