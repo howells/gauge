@@ -1,12 +1,75 @@
 import process from "node:process";
 import readline from "node:readline";
 import chalk from "chalk";
-import { runStatusCommand } from "./commands.js";
+import { runRefreshCommand, runStatusCommand } from "./commands.js";
+
+/** An account the last reading could not read, and the keystroke that fixes it. */
+interface BrokenAccount {
+  name: string;
+  provider: string;
+}
+
+/**
+ * The accounts in a status payload that failed to read.
+ *
+ * Read defensively from the command's own data rather than re-deriving it: the
+ * dashboard and this list must always name the same accounts, and the payload is
+ * the one thing both already agree on.
+ */
+function brokenAccounts(data: unknown): BrokenAccount[] {
+  if (typeof data !== "object" || data === null || !("accounts" in data)) {
+    return [];
+  }
+  const { accounts } = data as { accounts?: unknown };
+  if (!Array.isArray(accounts)) return [];
+  return accounts.flatMap((account) => {
+    if (typeof account !== "object" || account === null) return [];
+    const entry = account as {
+      error?: unknown;
+      name?: unknown;
+      provider?: unknown;
+    };
+    if (!entry.error) return [];
+    if (typeof entry.name !== "string" || typeof entry.provider !== "string") {
+      return [];
+    }
+    return [{ name: entry.name, provider: entry.provider }];
+  });
+}
+
+/**
+ * The key legend, and the re-auth offers when there is anything to fix.
+ *
+ * A dashboard that prints `gauge refresh codex danielhowells` has already done
+ * the thinking; making the reader copy it back into the same terminal is the
+ * part worth removing. Numbering the broken accounts turns that into one
+ * keystroke, and the numbers match the order they appear in above.
+ */
+function footer(broken: BrokenAccount[]): string {
+  const keys = [
+    chalk.bold("r"),
+    chalk.dim("reload"),
+    chalk.dim("·"),
+    chalk.bold("q"),
+    chalk.dim("quit"),
+  ].join(" ");
+  if (broken.length === 0) {
+    return `   ${keys}\n`;
+  }
+  const offers = broken
+    .map(
+      (account, index) =>
+        `${chalk.bold(String(index + 1))} ${chalk.dim(`re-auth ${account.provider}:${account.name}`)}`,
+    )
+    .join(chalk.dim("  ·  "));
+  return `   ${keys}\n   ${offers}\n`;
+}
 
 /** Present the shared status service as a small keyboard-controlled terminal view. */
 export async function runTUI(): Promise<void> {
   let previousLineCount = 0;
   let processing = false;
+  let broken: BrokenAccount[] = [];
 
   const writeView = (content: string): void => {
     if (previousLineCount > 0) {
@@ -19,7 +82,37 @@ export async function runTUI(): Promise<void> {
   const reload = async (): Promise<void> => {
     writeView(`\n   ${chalk.bold("gauge")}  ${chalk.dim("· loading...")}\n`);
     const result = await runStatusCommand({ quiet: true });
-    writeView(`${result.human}\n${chalk.dim("   r refresh  ·  q quit")}\n`);
+    broken = brokenAccounts(result.data);
+    writeView(`${result.human}\n${footer(broken)}`);
+  };
+
+  /**
+   * Hand the terminal back, run the account's real auth flow, and take it again.
+   *
+   * The flow opens a browser and prints for itself, so raw mode has to be off
+   * while it runs or its output arrives with no line discipline and its prompts
+   * cannot be answered. The redraw counter is reset rather than adjusted: what
+   * the flow printed is not this view's to erase.
+   */
+  const reauthenticate = async (account: BrokenAccount): Promise<void> => {
+    process.stdin.setRawMode(false);
+    process.stdout.write(
+      `\n   ${chalk.yellow("→")} ${chalk.bold(`${account.provider}:${account.name}`)} ${chalk.dim("· re-authenticating")}\n\n`,
+    );
+    previousLineCount = 0;
+    try {
+      await runRefreshCommand(account.name, {
+        provider: account.provider,
+        quiet: true,
+      });
+      process.stdout.write(`   ${chalk.green("✓")} ${chalk.dim("done")}\n`);
+    } catch (error) {
+      const message = error instanceof Error ? error.message : String(error);
+      process.stdout.write(`   ${chalk.red("✗")} ${chalk.dim(message)}\n`);
+    } finally {
+      process.stdin.setRawMode(true);
+    }
+    await reload();
   };
 
   await reload();
@@ -37,7 +130,19 @@ export async function runTUI(): Promise<void> {
           resolve();
           return;
         }
-        if (key.name !== "r" || processing) return;
+        if (processing) return;
+        const digit = Number.parseInt(key.name ?? "", 10);
+        const chosen = Number.isInteger(digit) ? broken[digit - 1] : undefined;
+        if (chosen) {
+          processing = true;
+          reauthenticate(chosen)
+            .catch(reject)
+            .finally(() => {
+              processing = false;
+            });
+          return;
+        }
+        if (key.name !== "r") return;
         processing = true;
         reload()
           .catch(reject)
