@@ -44,7 +44,7 @@ test("fetchOAuthUsage reads both windows from the token", async () => {
     }),
   );
 
-  assert.equal(reading?.plan, "Max 20x");
+  assert.equal(reading?.plan, "max_20x");
   assert.equal(reading?.email, "dan@example.com");
   assert.deepEqual(reading?.windows, [
     { resetsAt: "2026-08-05T18:10:00.000Z", usedPercent: 64 },
@@ -81,8 +81,9 @@ test("fetchOAuthUsage keeps the reading when only the profile fails", async () =
 });
 
 test("planFromRateLimitTier names the tiers the dashboard shows", () => {
-  assert.equal(planFromRateLimitTier("default_claude_max_20x"), "Max 20x");
-  assert.equal(planFromRateLimitTier("default_claude_max_5x"), "Max 5x");
-  assert.equal(planFromRateLimitTier("default_claude_pro"), "Pro");
+  // Codes, because `local-adapters` owns the one map from code to label.
+  assert.equal(planFromRateLimitTier("default_claude_max_20x"), "max_20x");
+  assert.equal(planFromRateLimitTier("default_claude_max_5x"), "max_5x");
+  assert.equal(planFromRateLimitTier("default_claude_pro"), "pro");
   assert.equal(planFromRateLimitTier(null), null);
 });

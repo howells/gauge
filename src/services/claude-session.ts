@@ -194,3 +194,42 @@ export function switchClaudeSession(
 
   return { backedUp, name };
 }
+
+/**
+ * The Claude Code access token that speaks for this account, if there is one.
+ *
+ * Prefers the live keychain over a stored snapshot, and that ordering is the
+ * whole reason no refresh exchange is needed here: Claude Code refreshes its own
+ * token as it runs, so reading the keychain at fetch time yields a fresh one
+ * without gauge ever rotating a credential it does not own. Rotating it would be
+ * the more dangerous act — a refresh token that is single-use would sign the
+ * machine out of the very session being measured.
+ *
+ * A captured snapshot is offered for accounts that are not the one signed in.
+ * Those go stale, and staleness is handled by the caller falling back rather
+ * than by refreshing here.
+ */
+export function claudeAccessTokenFor(
+  name: string,
+  dataDir: string,
+  liveAccountName?: string,
+): string | null {
+  const fromSession = (session: ClaudeSession | null): string | null => {
+    if (!session) return null;
+    try {
+      const parsed = record(JSON.parse(session.credentials));
+      const oauth = record(parsed?.claudeAiOauth);
+      const token = oauth?.accessToken;
+      return typeof token === "string" && token !== "" ? token : null;
+    } catch {
+      return null;
+    }
+  };
+  if (liveAccountName === name) {
+    const live = fromSession(readClaudeSession());
+    if (live) return live;
+  }
+  return fromSession(
+    record(readJson(sessionFile(dataDir, name))) as ClaudeSession | null,
+  );
+}

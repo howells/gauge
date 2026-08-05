@@ -58,14 +58,22 @@ export interface OAuthUsageReading {
   windows: OAuthUsageWindow[];
 }
 
-/** Turn `default_claude_max_20x` into the plan label the dashboard shows. */
+/**
+ * Turn `default_claude_max_20x` into the plan *code* the pipeline uses.
+ *
+ * A code, not the label. `local-adapters` owns the one map from code to the
+ * words on screen, and returning "Max 20x" from here instead of "max_20x" put a
+ * value through that map which it had no key for — the reading validated away
+ * to an empty account with no plan and no windows, on data that was correct all
+ * the way up to the last step.
+ */
 export function planFromRateLimitTier(tier: string | null): string | null {
   if (!tier) return null;
-  if (tier.includes("max_20x")) return "Max 20x";
-  if (tier.includes("max_5x")) return "Max 5x";
-  if (tier.includes("max")) return "Max";
-  if (tier.includes("pro")) return "Pro";
-  if (tier.includes("free")) return "Free";
+  if (tier.includes("max_20x")) return "max_20x";
+  if (tier.includes("max_5x")) return "max_5x";
+  if (tier.includes("max")) return "max";
+  if (tier.includes("pro")) return "pro";
+  if (tier.includes("free")) return "free";
   return null;
 }
 

@@ -6,13 +6,19 @@ import {
   request,
 } from "playwright-core";
 import { assertChromeInstalled } from "./chrome.js";
-import { getProfileDir, getStorageStatePath } from "./paths.js";
+import { getDataDir, getProfileDir, getStorageStatePath } from "./paths.js";
+import { fetchOAuthUsage } from "./providers/oauth-usage.js";
 import {
   ClaudeOrganizationListSchema,
   ClaudeRenewalSchema,
   ClaudeUsageResponseSchema,
 } from "./providers/upstream-schemas.js";
 import { raceWithTimeout } from "./runtime/deadline.js";
+import {
+  claudeAccessTokenFor,
+  readClaudeSession,
+} from "./services/claude-session.js";
+import { claudeAccountNamesByUuid } from "./services/machine-logins.js";
 import type { PlaywrightStorageState } from "./storage-state.js";
 
 interface UsageLimit {
@@ -275,6 +281,18 @@ export async function fetchUsageForAccount(
   }
 
   if (options.signal?.aborted) throw options.signal.reason;
+
+  // The token first, the cookies second. An account signed into Claude Code
+  // carries an OAuth credential the Anthropic API accepts, and reading usage
+  // with it costs one request and no browser at all — where the cookie path can
+  // end in a Chrome launch, a Cloudflare challenge and a login to sit through.
+  // Null from here means "no token, or one that is no longer accepted", which
+  // is a reason to fall through quietly and never a reason to fail an account.
+  const viaToken = await fetchUsageViaOAuth(name, renewsAt, runtime);
+  if (viaToken) {
+    return viaToken;
+  }
+
   const requestResult = await fetchUsageViaRequest(
     name,
     storagePath,
@@ -410,6 +428,59 @@ async function fetchUsageViaBrowser(
     };
   } finally {
     await context.close();
+  }
+}
+
+/**
+ * Usage for one account from its Claude Code token, or null to fall back.
+ *
+ * The account is identified by matching the signed-in profile's `accountUuid`
+ * against the browser state gauge kept when it added the account — the same
+ * join that names the desktop app's account — because the token itself carries
+ * no gauge account name.
+ */
+async function fetchUsageViaOAuth(
+  name: string,
+  renewsAt: string | null | undefined,
+  runtime: ApiRuntime,
+): Promise<AccountUsage | null> {
+  try {
+    const dataDir = getDataDir();
+    const live = readClaudeSession();
+    const liveUuid = live?.profile.accountUuid;
+    const liveName =
+      typeof liveUuid === "string"
+        ? claudeAccountNamesByUuid(dataDir).get(liveUuid)
+        : undefined;
+    const token = claudeAccessTokenFor(name, dataDir, liveName);
+    if (!token) return null;
+    const reading = await fetchOAuthUsage(token);
+    if (!reading) return null;
+    const [session, weekly] = reading.windows;
+    const limit = (
+      window: { resetsAt: string; usedPercent: number } | undefined,
+    ): UsageLimit | null =>
+      window
+        ? { resets_at: window.resetsAt, utilization: window.usedPercent }
+        : null;
+    return {
+      name,
+      plan: (reading.plan ?? "unknown") as AccountUsage["plan"],
+      renewsAt,
+      orgUuid: "",
+      usage: {
+        extra_usage: null,
+        five_hour: limit(session),
+        iguana_necktie: null,
+        seven_day: limit(weekly),
+        seven_day_cowork: null,
+        seven_day_oauth_apps: null,
+        seven_day_opus: null,
+        seven_day_sonnet: null,
+      },
+    } satisfies AccountUsage;
+  } catch {
+    return null;
   }
 }
 
