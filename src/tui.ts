@@ -100,13 +100,19 @@ function footer(
       (target) =>
         target.name === selected.label && target.provider === selected.provider,
     );
-  const action = available
-    ? `${chalk.bold("enter")} ${chalk.dim(`sign ${surface} in as ${selected?.label}`)}`
-    : chalk.dim(
-        selected?.provider === "cursor"
-          ? "enter · Cursor cannot be switched from here"
-          : `enter · no ${surface} session stored for ${selected?.label ?? "this account"} yet`,
-      );
+  // Three states, and the middle one used to be a dead end: a cell with nothing
+  // stored said so and offered nothing, while the only way to store a session
+  // was to already be signed into it. Enter starts the real login there.
+  const action =
+    selected?.provider === "cursor"
+      ? chalk.dim("enter · Cursor cannot be signed in from here")
+      : available
+        ? `${chalk.bold("enter")} ${chalk.dim(`sign ${surface} in as ${selected?.label}`)}`
+        : `${chalk.bold("enter")} ${chalk.dim(
+            selected?.provider === "codex"
+              ? `log in to Codex as ${selected?.label}`
+              : "log in to Claude Code",
+          )}`;
   const keys = [
     `${chalk.bold("↑↓")} ${chalk.dim("account")}`,
     `${chalk.bold("←→")} ${chalk.dim("app")}`,
@@ -343,22 +349,65 @@ export async function runTUI(): Promise<void> {
     await reload();
   };
 
+  /**
+   * Run a tool's own login, with the terminal handed back so it can use it.
+   *
+   * Codex is aimed at the account, because gauge owns a home per account and can
+   * point CODEX_HOME at it. Claude Code has one session on the machine and no
+   * way to be told which account to take, so it signs in wherever the browser is
+   * taken and the result is captured under whichever account that proves to be.
+   */
+  const runLogin = async (
+    name: string,
+    provider: "claude" | "codex" | "cursor",
+  ): Promise<void> => {
+    if (provider === "codex") {
+      const remedy = codexLoginRemedy(name);
+      if (!remedy) throw new Error(`No Codex home for "${name}".`);
+      const login = spawnSync("codex", ["login"], {
+        env: { ...process.env, CODEX_HOME: remedy.home },
+        stdio: "inherit",
+      });
+      if (login.error) throw login.error;
+      if (login.status !== 0) {
+        throw new Error(`codex login exited ${login.status}`);
+      }
+      return;
+    }
+    const login = spawnSync("claude", ["auth", "login"], { stdio: "inherit" });
+    if (login.error) throw login.error;
+    if (login.status !== 0) {
+      throw new Error(`claude auth login exited ${login.status}`);
+    }
+    captureSignedInClaude();
+    refreshTargets();
+  };
+
   const signInAs = async (
     name: string,
     provider: "claude" | "codex" | "cursor",
   ): Promise<void> => {
     const surface = provider === "codex" ? "Codex" : "Claude Code";
+    const stored = targets.some(
+      (target) => target.name === name && target.provider === provider,
+    );
     process.stdin.setRawMode(false);
     previousLineCount = 0;
     process.stdout.write("\n");
     try {
-      if (provider === "codex") {
+      if (!stored) {
+        // Nothing to restore yet, so run the tool's own login and keep whatever
+        // it produces. Codex can be aimed at this account because gauge owns its
+        // home; Claude Code signs in wherever the browser is taken, and is
+        // captured afterwards under whichever account that turns out to be.
+        await runLogin(name, provider);
+      } else if (provider === "codex") {
         switchCodexLogin(name, getDataDir());
       } else if (provider === "claude") {
         switchClaudeSession(name, getDataDir());
       }
       process.stdout.write(
-        `   ${chalk.green("✓")} ${chalk.dim(`${surface} signed in as ${name}`)}\n`,
+        `   ${chalk.green("✓")} ${chalk.dim(stored ? `${surface} signed in as ${name}` : `${surface} login finished`)}\n`,
       );
     } catch (error) {
       const message = error instanceof Error ? error.message : String(error);
@@ -423,10 +472,9 @@ export async function runTUI(): Promise<void> {
           const name = rowLabels[row];
           const provider = columns[column];
           if (!name || !provider) return;
-          const can = targets.some(
-            (target) => target.name === name && target.provider === provider,
-          );
-          if (!can) return;
+          // Cursor is the only cell Enter does nothing on; everywhere else it
+          // either switches to a stored session or starts a login.
+          if (provider === "cursor") return;
           processing = true;
           signInAs(name, provider)
             .catch(reject)
