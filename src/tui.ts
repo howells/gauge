@@ -143,6 +143,39 @@ export async function runTUI(): Promise<void> {
     previousLineCount = (content.match(/\n/g) ?? []).length;
   };
 
+  /**
+   * The last reading, kept so the cursor can move without asking the network.
+   *
+   * Moving a cursor is not a reason to re-query every provider: it costs a
+   * round trip per account and the figures cannot have changed in the time it
+   * takes to press an arrow key. Drawing reads this; only `r`, and an action
+   * that actually changed something, replace it.
+   */
+  let snapshot: {
+    dashboard: string;
+    recommendation: Parameters<typeof renderStatusDashboard>[1];
+    views: StatusAccountView[];
+  } | null = null;
+
+  /** Repaint from what is already known — no network, no flicker. */
+  const draw = (): void => {
+    if (!snapshot) return;
+    const label = rowLabels[row];
+    const provider = columns[column];
+    const selected = label && provider ? { label, provider } : undefined;
+    const dashboard =
+      snapshot.views.length > 0
+        ? renderStatusDashboard(
+            snapshot.views,
+            snapshot.recommendation,
+            new Date(),
+            selected,
+          )
+        : snapshot.dashboard;
+    writeView(`${dashboard}\n${footer(broken, selected, targets)}`);
+  };
+
+  /** Ask every provider again, then repaint. */
   const reload = async (): Promise<void> => {
     writeView(`\n   ${chalk.bold("gauge")}  ${chalk.dim("· loading...")}\n`);
     const result = await runStatusCommand({ quiet: true });
@@ -161,6 +194,17 @@ export async function runTUI(): Promise<void> {
     // Capture on sight, so simply using the tools builds the set that can later
     // be switched to and nobody has to remember a capture step.
     captureSignedInClaude();
+    refreshTargets();
+    snapshot = {
+      dashboard: result.human ?? "",
+      recommendation: payload.recommendation ?? null,
+      views,
+    };
+    draw();
+  };
+
+  /** The accounts each app could be signed into, from what gauge holds now. */
+  const refreshTargets = (): void => {
     const dataDir = getDataDir();
     targets = [
       ...codexSwitchTargets(dataDir).map(
@@ -170,21 +214,45 @@ export async function runTUI(): Promise<void> {
         (name): SwitchTarget => ({ name, provider: "claude" }),
       ),
     ];
-    const label = rowLabels[row];
-    const provider = columns[column];
-    const selected = label && provider ? { label, provider } : undefined;
-    const dashboard =
-      views.length > 0
-        ? renderStatusDashboard(
-            views,
-            payload.recommendation ?? null,
-            new Date(),
-            selected,
-          )
-        : (result.human ?? "");
-    writeView(`${dashboard}\n${footer(broken, selected, targets)}`);
   };
 
+  /**
+   * Store the Claude Code session under whichever configured account it is.
+   *
+   * Matched on `accountUuid`, not on the address. The sanitized status payload
+   * carries no email for Claude accounts — measured: every one reports
+   * `usage.email` null — so an address match silently captured nothing. The UUID
+   * is in the browser state gauge kept when it signed into the account itself,
+   * which is the same join that names the desktop app's account.
+   */
+  const captureSignedInClaude = (): void => {
+    const session = readClaudeSession();
+    const uuid = session?.profile.accountUuid;
+    if (!session || typeof uuid !== "string") return;
+    const name = claudeAccountNamesByUuid(getDataDir()).get(uuid);
+    if (!name) return;
+    try {
+      captureClaudeSession(getDataDir(), name, session);
+    } catch {
+      // Capture is a convenience; never let it stop the dashboard drawing.
+    }
+  };
+
+  /**
+   * Sign the Codex CLI into one of the accounts gauge already holds.
+   *
+   * No browser and no login: the whole session is a `CODEX_HOME` directory and
+   * gauge keeps one per account, so this is a copy between two directories it
+   * owns. The previous credentials are kept beside the new ones, because a
+   * switch that cannot be undone is a worse trade than a stale file.
+   */
+  /**
+   * Sign one app into one account — the cell the cursor is on, and nothing else.
+   *
+   * Independent per app on purpose. Which account each tool is signed into is a
+   * separate decision, and an action that moved them together could only ever be
+   * wrong for whichever one you did not mean.
+   */
   /**
    * Hand the terminal back, run the account's real auth flow, and take it again.
    *
@@ -275,43 +343,6 @@ export async function runTUI(): Promise<void> {
     await reload();
   };
 
-  /**
-   * Store the Claude Code session under whichever configured account it is.
-   *
-   * Matched on `accountUuid`, not on the address. The sanitized status payload
-   * carries no email for Claude accounts — measured: every one reports
-   * `usage.email` null — so an address match silently captured nothing. The UUID
-   * is in the browser state gauge kept when it signed into the account itself,
-   * which is the same join that names the desktop app's account.
-   */
-  const captureSignedInClaude = (): void => {
-    const session = readClaudeSession();
-    const uuid = session?.profile.accountUuid;
-    if (!session || typeof uuid !== "string") return;
-    const name = claudeAccountNamesByUuid(getDataDir()).get(uuid);
-    if (!name) return;
-    try {
-      captureClaudeSession(getDataDir(), name, session);
-    } catch {
-      // Capture is a convenience; never let it stop the dashboard drawing.
-    }
-  };
-
-  /**
-   * Sign the Codex CLI into one of the accounts gauge already holds.
-   *
-   * No browser and no login: the whole session is a `CODEX_HOME` directory and
-   * gauge keeps one per account, so this is a copy between two directories it
-   * owns. The previous credentials are kept beside the new ones, because a
-   * switch that cannot be undone is a worse trade than a stale file.
-   */
-  /**
-   * Sign one app into one account — the cell the cursor is on, and nothing else.
-   *
-   * Independent per app on purpose. Which account each tool is signed into is a
-   * separate decision, and an action that moved them together could only ever be
-   * wrong for whichever one you did not mean.
-   */
   const signInAs = async (
     name: string,
     provider: "claude" | "codex" | "cursor",
