@@ -130,7 +130,6 @@ function codexLogin(home: string): MachineLogin | null {
   };
 }
 
-/** Every tool on this machine whose signed-in account can be read locally. */
 /**
  * Configured account names by Claude account UUID.
  *
@@ -142,8 +141,7 @@ function codexLogin(home: string): MachineLogin | null {
  * and without the app having to tell us anything.
  *
  * Scanned by pattern rather than parsed: these files are large, and the only
- * thing wanted from them is an identifier that sits beside a known key. Both
- * spellings appear, and both arrive escaped inside JSON-encoded values.
+ * thing wanted from them is an identifier sitting beside a known key.
  */
 export function claudeAccountNamesByUuid(dataDir: string): Map<string, string> {
   const names = new Map<string, string>();
@@ -154,8 +152,19 @@ export function claudeAccountNamesByUuid(dataDir: string): Map<string, string> {
   } catch {
     return names;
   }
-  const pattern =
-    /account_?[Uu]uid\\?"?\s*:\s*\\?"?([0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12})/gu;
+  const UUID = "[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}";
+  // Two shapes, because the state stores the id both ways. Inside a
+  // JSON-encoded blob the key sits against its value and arrives escaped; as a
+  // browser storage entry the key is a `name` field and the id is the separate
+  // `value` beside it, so no adjacency pattern can see the pair at once.
+  const adjacent = new RegExp(
+    `account_?[Uu]uid\\\\?"?\\s*:\\s*\\\\?"?(${UUID})`,
+    "gu",
+  );
+  const entry = new RegExp(
+    `"name"\\s*:\\s*"[^"]*(?:account|owner)[^"]*"\\s*,\\s*"value"\\s*:\\s*"(${UUID})"`,
+    "giu",
+  );
   for (const account of accounts) {
     let raw: string;
     try {
@@ -166,15 +175,18 @@ export function claudeAccountNamesByUuid(dataDir: string): Map<string, string> {
     } catch {
       continue;
     }
-    for (const match of raw.matchAll(pattern)) {
-      const uuid = match[1];
-      // First writer wins: the account whose own state carries the id owns it.
-      if (uuid && !names.has(uuid)) names.set(uuid, account);
+    for (const pattern of [adjacent, entry]) {
+      for (const match of raw.matchAll(pattern)) {
+        const uuid = match[1]?.toLowerCase();
+        // First writer wins: the account whose own state carries the id owns it.
+        if (uuid && !names.has(uuid)) names.set(uuid, account);
+      }
     }
   }
   return names;
 }
 
+/** Every tool on this machine whose signed-in account can be read locally. */
 export function readMachineLogins(
   homeDir: string = os.homedir(),
 ): MachineLogin[] {

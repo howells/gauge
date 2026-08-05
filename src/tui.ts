@@ -9,10 +9,22 @@ import {
 } from "./commands.js";
 import { getDataDir } from "./paths.js";
 import {
-  type CodexSwitchTarget,
+  captureClaudeSession,
+  capturedClaudeSessions,
+  readClaudeSession,
+  switchClaudeSession,
+} from "./services/claude-session.js";
+import { claudeAccountNamesByUuid } from "./services/machine-logins.js";
+import {
   codexSwitchTargets,
   switchCodexLogin,
 } from "./services/switch-login.js";
+
+/** One account a surface on this machine can be signed into from here. */
+interface SwitchTarget {
+  name: string;
+  provider: "claude" | "codex";
+}
 
 /** An account the last reading could not read, and the keystroke that fixes it. */
 interface BrokenAccount {
@@ -56,14 +68,14 @@ function brokenAccounts(data: unknown): BrokenAccount[] {
  * part worth removing. Numbering the broken accounts turns that into one
  * keystroke, and the numbers match the order they appear in above.
  */
-function switchFooter(targets: CodexSwitchTarget[]): string {
+function switchFooter(targets: SwitchTarget[]): string {
   const offers = targets
     .map(
       (target, index) =>
-        `${chalk.bold(String(index + 1))} ${chalk.dim(target.name)}`,
+        `${chalk.bold(String(index + 1))} ${chalk.dim(`${target.provider}:${target.name}`)}`,
     )
     .join(chalk.dim("  ·  "));
-  return `   ${chalk.dim("sign Codex into:")} ${offers}\n   ${chalk.dim("esc cancel")}\n`;
+  return `   ${chalk.dim("sign in as:")} ${offers}\n   ${chalk.dim("esc cancel")}\n`;
 }
 
 function footer(broken: BrokenAccount[], canSwitch: boolean): string {
@@ -75,7 +87,7 @@ function footer(broken: BrokenAccount[], canSwitch: boolean): string {
     chalk.dim("quit"),
   ].join(" ");
   const line = canSwitch
-    ? `${keys} ${chalk.dim("·")} ${chalk.bold("s")} ${chalk.dim("switch codex")}`
+    ? `${keys} ${chalk.dim("·")} ${chalk.bold("s")} ${chalk.dim("switch account")}`
     : keys;
   if (broken.length === 0) {
     return `   ${line}\n`;
@@ -94,7 +106,7 @@ export async function runTUI(): Promise<void> {
   let previousLineCount = 0;
   let processing = false;
   let broken: BrokenAccount[] = [];
-  let targets: CodexSwitchTarget[] = [];
+  let targets: SwitchTarget[] = [];
   let mode: "normal" | "switch" = "normal";
 
   const writeView = (content: string): void => {
@@ -109,7 +121,18 @@ export async function runTUI(): Promise<void> {
     writeView(`\n   ${chalk.bold("gauge")}  ${chalk.dim("· loading...")}\n`);
     const result = await runStatusCommand({ quiet: true });
     broken = brokenAccounts(result.data);
-    targets = codexSwitchTargets(getDataDir());
+    // Capture on sight, so simply using the tools builds the set that can later
+    // be switched to and nobody has to remember a capture step.
+    captureSignedInClaude();
+    const dataDir = getDataDir();
+    targets = [
+      ...codexSwitchTargets(dataDir).map(
+        (target): SwitchTarget => ({ name: target.name, provider: "codex" }),
+      ),
+      ...capturedClaudeSessions(dataDir).map(
+        (name): SwitchTarget => ({ name, provider: "claude" }),
+      ),
+    ];
     writeView(
       `${result.human}\n${
         mode === "switch"
@@ -210,6 +233,28 @@ export async function runTUI(): Promise<void> {
   };
 
   /**
+   * Store the Claude Code session under whichever configured account it is.
+   *
+   * Matched on `accountUuid`, not on the address. The sanitized status payload
+   * carries no email for Claude accounts — measured: every one reports
+   * `usage.email` null — so an address match silently captured nothing. The UUID
+   * is in the browser state gauge kept when it signed into the account itself,
+   * which is the same join that names the desktop app's account.
+   */
+  const captureSignedInClaude = (): void => {
+    const session = readClaudeSession();
+    const uuid = session?.profile.accountUuid;
+    if (!session || typeof uuid !== "string") return;
+    const name = claudeAccountNamesByUuid(getDataDir()).get(uuid);
+    if (!name) return;
+    try {
+      captureClaudeSession(getDataDir(), name, session);
+    } catch {
+      // Capture is a convenience; never let it stop the dashboard drawing.
+    }
+  };
+
+  /**
    * Sign the Codex CLI into one of the accounts gauge already holds.
    *
    * No browser and no login: the whole session is a `CODEX_HOME` directory and
@@ -217,13 +262,17 @@ export async function runTUI(): Promise<void> {
    * owns. The previous credentials are kept beside the new ones, because a
    * switch that cannot be undone is a worse trade than a stale file.
    */
-  const switchCodex = async (target: CodexSwitchTarget): Promise<void> => {
+  const switchAccount = async (target: SwitchTarget): Promise<void> => {
     mode = "normal";
     try {
-      const result = switchCodexLogin(target.name, getDataDir());
+      const result =
+        target.provider === "codex"
+          ? switchCodexLogin(target.name, getDataDir())
+          : switchClaudeSession(target.name, getDataDir());
+      const surface = target.provider === "codex" ? "Codex" : "Claude Code";
       process.stdout.write(
-        `\n   ${chalk.green("✓")} ${chalk.dim(`Codex now signed in as ${target.name}`)}${
-          result.backedUp ? chalk.dim(" · previous kept beside it") : ""
+        `\n   ${chalk.green("✓")} ${chalk.dim(`${surface} now signed in as ${target.name}`)}${
+          result.backedUp ? chalk.dim(" · previous kept") : ""
         }\n`,
       );
     } catch (error) {
@@ -265,7 +314,7 @@ export async function runTUI(): Promise<void> {
           const target = Number.isInteger(pick) ? targets[pick - 1] : undefined;
           if (!target) return;
           processing = true;
-          switchCodex(target)
+          switchAccount(target)
             .catch(reject)
             .finally(() => {
               processing = false;

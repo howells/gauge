@@ -94,3 +94,50 @@ test("switchCodexLogin refuses an account it holds nothing for", () => {
     /No stored Codex home/u,
   );
 });
+
+// ─── Claude Code sessions ────────────────────────────────────────────────────
+
+test("capturedClaudeSessions lists only accounts a session was captured for", async () => {
+  const { capturedClaudeSessions, captureClaudeSession } = await import(
+    "../src/services/claude-session.js"
+  );
+  const { dataDir } = scratch();
+  fs.mkdirSync(path.join(dataDir, "accounts", "v3", "claude", "seen"), {
+    recursive: true,
+  });
+  fs.mkdirSync(path.join(dataDir, "accounts", "v3", "claude", "unseen"), {
+    recursive: true,
+  });
+  captureClaudeSession(dataDir, "seen", {
+    credentials: JSON.stringify({ claudeAiOauth: { accessToken: "a" } }),
+    keychainAccount: "danielhowells",
+    profile: { emailAddress: "seen@example.com" },
+  });
+
+  assert.deepEqual(capturedClaudeSessions(dataDir), ["seen"]);
+});
+
+test("switchClaudeSession refuses an account never captured", async () => {
+  const { switchClaudeSession } = await import(
+    "../src/services/claude-session.js"
+  );
+  const { dataDir, home } = scratch();
+  assert.throws(
+    () => switchClaudeSession("absent", dataDir, home),
+    /No captured Claude Code session/u,
+  );
+});
+
+test("switchClaudeSession refuses an unparseable stored payload", async () => {
+  const { switchClaudeSession, captureClaudeSession } = await import(
+    "../src/services/claude-session.js"
+  );
+  const { dataDir, home } = scratch();
+  captureClaudeSession(dataDir, "broken", {
+    credentials: "{ truncated",
+    keychainAccount: "danielhowells",
+    profile: { emailAddress: "broken@example.com" },
+  });
+  // Refused before the keychain is touched at all.
+  assert.throws(() => switchClaudeSession("broken", dataDir, home));
+});
