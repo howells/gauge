@@ -5,6 +5,7 @@ import type { Provider } from "../domain/account.js";
 import type { UsageRecommendation } from "../domain/recommendation.js";
 import type { AccountSnapshot } from "../domain/snapshot.js";
 import { getDataDir } from "../paths.js";
+import { readMachineLogins } from "./machine-logins.js";
 import { ADD_STEPS } from "./onboarding.js";
 
 /** One account as mapped by the status result for presentation. */
@@ -309,6 +310,58 @@ function errorLines(accounts: StatusAccountView[]): string[] {
   ];
 }
 
+/**
+ * Which account each tool on this machine is signed into, and whether that is
+ * one of the accounts above.
+ *
+ * The grid answers "how much is left"; this answers "and which one am I
+ * actually typing into", which no amount of usage data can tell you. Worth its
+ * four lines because the surfaces disagree silently: a Claude Code CLI, a Claude
+ * desktop app and a Codex CLI on one machine can be three different accounts,
+ * and nothing else on screen would say so.
+ *
+ * A login that matches a configured account is named with it. One that does not
+ * is called out as untracked, because an account you are working in and not
+ * watching is the one most likely to run out without warning.
+ */
+function machineLines(accounts: StatusAccountView[]): string[] {
+  const logins = readMachineLogins();
+  if (logins.length === 0) return [];
+
+  const byEmail = new Map<string, string>();
+  for (const account of accounts) {
+    const email = account.usage?.email;
+    if (email) byEmail.set(email.toLowerCase(), account.name);
+  }
+  const claudeCode = logins.find((login) => login.surface === "Claude Code");
+
+  const width = Math.max(...logins.map((login) => login.surface.length));
+  return [
+    "",
+    `${INDENT}${chalk.dim("signed in on this machine")}`,
+    ...logins.map((login) => {
+      const surface = chalk.white(login.surface.padEnd(width));
+      if (login.email) {
+        const known = byEmail.get(login.email.toLowerCase());
+        const tail = known
+          ? chalk.dim(`· ${known}`)
+          : chalk.yellow("· not tracked here");
+        return `${INDENT}${surface}  ${login.email}  ${tail}`;
+      }
+      // Only an identifier is readable for this surface, so the useful fact is
+      // whether it is the same account as the CLI beside it.
+      const sameAsCli =
+        claudeCode?.accountId && login.accountId === claudeCode.accountId;
+      const detail = sameAsCli
+        ? chalk.dim(`same account as ${claudeCode?.surface}`)
+        : chalk.yellow(
+            `a different account · ${(login.accountId ?? "unknown").slice(0, 8)}…`,
+          );
+      return `${INDENT}${surface}  ${detail}`;
+    }),
+  ];
+}
+
 function renderEmptyState(): string {
   const width = Math.max(...ADD_STEPS.map((step) => step.label.length));
   const rows = ADD_STEPS.map(
@@ -368,6 +421,7 @@ export function renderStatusDashboard(
   lines.push(`${INDENT}${chalk.dim("─".repeat(width))}`);
   lines.push(recommendationLine(recommendation, accounts, now));
   lines.push(...errorLines(accounts));
+  lines.push(...machineLines(accounts));
   lines.push("");
   return lines.join("\n");
 }
