@@ -7,6 +7,12 @@ import {
   runRefreshCommand,
   runStatusCommand,
 } from "./commands.js";
+import { getDataDir } from "./paths.js";
+import {
+  type CodexSwitchTarget,
+  codexSwitchTargets,
+  switchCodexLogin,
+} from "./services/switch-login.js";
 
 /** An account the last reading could not read, and the keystroke that fixes it. */
 interface BrokenAccount {
@@ -50,7 +56,17 @@ function brokenAccounts(data: unknown): BrokenAccount[] {
  * part worth removing. Numbering the broken accounts turns that into one
  * keystroke, and the numbers match the order they appear in above.
  */
-function footer(broken: BrokenAccount[]): string {
+function switchFooter(targets: CodexSwitchTarget[]): string {
+  const offers = targets
+    .map(
+      (target, index) =>
+        `${chalk.bold(String(index + 1))} ${chalk.dim(target.name)}`,
+    )
+    .join(chalk.dim("  ·  "));
+  return `   ${chalk.dim("sign Codex into:")} ${offers}\n   ${chalk.dim("esc cancel")}\n`;
+}
+
+function footer(broken: BrokenAccount[], canSwitch: boolean): string {
   const keys = [
     chalk.bold("r"),
     chalk.dim("reload"),
@@ -58,8 +74,11 @@ function footer(broken: BrokenAccount[]): string {
     chalk.bold("q"),
     chalk.dim("quit"),
   ].join(" ");
+  const line = canSwitch
+    ? `${keys} ${chalk.dim("·")} ${chalk.bold("s")} ${chalk.dim("switch codex")}`
+    : keys;
   if (broken.length === 0) {
-    return `   ${keys}\n`;
+    return `   ${line}\n`;
   }
   const offers = broken
     .map(
@@ -67,7 +86,7 @@ function footer(broken: BrokenAccount[]): string {
         `${chalk.bold(String(index + 1))} ${chalk.dim(`re-auth ${account.provider}:${account.name}`)}`,
     )
     .join(chalk.dim("  ·  "));
-  return `   ${keys}\n   ${offers}\n`;
+  return `   ${line}\n   ${offers}\n`;
 }
 
 /** Present the shared status service as a small keyboard-controlled terminal view. */
@@ -75,6 +94,8 @@ export async function runTUI(): Promise<void> {
   let previousLineCount = 0;
   let processing = false;
   let broken: BrokenAccount[] = [];
+  let targets: CodexSwitchTarget[] = [];
+  let mode: "normal" | "switch" = "normal";
 
   const writeView = (content: string): void => {
     if (previousLineCount > 0) {
@@ -88,7 +109,14 @@ export async function runTUI(): Promise<void> {
     writeView(`\n   ${chalk.bold("gauge")}  ${chalk.dim("· loading...")}\n`);
     const result = await runStatusCommand({ quiet: true });
     broken = brokenAccounts(result.data);
-    writeView(`${result.human}\n${footer(broken)}`);
+    targets = codexSwitchTargets(getDataDir());
+    writeView(
+      `${result.human}\n${
+        mode === "switch"
+          ? switchFooter(targets)
+          : footer(broken, targets.length > 1)
+      }`,
+    );
   };
 
   /**
@@ -181,6 +209,31 @@ export async function runTUI(): Promise<void> {
     await reload();
   };
 
+  /**
+   * Sign the Codex CLI into one of the accounts gauge already holds.
+   *
+   * No browser and no login: the whole session is a `CODEX_HOME` directory and
+   * gauge keeps one per account, so this is a copy between two directories it
+   * owns. The previous credentials are kept beside the new ones, because a
+   * switch that cannot be undone is a worse trade than a stale file.
+   */
+  const switchCodex = async (target: CodexSwitchTarget): Promise<void> => {
+    mode = "normal";
+    try {
+      const result = switchCodexLogin(target.name, getDataDir());
+      process.stdout.write(
+        `\n   ${chalk.green("✓")} ${chalk.dim(`Codex now signed in as ${target.name}`)}${
+          result.backedUp ? chalk.dim(" · previous kept beside it") : ""
+        }\n`,
+      );
+    } catch (error) {
+      const message = error instanceof Error ? error.message : String(error);
+      process.stdout.write(`\n   ${chalk.red("✗")} ${chalk.dim(message)}\n`);
+    }
+    previousLineCount = 0;
+    await reload();
+  };
+
   await reload();
   if (!process.stdin.isTTY) return;
 
@@ -197,6 +250,38 @@ export async function runTUI(): Promise<void> {
           return;
         }
         if (processing) return;
+        if (mode === "switch") {
+          if (key.name === "escape" || key.name === "s") {
+            mode = "normal";
+            processing = true;
+            reload()
+              .catch(reject)
+              .finally(() => {
+                processing = false;
+              });
+            return;
+          }
+          const pick = Number.parseInt(key.name ?? "", 10);
+          const target = Number.isInteger(pick) ? targets[pick - 1] : undefined;
+          if (!target) return;
+          processing = true;
+          switchCodex(target)
+            .catch(reject)
+            .finally(() => {
+              processing = false;
+            });
+          return;
+        }
+        if (key.name === "s" && targets.length > 1) {
+          mode = "switch";
+          processing = true;
+          reload()
+            .catch(reject)
+            .finally(() => {
+              processing = false;
+            });
+          return;
+        }
         const digit = Number.parseInt(key.name ?? "", 10);
         const chosen = Number.isInteger(digit) ? broken[digit - 1] : undefined;
         if (chosen) {
