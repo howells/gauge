@@ -261,14 +261,20 @@ function adapter(
                 return failure(source, "Provider returned no account result.");
               }
               if (account.error) {
-                return failure(source, "Provider usage acquisition failed.");
+                return failure(
+                  source,
+                  `Provider usage acquisition failed: ${reason(account.error)}`,
+                );
               }
               return {
                 sourceId: source.id,
                 usage: toUsageReading(account),
               };
-            } catch {
-              return failure(source, "Provider usage acquisition failed.");
+            } catch (error) {
+              return failure(
+                source,
+                `Provider usage acquisition failed: ${reason(error)}`,
+              );
             }
           }),
         ),
@@ -288,6 +294,35 @@ function configuredDetail(
   const detail = details.get(`${source.provider}:${source.id.name}`);
   if (!detail) throw new Error("Configured account details are missing.");
   return detail;
+}
+
+/**
+ * A short, safe reason for a provider failure.
+ *
+ * Both failure paths above used to discard what they knew: one dropped
+ * `account.error` on the floor and the other caught with no binding at all, so
+ * every provider fault in the product arrived as the same eleven words. That is
+ * a dead end for the reader — the dashboard's own remedy for a broken account is
+ * a `gauge refresh`, and when the fault is upstream of gauge that command
+ * succeeds and changes nothing, leaving no way to find out why.
+ *
+ * Trimmed to a single line and capped, because this reaches human output and a
+ * provider is free to answer with an entire HTML page. Sanitization still runs
+ * over the result; this only makes sure there is something in it worth
+ * sanitizing.
+ */
+function reason(cause: unknown): string {
+  const text =
+    cause instanceof Error
+      ? cause.message
+      : typeof cause === "string"
+        ? cause
+        : typeof cause === "object" && cause !== null && "message" in cause
+          ? String((cause as { message: unknown }).message)
+          : String(cause);
+  const line = text.replace(/\s+/gu, " ").trim();
+  if (line === "") return "no reason given";
+  return line.length > 160 ? `${line.slice(0, 159)}…` : line;
 }
 
 function failure(source: AccountSource, message: string): ProviderUsageResult {

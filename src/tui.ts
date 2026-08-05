@@ -101,17 +101,40 @@ export async function runTUI(): Promise<void> {
     );
     previousLineCount = 0;
     try {
-      await runRefreshCommand(account.name, {
+      // Not `quiet`, and the result is read rather than assumed. A refresh can
+      // succeed while changing nothing: an account that reads its credentials
+      // from a Codex home returns ok with `human` carrying the only instructions
+      // that will actually fix it — `CODEX_HOME=… codex login`, which gauge
+      // cannot run for you. Printing a tick over that is how the view came to
+      // report success on an account that was still broken a second later.
+      const result = await runRefreshCommand(account.name, {
         provider: account.provider,
-        quiet: true,
       });
-      process.stdout.write(`   ${chalk.green("✓")} ${chalk.dim("done")}\n`);
+      const guidance = result.human?.trim();
+      if (guidance) {
+        process.stdout.write(
+          `${guidance
+            .split("\n")
+            .map((line) => `   ${line}`)
+            .join("\n")}\n`,
+        );
+      }
+      process.stdout.write(
+        result.ok
+          ? `   ${chalk.green("✓")} ${chalk.dim("refresh completed")}\n`
+          : `   ${chalk.red("✗")} ${chalk.dim("refresh reported a failure")}\n`,
+      );
     } catch (error) {
       const message = error instanceof Error ? error.message : String(error);
       process.stdout.write(`   ${chalk.red("✗")} ${chalk.dim(message)}\n`);
     } finally {
       process.stdin.setRawMode(true);
     }
+    process.stdout.write(`\n   ${chalk.dim("any key to continue")}`);
+    await new Promise<void>((resolve) =>
+      process.stdin.once("keypress", () => resolve()),
+    );
+    previousLineCount = 0;
     await reload();
   };
 
