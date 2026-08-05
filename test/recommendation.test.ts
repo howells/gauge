@@ -109,3 +109,88 @@ test("recommendUsage returns null when there is no current usable usage data", (
     null,
   );
 });
+
+test("recommendUsage offers a better plan that unblocks soon instead of only the free tier", () => {
+  // The case measured on a real twelve-account set: every paid Claude plan was
+  // 92-100% used and a Free Codex plan sat at 0%, so most-headroom answered
+  // "abandon Max 20x for a free tier" while the Max account was 43 minutes from
+  // resetting with 20% of its week gone.
+  const result = recommendUsage(
+    [
+      {
+        ...candidate("claude", "paid", 0, [
+          { usedPercent: 100, resetsAt: "2026-07-11T12:43:00.000Z" },
+          { usedPercent: 20, resetsAt: "2026-07-16T12:00:00.000Z" },
+        ]),
+        plan: "Max 20x",
+      },
+      {
+        ...candidate("codex", "free", 1, [
+          { usedPercent: 0, resetsAt: "2026-08-11T12:00:00.000Z" },
+        ]),
+        plan: "Free",
+      },
+    ],
+    now,
+  );
+
+  // The usable account is still the answer to "what can I use right now".
+  assert.deepEqual(result?.account, { provider: "codex", name: "free" });
+  assert.equal(result?.status, "use_now");
+  // And the better instrument is offered beside it, with what it will carry.
+  assert.deepEqual(result?.waitFor?.account, {
+    provider: "claude",
+    name: "paid",
+  });
+  assert.equal(result?.waitFor?.plan, "Max 20x");
+  assert.equal(result?.waitFor?.maximumUtilization, 20);
+  assert.equal(result?.waitFor?.availableAt, "2026-07-11T12:43:00.000Z");
+});
+
+test("recommendUsage stays silent when the account in hand is already the best instrument", () => {
+  const result = recommendUsage(
+    [
+      {
+        ...candidate("claude", "roomy", 0, [
+          { usedPercent: 5, resetsAt: "2026-07-11T13:00:00.000Z" },
+        ]),
+        plan: "Max 20x",
+      },
+      {
+        ...candidate("codex", "blocked", 1, [
+          { usedPercent: 100, resetsAt: "2026-07-11T12:30:00.000Z" },
+          { usedPercent: 40, resetsAt: "2026-07-16T12:00:00.000Z" },
+        ]),
+        plan: "Pro",
+      },
+    ],
+    now,
+  );
+
+  assert.deepEqual(result?.account, { provider: "claude", name: "roomy" });
+  // Lower plan, and less headroom after its reset than the 95% already in hand.
+  assert.equal(result?.waitFor, undefined);
+});
+
+test("recommendUsage ignores a better account whose reset is beyond the wait horizon", () => {
+  const result = recommendUsage(
+    [
+      {
+        ...candidate("codex", "free", 0, [
+          { usedPercent: 0, resetsAt: "2026-08-11T12:00:00.000Z" },
+        ]),
+        plan: "Free",
+      },
+      {
+        ...candidate("claude", "tomorrow", 1, [
+          { usedPercent: 100, resetsAt: "2026-07-12T12:00:00.000Z" },
+        ]),
+        plan: "Max 20x",
+      },
+    ],
+    now,
+  );
+
+  assert.deepEqual(result?.account, { provider: "codex", name: "free" });
+  assert.equal(result?.waitFor, undefined);
+});

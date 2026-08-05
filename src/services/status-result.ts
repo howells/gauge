@@ -110,6 +110,9 @@ function toRecommendationCandidate(
     },
     order: index,
     windows: account.usage?.windows ?? [],
+    // Carried so the policy can tell a Max 20x from a free tier. It never
+    // reorders the recommendation — see `findWaitFor`.
+    ...(account.usage?.plan && { plan: account.usage.plan }),
     ...(account.error && { error: account.error }),
   };
 }

@@ -231,7 +231,15 @@ function recommendationLine(
   );
   const plan = picked?.usage?.plan ? chalk.dim(` · ${picked.usage.plan}`) : "";
   if (recommendation.status === "use_now") {
-    return `${INDENT}${chalk.green("→")} ${chalk.bold(id)}  ${chalk.dim("ready now")}${plan}`;
+    const line = `${INDENT}${chalk.green("→")} ${chalk.bold(id)}  ${chalk.dim("ready now")}${plan}`;
+    // The second line is the one the dashboard could not say before: something
+    // better is about to free up, and switching now would be the worse move.
+    const alternative = recommendation.waitFor;
+    if (!alternative) return line;
+    const waitId = `${alternative.account.provider}:${alternative.account.name}`;
+    const waitPlan = alternative.plan ? ` · ${alternative.plan}` : "";
+    const left = `${100 - alternative.maximumUtilization}% free`;
+    return `${line}\n${INDENT}  ${chalk.dim(`or wait ${timeUntil(alternative.availableAt, now)} for`)} ${chalk.bold(waitId)}${chalk.dim(`${waitPlan} · ${left}`)}`;
   }
   const wait = recommendation.availableAt
     ? timeUntil(recommendation.availableAt, now)
