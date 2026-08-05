@@ -159,10 +159,23 @@ function renderAccountList(accounts: AccountDetails[]): string {
   return lines.join("\n");
 }
 
-function codexRefreshGuidance(name: string): string {
+/**
+ * The Codex home an account reads, when re-login has to happen in the Codex CLI.
+ *
+ * One place for the remedy, so the sentence a human is shown and the command an
+ * interactive view actually runs cannot drift into describing different fixes.
+ * Null when the account has no home configured, which is the case where there is
+ * nothing to run and only advice to give.
+ */
+export function codexLoginRemedy(name: string): { home: string } | null {
   const home = listAccountDetails("codex").find(
     (account) => account.name === name,
   )?.codexHome;
+  return home ? { home } : null;
+}
+
+function codexRefreshGuidance(name: string): string {
+  const home = codexLoginRemedy(name)?.home;
   const lines = [
     `Account "${name}" reads its credentials from a Codex home;`,
     "gauge cannot re-login there itself.",

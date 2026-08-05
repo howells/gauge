@@ -1,7 +1,12 @@
+import { spawnSync } from "node:child_process";
 import process from "node:process";
 import readline from "node:readline";
 import chalk from "chalk";
-import { runRefreshCommand, runStatusCommand } from "./commands.js";
+import {
+  codexLoginRemedy,
+  runRefreshCommand,
+  runStatusCommand,
+} from "./commands.js";
 
 /** An account the last reading could not read, and the keystroke that fixes it. */
 interface BrokenAccount {
@@ -103,27 +108,65 @@ export async function runTUI(): Promise<void> {
     try {
       // Not `quiet`, and the result is read rather than assumed. A refresh can
       // succeed while changing nothing: an account that reads its credentials
-      // from a Codex home returns ok with `human` carrying the only instructions
-      // that will actually fix it — `CODEX_HOME=… codex login`, which gauge
-      // cannot run for you. Printing a tick over that is how the view came to
-      // report success on an account that was still broken a second later.
+      // from a Codex home returns ok having done nothing, because the login it
+      // needs happens in the Codex CLI. Printing a tick over that is how the
+      // view came to report success on an account still broken a second later.
       const result = await runRefreshCommand(account.name, {
         provider: account.provider,
       });
-      const guidance = result.human?.trim();
-      if (guidance) {
+      // An account whose credentials live in a Codex home cannot be re-logged in
+      // by gauge, and printing the command for the reader to copy back into the
+      // same terminal is the copying this view exists to remove. Run it instead:
+      // the terminal is already handed back, so `codex login` gets a real stdio
+      // and its browser flow behaves exactly as it would if typed.
+      const authMode =
+        typeof result.data === "object" &&
+        result.data !== null &&
+        "auth_mode" in result.data
+          ? (result.data as { auth_mode?: unknown }).auth_mode
+          : undefined;
+      const remedy =
+        account.provider === "codex" && authMode === "codex-home"
+          ? codexLoginRemedy(account.name)
+          : null;
+
+      if (remedy) {
         process.stdout.write(
-          `${guidance
-            .split("\n")
-            .map((line) => `   ${line}`)
-            .join("\n")}\n`,
+          `   ${chalk.dim(`codex login · CODEX_HOME=${remedy.home}`)}\n\n`,
+        );
+        const login = spawnSync("codex", ["login"], {
+          env: { ...process.env, CODEX_HOME: remedy.home },
+          stdio: "inherit",
+        });
+        process.stdout.write(
+          login.error || login.status !== 0
+            ? // Fall back to the words when the CLI is absent or refuses, so the
+              // reader is never left with a failure and no next move.
+              `\n   ${chalk.red("✗")} ${chalk.dim(login.error ? `codex login could not run (${login.error.message})` : `codex login exited ${login.status}`)}\n${(
+                result.human ?? ""
+              )
+                .trim()
+                .split("\n")
+                .map((line) => `   ${line}`)
+                .join("\n")}\n`
+            : `\n   ${chalk.green("✓")} ${chalk.dim("codex login finished")}\n`,
+        );
+      } else {
+        const guidance = result.human?.trim();
+        if (guidance) {
+          process.stdout.write(
+            `${guidance
+              .split("\n")
+              .map((line) => `   ${line}`)
+              .join("\n")}\n`,
+          );
+        }
+        process.stdout.write(
+          result.ok
+            ? `   ${chalk.green("✓")} ${chalk.dim("refresh completed")}\n`
+            : `   ${chalk.red("✗")} ${chalk.dim("refresh reported a failure")}\n`,
         );
       }
-      process.stdout.write(
-        result.ok
-          ? `   ${chalk.green("✓")} ${chalk.dim("refresh completed")}\n`
-          : `   ${chalk.red("✗")} ${chalk.dim("refresh reported a failure")}\n`,
-      );
     } catch (error) {
       const message = error instanceof Error ? error.message : String(error);
       process.stdout.write(`   ${chalk.red("✗")} ${chalk.dim(message)}\n`);
