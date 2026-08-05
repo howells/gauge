@@ -198,16 +198,25 @@ function buildRows(accounts: StatusAccountView[], now: Date): GridRow[] {
 
 // ─── Cells ───────────────────────────────────────────────────────────────────
 
-function meterCell(account: StatusAccountView | undefined, now: Date): string {
-  if (!account) return pad(chalk.dim("·"), COL_CELL);
+function meterCell(
+  account: StatusAccountView | undefined,
+  now: Date,
+  active = false,
+): string {
+  // Two columns of gutter on every cell so the marker costs no width and the
+  // grid does not shift as the cursor moves across it.
+  const gutter = active ? chalk.cyan("› ") : "  ";
+  const cell = (content: string): string =>
+    `${gutter}${pad(content, COL_CELL - 2)}`;
+  if (!account) return cell(chalk.dim("·"));
   const status = cellStatus(account, now);
   if (status.kind === "error") {
-    return pad(chalk.red("needs re-auth"), COL_CELL);
+    return cell(chalk.red("needs re-auth"));
   }
   const window = status.primary;
   if (!window) {
     // No active window means nothing used — an idle, fully available account.
-    return pad(`${meter(0)} 0%`, COL_CELL);
+    return cell(`${meter(0)} 0%`);
   }
   const percent = Math.round(window.usedPercent);
   if (status.kind === "blocked") {
@@ -215,20 +224,21 @@ function meterCell(account: StatusAccountView | undefined, now: Date): string {
       new Date(now.getTime() + status.waitMs).toISOString(),
       now,
     );
-    return pad(
-      `${meter(100)} ${chalk.red("full")} ${chalk.dim(`· ${wait}`)}`,
-      COL_CELL,
-    );
+    return cell(`${meter(100)} ${chalk.red("full")} ${chalk.dim(`· ${wait}`)}`);
   }
   const reset =
     window.usedPercent > 0
       ? ` ${chalk.dim(`· ${timeUntil(window.resetsAt, now)}`)}`
       : "";
-  return pad(`${meter(percent)} ${percent}%${reset}`, COL_CELL);
+  return cell(`${meter(percent)} ${percent}%${reset}`);
 }
 
 function detailCell(account: StatusAccountView | undefined, now: Date): string {
-  if (!account?.usage) return pad("", COL_CELL);
+  // The same two-column gutter `meterCell` reserves for the cursor, so a detail
+  // line sits under its own meter and every column keeps one width.
+  const width = COL_CELL - 2;
+  const cell = (content: string): string => `  ${pad(content, width)}`;
+  if (!account?.usage) return cell("");
   const status = cellStatus(account, now);
   const parts: string[] = [];
   if (account.usage.plan) parts.push(account.usage.plan);
@@ -242,10 +252,10 @@ function detailCell(account: StatusAccountView | undefined, now: Date): string {
     parts.push(`renews ${timeUntil(account.usage.renewsAt, now)}`);
   }
   // Drop trailing parts rather than truncating text mid-word.
-  while (parts.length > 1 && parts.join(" · ").length > COL_CELL) {
+  while (parts.length > 1 && parts.join(" · ").length > width) {
     parts.pop();
   }
-  return pad(chalk.dim(truncate(parts.join(" · "), COL_CELL)), COL_CELL);
+  return cell(chalk.dim(truncate(parts.join(" · "), width)));
 }
 
 // ─── Sections ────────────────────────────────────────────────────────────────
@@ -260,7 +270,11 @@ function header(accounts: StatusAccountView[], now: Date): string {
 
 function columnHeader(providers: Provider[]): string {
   const cells = providers
-    .map((provider) => pad(chalk.dim(PROVIDER_NAME[provider]), COL_CELL))
+    // Two-space gutter to match the cells, so a heading sits over its column.
+    .map(
+      (provider) =>
+        `  ${pad(chalk.dim(PROVIDER_NAME[provider]), COL_CELL - 2)}`,
+    )
     .join("  ");
   return `${INDENT}${" ".repeat(COL_LABEL)}  ${cells}`.trimEnd();
 }
@@ -410,12 +424,24 @@ export function statusRowOrder(
   return buildRows(accounts, now).map((row) => row.label);
 }
 
+/** The apps the dashboard draws columns for, in the order it draws them. */
+export function statusProviderOrder(accounts: StatusAccountView[]): Provider[] {
+  return PROVIDER_ORDER.filter((provider) =>
+    accounts.some((account) => account.provider === provider),
+  );
+}
+
 export function renderStatusDashboard(
   accounts: StatusAccountView[],
   recommendation: UsageRecommendation | null,
   now: Date,
   /**
-   * The row a keyboard is currently on, when a reader is driving this.
+   * The cell a keyboard is currently on, when a reader is driving this.
+   *
+   * A cell, not a row: this grid is accounts down and *apps* across, and which
+   * app a given account is signed into is an independent fact per app. A row
+   * selection could only ever offer to change all of them at once, which is not
+   * a thing anybody wants to do.
    *
    * Passed only by the interactive view; every other caller renders the same
    * dashboard with nothing marked. Selection lives here rather than in a second
@@ -423,7 +449,7 @@ export function renderStatusDashboard(
    * prints too, and two renderers for one grid is how the piped output and the
    * one on screen come to disagree.
    */
-  selected?: string,
+  selected?: { label: string; provider: Provider },
 ): string {
   if (accounts.length === 0) {
     return renderEmptyState();
@@ -439,16 +465,20 @@ export function renderStatusDashboard(
   lines.push("");
   lines.push(columnHeader(providers));
   for (const row of rows) {
-    const active = selected !== undefined && row.label === selected;
-    const name = truncate(row.label, COL_LABEL - 2);
+    const onRow = selected?.label === row.label;
+    const name = truncate(row.label, COL_LABEL);
     const label = pad(
-      active
-        ? `${chalk.cyan("›")} ${chalk.cyan.bold(name)}`
-        : `  ${chalk.white(name)}`,
+      onRow ? chalk.cyan.bold(name) : chalk.white(name),
       COL_LABEL,
     );
     const meters = providers
-      .map((provider) => meterCell(row.accounts[provider], now))
+      .map((provider) =>
+        meterCell(
+          row.accounts[provider],
+          now,
+          onRow && selected?.provider === provider,
+        ),
+      )
       .join("  ");
     const details = providers
       .map((provider) => detailCell(row.accounts[provider], now))

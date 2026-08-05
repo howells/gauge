@@ -18,6 +18,7 @@ import { claudeAccountNamesByUuid } from "./services/machine-logins.js";
 import {
   renderStatusDashboard,
   type StatusAccountView,
+  statusProviderOrder,
   statusRowOrder,
 } from "./services/render-status.js";
 import {
@@ -74,25 +75,42 @@ function brokenAccounts(data: unknown): BrokenAccount[] {
  * keystroke, and the numbers match the order they appear in above.
  */
 /**
- * The keys, and what Enter would do to the row the cursor is on.
+ * The keys, and what Enter would do to the cell the cursor is on.
  *
  * Written against the selection rather than as a fixed legend, because a key
  * that is listed but does nothing to the thing you are looking at is worse than
- * no legend at all.
+ * no legend at all. Cursor is the only surface gauge cannot sign in — it has no
+ * per-account credential store to move — so the legend says that where it is
+ * true instead of offering an action that would fail.
  */
 function footer(
   broken: BrokenAccount[],
-  selected: string | undefined,
+  selected: { label: string; provider: string } | undefined,
   targets: SwitchTarget[],
 ): string {
-  const surfaces = targets
-    .filter((target) => target.name === selected)
-    .map((target) => (target.provider === "codex" ? "Codex" : "Claude Code"));
+  const surface =
+    selected?.provider === "codex"
+      ? "Codex"
+      : selected?.provider === "claude"
+        ? "Claude Code"
+        : "Cursor";
+  const available =
+    selected !== undefined &&
+    targets.some(
+      (target) =>
+        target.name === selected.label && target.provider === selected.provider,
+    );
+  const action = available
+    ? `${chalk.bold("enter")} ${chalk.dim(`sign ${surface} in as ${selected?.label}`)}`
+    : chalk.dim(
+        selected?.provider === "cursor"
+          ? "enter · Cursor cannot be switched from here"
+          : `enter · no ${surface} session stored for ${selected?.label ?? "this account"} yet`,
+      );
   const keys = [
-    `${chalk.bold("↑↓")} ${chalk.dim("move")}`,
-    surfaces.length > 0
-      ? `${chalk.bold("enter")} ${chalk.dim(`sign ${surfaces.join(" and ")} in as ${selected}`)}`
-      : `${chalk.dim("enter · nothing stored for this account yet")}`,
+    `${chalk.bold("↑↓")} ${chalk.dim("account")}`,
+    `${chalk.bold("←→")} ${chalk.dim("app")}`,
+    action,
     `${chalk.bold("r")} ${chalk.dim("reload")}`,
     `${chalk.bold("q")} ${chalk.dim("quit")}`,
   ].join(chalk.dim("  ·  "));
@@ -113,7 +131,9 @@ export async function runTUI(): Promise<void> {
   let broken: BrokenAccount[] = [];
   let targets: SwitchTarget[] = [];
   let rowLabels: string[] = [];
-  let cursor = 0;
+  let columns: ("claude" | "codex" | "cursor")[] = [];
+  let row = 0;
+  let column = 0;
 
   const writeView = (content: string): void => {
     if (previousLineCount > 0) {
@@ -133,9 +153,11 @@ export async function runTUI(): Promise<void> {
     };
     const views = payload.accounts ?? [];
     // The same order the dashboard draws, so the cursor cannot highlight one
-    // row while Enter acts on another.
+    // cell while Enter acts on another.
     rowLabels = statusRowOrder(views, new Date());
-    if (cursor >= rowLabels.length) cursor = Math.max(0, rowLabels.length - 1);
+    columns = statusProviderOrder(views);
+    if (row >= rowLabels.length) row = Math.max(0, rowLabels.length - 1);
+    if (column >= columns.length) column = Math.max(0, columns.length - 1);
     // Capture on sight, so simply using the tools builds the set that can later
     // be switched to and nobody has to remember a capture step.
     captureSignedInClaude();
@@ -148,7 +170,9 @@ export async function runTUI(): Promise<void> {
         (name): SwitchTarget => ({ name, provider: "claude" }),
       ),
     ];
-    const selected = rowLabels[cursor];
+    const label = rowLabels[row];
+    const provider = columns[column];
+    const selected = label && provider ? { label, provider } : undefined;
     const dashboard =
       views.length > 0
         ? renderStatusDashboard(
@@ -282,36 +306,34 @@ export async function runTUI(): Promise<void> {
    * switch that cannot be undone is a worse trade than a stale file.
    */
   /**
-   * Sign every tool gauge can point at this account into it.
+   * Sign one app into one account — the cell the cursor is on, and nothing else.
    *
-   * One gesture for the whole machine, because "use this account now" is the
-   * thing actually wanted — chasing it surface by surface is the errand this
-   * view exists to remove. Surfaces gauge holds nothing for are skipped, never
-   * signed out.
+   * Independent per app on purpose. Which account each tool is signed into is a
+   * separate decision, and an action that moved them together could only ever be
+   * wrong for whichever one you did not mean.
    */
-  const signInAs = async (name: string): Promise<void> => {
-    const wanted = targets.filter((target) => target.name === name);
-    if (wanted.length === 0) return;
+  const signInAs = async (
+    name: string,
+    provider: "claude" | "codex" | "cursor",
+  ): Promise<void> => {
+    const surface = provider === "codex" ? "Codex" : "Claude Code";
     process.stdin.setRawMode(false);
     previousLineCount = 0;
     process.stdout.write("\n");
-    for (const target of wanted) {
-      const surface = target.provider === "codex" ? "Codex" : "Claude Code";
-      try {
-        if (target.provider === "codex") {
-          switchCodexLogin(name, getDataDir());
-        } else {
-          switchClaudeSession(name, getDataDir());
-        }
-        process.stdout.write(
-          `   ${chalk.green("✓")} ${chalk.dim(`${surface} signed in as ${name}`)}\n`,
-        );
-      } catch (error) {
-        const message = error instanceof Error ? error.message : String(error);
-        process.stdout.write(
-          `   ${chalk.red("✗")} ${chalk.dim(`${surface}: ${message}`)}\n`,
-        );
+    try {
+      if (provider === "codex") {
+        switchCodexLogin(name, getDataDir());
+      } else if (provider === "claude") {
+        switchClaudeSession(name, getDataDir());
       }
+      process.stdout.write(
+        `   ${chalk.green("✓")} ${chalk.dim(`${surface} signed in as ${name}`)}\n`,
+      );
+    } catch (error) {
+      const message = error instanceof Error ? error.message : String(error);
+      process.stdout.write(
+        `   ${chalk.red("✗")} ${chalk.dim(`${surface}: ${message}`)}\n`,
+      );
     }
     process.stdin.setRawMode(true);
     await reload();
@@ -336,31 +358,49 @@ export async function runTUI(): Promise<void> {
         // Direct manipulation: the cursor moves over the accounts already on
         // screen and Enter acts on the one under it, so there is no mode to be
         // in and no key to remember for a thing that is being looked at.
-        if (key.name === "up" || key.name === "k") {
-          cursor = Math.max(0, cursor - 1);
+        const move = (next: () => void): void => {
+          next();
           processing = true;
           reload()
             .catch(reject)
             .finally(() => {
               processing = false;
             });
+        };
+        if (key.name === "up" || key.name === "k") {
+          move(() => {
+            row = Math.max(0, row - 1);
+          });
           return;
         }
         if (key.name === "down" || key.name === "j") {
-          cursor = Math.min(Math.max(0, rowLabels.length - 1), cursor + 1);
-          processing = true;
-          reload()
-            .catch(reject)
-            .finally(() => {
-              processing = false;
-            });
+          move(() => {
+            row = Math.min(Math.max(0, rowLabels.length - 1), row + 1);
+          });
+          return;
+        }
+        if (key.name === "left" || key.name === "h") {
+          move(() => {
+            column = Math.max(0, column - 1);
+          });
+          return;
+        }
+        if (key.name === "right" || key.name === "l") {
+          move(() => {
+            column = Math.min(Math.max(0, columns.length - 1), column + 1);
+          });
           return;
         }
         if (key.name === "return" || key.name === "enter") {
-          const name = rowLabels[cursor];
-          if (!name) return;
+          const name = rowLabels[row];
+          const provider = columns[column];
+          if (!name || !provider) return;
+          const can = targets.some(
+            (target) => target.name === name && target.provider === provider,
+          );
+          if (!can) return;
           processing = true;
-          signInAs(name)
+          signInAs(name, provider)
             .catch(reject)
             .finally(() => {
               processing = false;
