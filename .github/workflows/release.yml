@@ -44,4 +44,23 @@ jobs:
       - run: pnpm docs:check
       - run: pnpm package:smoke
       - run: pnpm knip
+      # Every gate above passed on the v4.0.0 tag and this step still failed:
+      # `404 Not Found - PUT`, which is what npm answers an unauthenticated
+      # publish. `setup-node` writes an .npmrc reading `${NODE_AUTH_TOKEN}`, and
+      # nothing was putting a token there — so the workflow could not have
+      # published even with the secret set. 4.0.0 went out from a laptop, the
+      # same way 3.1.0 did.
+      #
+      # Wired now, so the automation works the moment a credential exists. Two
+      # ways to give it one, either is enough:
+      #
+      #   - Trusted publishing: on npmjs.com, under the package's Settings,
+      #     link this repository and `release.yml`. npm then accepts the OIDC
+      #     identity from `id-token: write` above and no secret is needed. This
+      #     is the better one — nothing long-lived to leak or rotate.
+      #   - Or add an automation token as the `NPM_TOKEN` repository secret.
+      #
+      # Until then this step fails and the tag is published by hand.
       - run: pnpm publish --access public --provenance --no-git-checks
+        env:
+          NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
