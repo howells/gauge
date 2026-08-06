@@ -35,9 +35,11 @@ jobs:
       - run: pnpm audit --audit-level high
       - run: pnpm typecheck
       - run: pnpm lint
+      # Built before the suite runs, for the reason spelled out in ci.yml: some
+      # of these tests read the built package.
+      - run: pnpm build
       - run: pnpm coverage
       - run: pnpm coverage:critical
-      - run: pnpm build
       - run: pnpm schema:check
       - run: pnpm docs:check
       - run: pnpm package:smoke

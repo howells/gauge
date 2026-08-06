@@ -481,7 +481,14 @@ test("filtered all-failed quick status emits snapshot data and exits one", (t) =
 test("built package bin executes via its shebang", (t) => {
   const fixture = createFixture();
   t.after(() => fs.rmSync(fixture.root, { force: true, recursive: true }));
-  assert.equal(fs.existsSync(builtCli), true);
+  // Says what to do about it. As a bare `false !== true` this reported the one
+  // thing the reader already knew — something is wrong — while the fix, and the
+  // fact that this test reads a build artifact at all, had to be inferred.
+  assert.equal(
+    fs.existsSync(builtCli),
+    true,
+    `No built CLI at ${builtCli}. This test runs the packaged bin, so run \`pnpm build\` first.`,
+  );
 
   const result = spawnSync(builtCli, ["--version"], {
     cwd: fixture.cwd,

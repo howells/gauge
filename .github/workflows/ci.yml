@@ -31,9 +31,14 @@ jobs:
       - run: pnpm audit --audit-level high
       - run: pnpm typecheck
       - run: pnpm lint
+      # Before the suite, not after it: part of the suite inspects the built
+      # package — that its bin runs under its own shebang and reports the
+      # version this repo declares. Built last, those tests were asserting
+      # against a `dist` that did not exist yet. Nobody saw it, because the
+      # audit step above was failing first and the suite never ran at all.
+      - run: pnpm build
       - run: pnpm coverage
       - run: pnpm coverage:critical
-      - run: pnpm build
       - run: pnpm schema:check
       - run: pnpm docs:check
       - run: pnpm package:smoke
