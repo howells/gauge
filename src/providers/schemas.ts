@@ -1,4 +1,5 @@
 import { z } from "zod";
+import { USAGE_WINDOW_KINDS } from "../domain/snapshot.js";
 
 const NormalizedDateSchema = z
   .string()
@@ -7,7 +8,11 @@ const NormalizedDateSchema = z
   .transform((value) => new Date(value).toISOString());
 
 const UsageWindowSchema = z.strictObject({
-  resetsAt: NormalizedDateSchema,
+  kind: z.enum(USAGE_WINDOW_KINDS),
+  // Null is a reading, not a gap: an idle window has spent nothing, so it has
+  // nothing to count down to. Dropping such a window is what let a seven-day
+  // figure be drawn as a five-hour one.
+  resetsAt: z.union([NormalizedDateSchema, z.null()]),
   usedPercent: z
     .number()
     .finite()

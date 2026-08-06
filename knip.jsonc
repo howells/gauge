@@ -1,0 +1,16 @@
+{
+  "$schema": "https://unpkg.com/knip@6/schema.json",
+
+  // Binaries gauge shells out to, none of which it may install or depend on.
+  // Each is the *user's own* tool, and reading or moving a session means
+  // driving the thing that owns it rather than reimplementing its login:
+  //
+  //   security  macOS keychain, where Claude Code keeps its credentials
+  //   claude    `claude auth login`, to sign the Claude Code CLI in
+  //   codex     `codex login`, to sign the Codex CLI in
+  //
+  // A missing one is a runtime condition the code already handles — gauge
+  // reports the tool as unavailable — so listing them as dependencies would
+  // claim an ownership gauge deliberately does not have.
+  "ignoreBinaries": ["security", "claude", "codex"]
+}

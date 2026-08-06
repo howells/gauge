@@ -17,7 +17,8 @@ const CURSOR_BASE_URL = "https://cursor.com";
 const MAX_PROVIDER_RESPONSE_BYTES = 1_000_000;
 
 interface RateWindow {
-  resetsAt: string;
+  /** Null when the window is idle: nothing spent, so nothing counting down. */
+  resetsAt: string | null;
   usedPercent: number;
 }
 
@@ -108,14 +109,24 @@ function normalizeReset(value: unknown): string | null {
   return new Date(milliseconds).toISOString();
 }
 
+/**
+ * One rate window, or null when the provider reported none at all.
+ *
+ * A missing reset time is not a missing window: a limit nothing has been spent
+ * against has nothing to count down to. Only an unreadable percentage means
+ * there is no reading here, so that is the sole reason to return null — a
+ * window dropped for want of a reset time would take its slot with it.
+ */
 export function toRateWindow(value: unknown): RateWindow | null {
   if (!isRecord(value)) return null;
   const usedPercent = numberValue(
     value.used_percent ?? value.usedPercent ?? value.totalPercentUsed,
   );
-  const resetsAt = normalizeReset(value.reset_at ?? value.resetsAt);
-  if (usedPercent === undefined || !resetsAt) return null;
-  return { usedPercent, resetsAt };
+  if (usedPercent === undefined) return null;
+  return {
+    usedPercent,
+    resetsAt: normalizeReset(value.reset_at ?? value.resetsAt),
+  };
 }
 
 export function decodeJwtPayload(
@@ -303,6 +314,31 @@ function codexUsageUrl(baseUrl: string): string {
   return new URL(pathName, base).toString();
 }
 
+/**
+ * A provider refusing the request, carrying the status that says why.
+ *
+ * The message stays `HTTP <status>` because it reaches the dashboard as the
+ * reason an account failed. The status is a field as well so that deciding
+ * what to do about a 401 never depends on parsing that sentence back apart.
+ */
+class ProviderHttpError extends Error {
+  readonly status: number;
+
+  constructor(status: number) {
+    super(`HTTP ${status}`);
+    this.name = "ProviderHttpError";
+    this.status = status;
+  }
+}
+
+/** Whether a provider refused the credential, as opposed to failing some other way. */
+function isUnauthorized(error: unknown): boolean {
+  return (
+    error instanceof ProviderHttpError &&
+    (error.status === 401 || error.status === 403)
+  );
+}
+
 async function fetchJson(
   url: string,
   headers: Record<string, string>,
@@ -316,7 +352,7 @@ async function fetchJson(
     },
     signal,
   });
-  if (!response.ok) throw new Error(`HTTP ${response.status}`);
+  if (!response.ok) throw new ProviderHttpError(response.status);
   return parseBoundedResponse(response);
 }
 
@@ -365,6 +401,16 @@ async function readBoundedResponseText(response: Response): Promise<string> {
   return Buffer.concat(chunks, total).toString("utf8");
 }
 
+function codexHeaders(credentials: CodexCredentials): Record<string, string> {
+  const headers: Record<string, string> = {
+    Authorization: `Bearer ${credentials.accessToken}`,
+  };
+  if (credentials.accountId) {
+    headers["ChatGPT-Account-Id"] = credentials.accountId;
+  }
+  return headers;
+}
+
 async function fetchCodexAccount(
   source: CodexSource,
   credentialRefresh: "refresh-if-stale" | "never" = "refresh-if-stale",
@@ -372,9 +418,9 @@ async function fetchCodexAccount(
   signal?: AbortSignal,
 ): Promise<UnifiedAccount> {
   const initialCredentials = loadCodexCredentials(source.homePath);
-  const credentials =
-    credentialRefresh === "refresh-if-stale" &&
-    shouldRefreshCodex(initialCredentials)
+  const mayRefresh = credentialRefresh === "refresh-if-stale";
+  let credentials =
+    mayRefresh && shouldRefreshCodex(initialCredentials)
       ? await refreshCodexCredentials(
           source,
           initialCredentials,
@@ -382,26 +428,49 @@ async function fetchCodexAccount(
           signal,
         )
       : initialCredentials;
+
+  const usageUrl = codexUsageUrl(codexBaseUrl(source.homePath));
+  let body: unknown;
+  try {
+    body = await fetchJson(usageUrl, codexHeaders(credentials), signal);
+  } catch (error) {
+    // `shouldRefreshCodex` only guesses, from how long ago the token was last
+    // rotated. The server refusing it is the one authoritative answer, and it
+    // routinely disagrees: a token seventeen hours old, far inside the eight-day
+    // window, came back `token_expired` while a perfectly good refresh token sat
+    // unused beside it. The account was reported as needing re-authentication —
+    // sending the reader to do by hand what gauge could have done here.
+    //
+    // Only once, only on a refusal, and only when the credential has not already
+    // been rotated on this pass, so a genuinely dead login still surfaces as one
+    // instead of spinning.
+    if (
+      !mayRefresh ||
+      !isUnauthorized(error) ||
+      credentials !== initialCredentials ||
+      !credentials.refreshToken
+    ) {
+      throw error;
+    }
+    credentials = await refreshCodexCredentials(
+      source,
+      credentials,
+      onCredentialUpdate,
+      signal,
+    );
+    body = await fetchJson(usageUrl, codexHeaders(credentials), signal);
+  }
+
+  // Read identity from whichever token actually spoke, so a refresh that brings
+  // a new `id_token` names the account by it.
   const identity = decodeJwtPayload(credentials.idToken);
   const email =
     source.email ??
     stringValue(identity.email) ??
     stringValue(identity["https://api.openai.com/auth/email"]) ??
     "";
-  const headers: Record<string, string> = {
-    Authorization: `Bearer ${credentials.accessToken}`,
-  };
-  if (credentials.accountId) {
-    headers["ChatGPT-Account-Id"] = credentials.accountId;
-  }
 
-  const usage = CodexUsageResponseSchema.parse(
-    await fetchJson(
-      codexUsageUrl(codexBaseUrl(source.homePath)),
-      headers,
-      signal,
-    ),
-  );
+  const usage = CodexUsageResponseSchema.parse(body);
   const rateLimit = usage.rate_limit;
   const session = toRateWindow(rateLimit.primary_window);
   const weekly = toRateWindow(rateLimit.secondary_window);
@@ -618,6 +687,24 @@ export function cursorUsagePercent(usage: Record<string, unknown>): number {
   );
 }
 
+/**
+ * How much of the on-demand allowance is spent, when there is one to spend.
+ *
+ * On-demand is the budget beyond the plan's included usage, and on a team plan
+ * it is a pool shared with everyone else. That is exactly why it belongs on the
+ * dashboard: an Enterprise seat can sit at 0% of its own included usage while
+ * the pool it actually draws from is nearly gone, and nothing else on screen
+ * would say so.
+ *
+ * This used to read `plan.autoPercentUsed` first — not on-demand at all, but a
+ * second view of the very included usage the primary window already shows. So
+ * the two windows agreed because they were measuring the same thing, and the
+ * pooled figure, the only one that could have disagreed, was never reached: one
+ * account read 0% and 0% against a team pool at 59%.
+ *
+ * Undefined when no on-demand limit is set — unlimited, or not enabled. Either
+ * way there is no proportion to report, and no second window is drawn.
+ */
 export function cursorSecondaryPercent(
   usage: Record<string, unknown>,
 ): number | undefined {
@@ -625,17 +712,16 @@ export function cursorSecondaryPercent(
     ? usage.individualUsage
     : {};
   const team = isRecord(usage.teamUsage) ? usage.teamUsage : {};
-  const plan = isRecord(individual.plan) ? individual.plan : {};
-  const onDemand = isRecord(individual.onDemand)
+  const individualOnDemand = isRecord(individual.onDemand)
     ? individual.onDemand
-    : isRecord(team.onDemand)
-      ? team.onDemand
-      : {};
+    : {};
+  const teamOnDemand = isRecord(team.onDemand) ? team.onDemand : {};
 
+  // A seat's own on-demand budget first; the shared pool is what constrains it
+  // only when the seat has no separate limit of its own.
   return (
-    numberValue(plan.autoPercentUsed) ??
-    numberValue(plan.apiPercentUsed) ??
-    ratioPercent(onDemand.used, onDemand.limit)
+    ratioPercent(individualOnDemand.used, individualOnDemand.limit) ??
+    ratioPercent(teamOnDemand.used, teamOnDemand.limit)
   );
 }
 
@@ -692,19 +778,19 @@ async function fetchCursorAccount(
     email,
     plan: formatCursorPlan(validatedUsage.membershipType),
     renewsAt: end ?? session.renewsAt,
-    session: end
-      ? {
-          usedPercent: cursorUsagePercent(validatedUsage),
-          resetsAt: end,
-        }
-      : null,
+    // Both windows reset with the billing cycle; a cycle end gauge could not
+    // read costs the countdown, never the reading itself.
+    session: {
+      usedPercent: cursorUsagePercent(validatedUsage),
+      resetsAt: end,
+    },
     weekly:
-      end && secondaryPercent !== undefined
-        ? {
+      secondaryPercent === undefined
+        ? null
+        : {
             usedPercent: secondaryPercent,
             resetsAt: end,
-          }
-        : null,
+          },
   };
 }
 

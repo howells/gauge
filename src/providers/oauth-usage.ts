@@ -47,15 +47,24 @@ const ProfileResponse = z.object({
     .nullish(),
 });
 
-export interface OAuthUsageWindow {
-  resetsAt: string;
+interface OAuthUsageWindow {
+  /** Null when the window is idle: nothing spent, so nothing counting down. */
+  resetsAt: string | null;
   usedPercent: number;
 }
 
+/**
+ * Named windows, never an array.
+ *
+ * A `[session, weekly]` array has to be destructured positionally by every
+ * caller, and one absent window silently promotes the other into its slot. The
+ * names cost nothing and make that mistake unspellable.
+ */
 export interface OAuthUsageReading {
   email: string | null;
   plan: string | null;
-  windows: OAuthUsageWindow[];
+  session: OAuthUsageWindow | null;
+  weekly: OAuthUsageWindow | null;
 }
 
 /**
@@ -77,12 +86,24 @@ export function planFromRateLimitTier(tier: string | null): string | null {
   return null;
 }
 
-function toWindow(value: {
-  resets_at?: string | null;
-  utilization?: number | null;
-}): OAuthUsageWindow | null {
-  if (!value.resets_at || typeof value.utilization !== "number") return null;
-  return { resetsAt: value.resets_at, usedPercent: value.utilization };
+/**
+ * One window, or null when the API reported none.
+ *
+ * An idle window arrives as `resets_at: null` with a real utilization, and that
+ * is a reading worth keeping: the limit exists and is wholly free. Only an
+ * unreadable utilization means there is nothing here to report.
+ */
+function toWindow(
+  value:
+    | {
+        resets_at?: string | null;
+        utilization?: number | null;
+      }
+    | null
+    | undefined,
+): OAuthUsageWindow | null {
+  if (!value || typeof value.utilization !== "number") return null;
+  return { resetsAt: value.resets_at ?? null, usedPercent: value.utilization };
 }
 
 export type OAuthFetch = (
@@ -116,10 +137,9 @@ export async function fetchOAuthUsage(
     });
     if (!usageRes.ok) return null;
     const usage = UsageResponse.parse(await usageRes.json());
-    const windows = [usage.five_hour, usage.seven_day]
-      .map((value) => (value ? toWindow(value) : null))
-      .filter((value): value is OAuthUsageWindow => value !== null);
-    if (windows.length === 0) return null;
+    const session = toWindow(usage.five_hour);
+    const weekly = toWindow(usage.seven_day);
+    if (!session && !weekly) return null;
 
     // The profile is what names the plan; usage alone cannot. A failure here
     // costs the label and not the reading.
@@ -139,7 +159,7 @@ export async function fetchOAuthUsage(
     } catch {
       // Label only; the windows above are the reading that matters.
     }
-    return { email, plan, windows };
+    return { email, plan, session, weekly };
   } catch {
     return null;
   }

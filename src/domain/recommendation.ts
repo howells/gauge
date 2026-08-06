@@ -12,7 +12,8 @@ interface RecommendationError {
 }
 
 interface RecommendationWindow {
-  resetsAt: string;
+  /** Null when the window is idle: nothing spent, so nothing counting down. */
+  resetsAt: string | null;
   usedPercent: number;
 }
 
@@ -30,7 +31,7 @@ export interface RecommendationCandidate {
  * Present only when the account being recommended right now is a *worse
  * instrument* than one that unblocks shortly — see {@link findWaitFor}.
  */
-export interface RecommendationAlternative {
+interface RecommendationAlternative {
   account: RecommendationAccountId;
   availableAt: string;
   maximumUtilization: number;
@@ -54,6 +55,13 @@ interface RankedCandidate {
   resetAt: number;
 }
 
+/** When a window resets, or null for an idle one that is not counting down. */
+function resetTime(window: RecommendationWindow): number | null {
+  if (window.resetsAt === null) return null;
+  const at = Date.parse(window.resetsAt);
+  return Number.isFinite(at) ? at : null;
+}
+
 /** Select an account using the public v3 recommendation policy. */
 export function recommendUsage(
   candidates: RecommendationCandidate[],
@@ -64,7 +72,14 @@ export function recommendUsage(
       return [];
     }
 
+    // An idle window is kept, not filtered. It is the strongest availability
+    // signal there is — a limit with nothing spent against it — and dropping it
+    // used to exclude the account outright: a wholly unused account reports
+    // every window idle, ended up with no windows at all, and so could never be
+    // recommended. A window whose reset has already passed is different: that
+    // is a stale reading rather than a claim about now, and is still dropped.
     const windows = candidate.windows.filter((window) => {
+      if (window.resetsAt === null) return true;
       const resetAt = Date.parse(window.resetsAt);
       return Number.isFinite(resetAt) && resetAt > now.getTime();
     });
@@ -74,10 +89,15 @@ export function recommendUsage(
 
     const utilizations = windows.map((window) => window.usedPercent);
     const blockers = windows.filter((window) => window.usedPercent >= 100);
-    const resetAt = blockers.reduce(
-      (latest, window) => Math.max(latest, Date.parse(window.resetsAt)),
-      0,
-    );
+    // Blocked with no readable reset means blocked for an unknown time, which
+    // must not collapse to the 0 that means "free now".
+    const resetAt =
+      blockers.length === 0
+        ? 0
+        : blockers.reduce((latest, window) => {
+            const at = resetTime(window);
+            return at === null ? latest : Math.max(latest, at);
+          }, 0) || Number.POSITIVE_INFINITY;
 
     return [
       {
@@ -111,8 +131,13 @@ export function recommendUsage(
 
   return {
     account: best.candidate.id,
-    availableAt:
-      best.resetAt === 0 ? null : new Date(best.resetAt).toISOString(),
+    // Unblocked, or blocked for a time nobody can name: both answer "when" with
+    // null, and the dashboard reads that as "soon" rather than a false clock.
+    availableAt: Number.isFinite(best.resetAt)
+      ? best.resetAt === 0
+        ? null
+        : new Date(best.resetAt).toISOString()
+      : null,
     averageUtilization: best.averageUtilization,
     maximumUtilization: best.maximumUtilization,
     status: best.resetAt === 0 ? "use_now" : "wait",
@@ -157,9 +182,11 @@ function planRank(plan: string | undefined): number {
  * which is exactly the case this whole function exists to notice.
  */
 function utilizationAfter(entry: RankedCandidate): number {
-  const survivors = entry.candidate.windows.filter(
-    (window) => Date.parse(window.resetsAt) > entry.resetAt,
-  );
+  const survivors = entry.candidate.windows.filter((window) => {
+    const at = resetTime(window);
+    // An idle window survives the wait, and carries the nothing it already has.
+    return at === null ? true : at > entry.resetAt;
+  });
   return survivors.reduce(
     (highest, window) => Math.max(highest, window.usedPercent),
     0,

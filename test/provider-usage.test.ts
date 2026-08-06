@@ -119,7 +119,7 @@ test("explicit raw-cookie files accept cookie syntax but reject controls", () =>
   assert.equal(parseRawCookieFile(invalidPath), null);
 });
 
-test("maps Cursor primary and secondary percentages", () => {
+test("Cursor meters included usage and on-demand as separate things", () => {
   const usage = {
     individualUsage: {
       plan: {
@@ -127,11 +127,42 @@ test("maps Cursor primary and secondary percentages", () => {
         autoPercentUsed: 40,
         totalPercentUsed: 60,
       },
+      onDemand: { used: 25, limit: 100 },
     },
   };
 
   assert.equal(cursorUsagePercent(usage), 60);
-  assert.equal(cursorSecondaryPercent(usage), 40);
+  assert.equal(cursorSecondaryPercent(usage), 25);
+});
+
+test("Cursor reports the shared pool a seat with no on-demand limit draws from", () => {
+  // The Enterprise shape: nothing of this seat's own allowance spent, while
+  // the team pool behind it is more than half gone. Reading `autoPercentUsed`
+  // here returned the included figure twice and never reached the pool.
+  const usage = {
+    individualUsage: {
+      plan: { autoPercentUsed: 0, apiPercentUsed: 0, totalPercentUsed: 0 },
+      onDemand: { used: 0, limit: null },
+    },
+    teamUsage: { onDemand: { used: 293_417, limit: 500_000 } },
+  };
+
+  assert.equal(cursorUsagePercent(usage), 0);
+  assert.equal(Math.round(cursorSecondaryPercent(usage) as number), 59);
+});
+
+test("Cursor draws no on-demand window when nothing meters one", () => {
+  // Unlimited or disabled: no proportion exists, so none is invented.
+  assert.equal(
+    cursorSecondaryPercent({
+      individualUsage: {
+        plan: { totalPercentUsed: 100 },
+        onDemand: { enabled: false, used: 0, limit: null },
+      },
+      teamUsage: {},
+    }),
+    undefined,
+  );
 });
 
 test("Codex never-refresh policy tries the existing token once without writes", async () => {
@@ -220,6 +251,139 @@ test("Codex refresh returns a pending update without provider-side writes", asyn
     assert.deepEqual(
       Object.keys(updates[0] as object).sort(),
       ["accessToken", "homePath", "lastRefresh", "refreshToken"].sort(),
+    );
+  } finally {
+    globalThis.fetch = originalFetch;
+    if (originalHome === undefined) delete process.env.CODEX_HOME;
+    else process.env.CODEX_HOME = originalHome;
+  }
+});
+
+/** A Codex home whose token looks fresh by the clock but is dead on the server. */
+function freshLookingCodexHome(): { authPath: string; homePath: string } {
+  const homePath = fs.mkdtempSync(path.join(os.tmpdir(), "gauge-codex-"));
+  const authPath = path.join(homePath, "auth.json");
+  fs.writeFileSync(
+    authPath,
+    JSON.stringify({
+      tokens: {
+        access_token: "expired-access",
+        // Recent, so the age heuristic sees nothing worth refreshing.
+        last_refresh: new Date().toISOString(),
+        refresh_token: "good-refresh",
+      },
+    }),
+    { mode: 0o600 },
+  );
+  return { authPath, homePath };
+}
+
+test("a refused Codex token is refreshed and retried rather than reported", async () => {
+  // The age heuristic cannot see an early expiry, so the server's 401 has to be
+  // what triggers the rotation. Otherwise a usable refresh token sits there
+  // while the dashboard tells the reader to re-authenticate by hand.
+  const { authPath, homePath } = freshLookingCodexHome();
+  const originalFetch = globalThis.fetch;
+  const originalHome = process.env.CODEX_HOME;
+  const urls: string[] = [];
+  const updates: unknown[] = [];
+  process.env.CODEX_HOME = homePath;
+  globalThis.fetch = async (input, init) => {
+    const url = String(input);
+    urls.push(url);
+    if (url.includes("auth.openai.com")) {
+      return new Response(JSON.stringify({ access_token: "new-access" }), {
+        status: 200,
+      });
+    }
+    const authorization = new Headers(init?.headers).get("authorization");
+    if (authorization === "Bearer expired-access") {
+      return new Response(JSON.stringify({ error: "token_expired" }), {
+        status: 401,
+      });
+    }
+    return new Response(
+      JSON.stringify({
+        plan_type: "pro",
+        rate_limit: { primary_window: { used_percent: 12, reset_at: 1 } },
+      }),
+      { status: 200 },
+    );
+  };
+
+  try {
+    const accounts = await fetchCodexAccounts([], {
+      credentialRefresh: "refresh-if-stale",
+      onCredentialUpdate: (update) => updates.push(update),
+    });
+
+    assert.equal(accounts[0]?.error, undefined);
+    assert.equal(accounts[0]?.session?.usedPercent, 12);
+    // Refused, refreshed, retried — and the rotation offered to the caller
+    // rather than written behind its back.
+    assert.equal(urls.length, 3);
+    assert.equal(urls[1]?.includes("auth.openai.com"), true);
+    assert.equal(updates.length, 1);
+  } finally {
+    globalThis.fetch = originalFetch;
+    if (originalHome === undefined) delete process.env.CODEX_HOME;
+    else process.env.CODEX_HOME = originalHome;
+  }
+  assert.match(fs.readFileSync(authPath, "utf8"), /expired-access/u);
+});
+
+test("a refused Codex token is retried once, not repeatedly", async () => {
+  // A login that is genuinely dead must still surface as one.
+  const { homePath } = freshLookingCodexHome();
+  const originalFetch = globalThis.fetch;
+  const originalHome = process.env.CODEX_HOME;
+  const urls: string[] = [];
+  process.env.CODEX_HOME = homePath;
+  globalThis.fetch = async (input) => {
+    const url = String(input);
+    urls.push(url);
+    return url.includes("auth.openai.com")
+      ? new Response(JSON.stringify({ access_token: "still-no-good" }), {
+          status: 200,
+        })
+      : new Response("{}", { status: 401 });
+  };
+
+  try {
+    const accounts = await fetchCodexAccounts([], {
+      credentialRefresh: "refresh-if-stale",
+    });
+    assert.match(accounts[0]?.error ?? "", /HTTP 401/u);
+    assert.equal(urls.length, 3);
+  } finally {
+    globalThis.fetch = originalFetch;
+    if (originalHome === undefined) delete process.env.CODEX_HOME;
+    else process.env.CODEX_HOME = originalHome;
+  }
+});
+
+test("never-refresh forbids the retry rotation too", async () => {
+  // `--no-credential-refresh` prohibits every credential write, and a 401 is
+  // not an exception to it.
+  const { homePath } = freshLookingCodexHome();
+  const originalFetch = globalThis.fetch;
+  const originalHome = process.env.CODEX_HOME;
+  const urls: string[] = [];
+  process.env.CODEX_HOME = homePath;
+  globalThis.fetch = async (input) => {
+    urls.push(String(input));
+    return new Response("{}", { status: 401 });
+  };
+
+  try {
+    const accounts = await fetchCodexAccounts([], {
+      credentialRefresh: "never",
+    });
+    assert.match(accounts[0]?.error ?? "", /HTTP 401/u);
+    assert.equal(urls.length, 1);
+    assert.equal(
+      urls.some((url) => url.includes("auth.openai.com")),
+      false,
     );
   } finally {
     globalThis.fetch = originalFetch;

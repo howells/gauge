@@ -46,10 +46,43 @@ test("fetchOAuthUsage reads both windows from the token", async () => {
 
   assert.equal(reading?.plan, "max_20x");
   assert.equal(reading?.email, "dan@example.com");
-  assert.deepEqual(reading?.windows, [
-    { resetsAt: "2026-08-05T18:10:00.000Z", usedPercent: 64 },
-    { resetsAt: "2026-08-08T12:00:00.000Z", usedPercent: 99 },
-  ]);
+  assert.deepEqual(reading?.session, {
+    resetsAt: "2026-08-05T18:10:00.000Z",
+    usedPercent: 64,
+  });
+  assert.deepEqual(reading?.weekly, {
+    resetsAt: "2026-08-08T12:00:00.000Z",
+    usedPercent: 99,
+  });
+});
+
+test("fetchOAuthUsage keeps an idle window instead of promoting the other one", async () => {
+  // The five-hour window of an account nobody has touched in five hours: a real
+  // reading of 0% with nothing to count down to. Dropping it used to leave a
+  // one-element array whose sole entry — the weekly figure — was then read as
+  // the session, which is how a 99% week came to be drawn as a 99% session.
+  const reading = await fetchOAuthUsage(
+    "token",
+    responder({
+      "/api/oauth/usage": {
+        status: 200,
+        body: {
+          five_hour: { utilization: 0, resets_at: null },
+          seven_day: {
+            utilization: 99,
+            resets_at: "2026-08-08T12:00:00.000Z",
+          },
+        },
+      },
+      "/api/oauth/profile": { status: 500 },
+    }),
+  );
+
+  assert.deepEqual(reading?.session, { resetsAt: null, usedPercent: 0 });
+  assert.deepEqual(reading?.weekly, {
+    resetsAt: "2026-08-08T12:00:00.000Z",
+    usedPercent: 99,
+  });
 });
 
 test("fetchOAuthUsage returns null on a refused token so the cookie path still runs", async () => {
@@ -77,7 +110,12 @@ test("fetchOAuthUsage keeps the reading when only the profile fails", async () =
   );
 
   assert.equal(reading?.plan, null);
-  assert.equal(reading?.windows.length, 1);
+  assert.deepEqual(reading?.session, {
+    resetsAt: "2026-08-05T18:10:00.000Z",
+    usedPercent: 10,
+  });
+  // Absent upstream, which is not the same as idle: there is no reading here.
+  assert.equal(reading?.weekly, null);
 });
 
 test("planFromRateLimitTier names the tiers the dashboard shows", () => {

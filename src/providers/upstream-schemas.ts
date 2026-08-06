@@ -18,13 +18,19 @@ const ClaudeWindow = z
     utilization: Percentage,
     resets_at: NormalizedDate.nullish(),
   })
-  // Idle accounts report `resets_at: null` for windows with no activity.
-  // Downstream models "no active window" as null, so collapse to that.
-  .transform((value) =>
-    value.resets_at == null
-      ? null
-      : { utilization: value.utilization, resets_at: value.resets_at },
-  );
+  // A window with no activity reports `resets_at: null`: nothing is counting
+  // down because nothing has been spent. That is a reading — "idle, wholly
+  // available" — and not an absence.
+  //
+  // It used to be collapsed to null here, which read as "this window does not
+  // exist". Downstream then dropped it from an array whose *positions* carried
+  // the meaning, so an idle five-hour window let the seven-day figure slide
+  // into the five-hour slot and be drawn as the session meter. The weekly
+  // number barely moves, so those accounts looked frozen. Keep the window.
+  .transform((value) => ({
+    utilization: value.utilization,
+    resets_at: value.resets_at ?? null,
+  }));
 
 export const ClaudeOrganizationListSchema = z
   .array(

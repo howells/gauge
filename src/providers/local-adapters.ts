@@ -7,6 +7,7 @@ import type {
   AccountSource,
   PendingCredentialUpdate,
   UsageReading,
+  UsageWindowKind,
 } from "../domain/snapshot.js";
 import {
   fetchCodexAccounts,
@@ -15,6 +16,49 @@ import {
 } from "../provider-usage.js";
 import { ProviderUsageReadingSchema } from "./schemas.js";
 import type { ProviderUsageResult, UsageProviderAdapter } from "./types.js";
+
+/** One window as a provider reports it, already named for the limit it meters. */
+interface NamedWindow {
+  kind: UsageWindowKind;
+  resetsAt: string | null;
+  usedPercent: number;
+}
+
+/**
+ * What every provider adapter hands back.
+ *
+ * `windows` replaced a `session`/`weekly` pair that was flattened into a
+ * positional array one step later. Each window now carries its own name, so a
+ * provider reporting only one of the two can no longer have it read as the
+ * other.
+ */
+interface ProviderReading {
+  email?: string;
+  error?: string;
+  plan: string;
+  renewsAt?: string | null;
+  windows: NamedWindow[];
+}
+
+/**
+ * Name the two windows a Codex or Cursor account reports.
+ *
+ * A window absent from the provider's response is left out; one that is merely
+ * idle is kept, because "nothing spent here" is a reading and the recommender
+ * needs it to see a wholly free account.
+ */
+function namedWindows(
+  account: {
+    session: { resetsAt: string | null; usedPercent: number } | null;
+    weekly: { resetsAt: string | null; usedPercent: number } | null;
+  },
+  [first, second]: readonly [UsageWindowKind, UsageWindowKind],
+): NamedWindow[] {
+  return [
+    account.session ? { ...account.session, kind: first } : null,
+    account.weekly ? { ...account.weekly, kind: second } : null,
+  ].filter((window): window is NamedWindow => window !== null);
+}
 
 export function buildLocalSources(
   configured: AccountDetails[],
@@ -138,7 +182,12 @@ export function createLocalAdapters(
           onCredentialUpdate,
           signal,
         });
-        return results[0] ?? null;
+        const result = results[0];
+        if (!result) return null;
+        return {
+          ...result,
+          windows: namedWindows(result, ["session", "weekly"]),
+        };
       },
     ),
     adapter(
@@ -157,19 +206,20 @@ export function createLocalAdapters(
         const results = await fetchCursorAccounts(account ? [account] : [], {
           signal,
         });
-        return results[0] ?? null;
+        const result = results[0];
+        if (!result) return null;
+        // Cursor meters a monthly cycle, not a session and a week: the plan's
+        // included usage, then anything bought on demand beyond it.
+        return {
+          ...result,
+          windows: namedWindows(result, ["included", "on_demand"]),
+        };
       },
     ),
   ];
 }
 
-function normalizeClaudeUsage(account: AccountUsage): {
-  error?: string;
-  plan: string;
-  renewsAt?: string | null;
-  session: { resetsAt: string; usedPercent: number } | null;
-  weekly: { resetsAt: string; usedPercent: number } | null;
-} {
+function normalizeClaudeUsage(account: AccountUsage): ProviderReading {
   const planLabels = {
     free: "Free",
     pro: "Pro",
@@ -178,21 +228,22 @@ function normalizeClaudeUsage(account: AccountUsage): {
     max_20x: "Max 20x",
     unknown: "",
   } as const;
+  const window = (
+    limit: { resets_at: string | null; utilization: number } | null,
+  ): { resetsAt: string | null; usedPercent: number } | null =>
+    limit
+      ? { resetsAt: limit.resets_at, usedPercent: limit.utilization }
+      : null;
   return {
     plan: planLabels[account.plan],
     renewsAt: account.renewsAt,
-    session: account.usage.five_hour
-      ? {
-          resetsAt: account.usage.five_hour.resets_at,
-          usedPercent: account.usage.five_hour.utilization,
-        }
-      : null,
-    weekly: account.usage.seven_day
-      ? {
-          resetsAt: account.usage.seven_day.resets_at,
-          usedPercent: account.usage.seven_day.utilization,
-        }
-      : null,
+    windows: namedWindows(
+      {
+        session: window(account.usage.five_hour),
+        weekly: window(account.usage.seven_day),
+      },
+      ["session", "weekly"],
+    ),
     ...(account.error !== undefined && { error: account.error }),
   };
 }
@@ -219,14 +270,7 @@ function adapter(
     onCredentialUpdate: (update: PendingCodexCredentialUpdate) => void,
     onStorageStateUpdate: (value: unknown) => void,
     signal: AbortSignal,
-  ) => Promise<{
-    email?: string;
-    error?: string;
-    plan: string;
-    renewsAt?: string | null;
-    session: { resetsAt: string; usedPercent: number } | null;
-    weekly: { resetsAt: string; usedPercent: number } | null;
-  } | null>,
+  ) => Promise<ProviderReading | null>,
 ): UsageProviderAdapter {
   return {
     provider,
@@ -332,18 +376,10 @@ function failure(source: AccountSource, message: string): ProviderUsageResult {
   };
 }
 
-function toUsageReading(account: {
-  email?: string;
-  plan: string;
-  renewsAt?: string | null;
-  session: { resetsAt: string; usedPercent: number } | null;
-  weekly: { resetsAt: string; usedPercent: number } | null;
-}): UsageReading {
+function toUsageReading(account: ProviderReading): UsageReading {
   return ProviderUsageReadingSchema.parse({
     plan: account.plan,
-    windows: [account.session, account.weekly].filter(
-      (window): window is NonNullable<typeof window> => window !== null,
-    ),
+    windows: account.windows,
     ...(account.email && { email: account.email }),
     ...(account.renewsAt !== undefined && { renewsAt: account.renewsAt }),
   });

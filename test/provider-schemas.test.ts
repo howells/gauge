@@ -16,16 +16,35 @@ test("provider usage DTO normalizes dates and constrains percentages", () => {
     plan: "Pro",
     renewsAt: "2026-07-12T00:00:00Z",
     windows: [
-      { usedPercent: -5, resetsAt: "2026-07-11T13:00:00Z" },
-      { usedPercent: 120, resetsAt: "2026-07-12T13:00:00Z" },
+      { kind: "session", usedPercent: -5, resetsAt: "2026-07-11T13:00:00Z" },
+      { kind: "weekly", usedPercent: 120, resetsAt: "2026-07-12T13:00:00Z" },
     ],
   });
 
   assert.equal(parsed.renewsAt, "2026-07-12T00:00:00.000Z");
   assert.deepEqual(parsed.windows, [
-    { usedPercent: 0, resetsAt: "2026-07-11T13:00:00.000Z" },
-    { usedPercent: 100, resetsAt: "2026-07-12T13:00:00.000Z" },
+    { kind: "session", usedPercent: 0, resetsAt: "2026-07-11T13:00:00.000Z" },
+    { kind: "weekly", usedPercent: 100, resetsAt: "2026-07-12T13:00:00.000Z" },
   ]);
+});
+
+test("provider usage DTO carries an idle window and demands a named kind", () => {
+  const parsed = ProviderUsageReadingSchema.parse({
+    plan: "Max 20x",
+    windows: [{ kind: "session", usedPercent: 0, resetsAt: null }],
+  });
+  assert.deepEqual(parsed.windows, [
+    { kind: "session", usedPercent: 0, resetsAt: null },
+  ]);
+
+  // Without a kind a window's meaning would come from its index again.
+  assert.equal(
+    ProviderUsageReadingSchema.safeParse({
+      plan: "Max 20x",
+      windows: [{ usedPercent: 12, resetsAt: null }],
+    }).success,
+    false,
+  );
 });
 
 test("provider usage DTO rejects unknown fields and oversized strings", () => {
@@ -74,6 +93,18 @@ test("provider ingress schemas strip unknown fields and bound normalized values"
   });
   assert.equal(claude.five_hour?.utilization, 100);
   assert.equal(claude.five_hour?.resets_at, "2026-07-11T13:00:00.000Z");
+
+  // An idle window survives ingress as a window. It used to collapse to null
+  // here, one step before a positional array turned the survivor into the
+  // window it had displaced.
+  const idle = ClaudeUsageResponseSchema.parse({
+    five_hour: { resets_at: null, utilization: 0 },
+    seven_day: { resets_at: "2026-07-14T13:00:00Z", utilization: 99 },
+  });
+  assert.deepEqual(idle.five_hour, { resets_at: null, utilization: 0 });
+  assert.equal(idle.seven_day?.utilization, 99);
+  // A window the API does not mention at all stays absent.
+  assert.equal(idle.seven_day_opus, null);
 
   const codex = CodexUsageResponseSchema.parse({
     plan_type: "pro",

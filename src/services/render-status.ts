@@ -71,10 +71,15 @@ function meter(percent: number): string {
 
 // ─── Account status ──────────────────────────────────────────────────────────
 
-interface WindowView {
-  resetsAt: string;
-  usedPercent: number;
-}
+type WindowView = NonNullable<AccountSnapshot["usage"]>["windows"][number];
+
+/** What to call each limit in the one line of room a cell has for it. */
+const WINDOW_LABEL: Record<WindowView["kind"], string> = {
+  session: "session",
+  weekly: "wk",
+  included: "plan",
+  on_demand: "on-demand",
+};
 
 interface CellStatus {
   kind: "ready" | "blocked" | "error";
@@ -83,6 +88,16 @@ interface CellStatus {
   waitMs: number;
 }
 
+/**
+ * The two windows a cell draws, and whether either of them blocks.
+ *
+ * Position picks which window goes where, but only the window's own `kind`
+ * names it. Providers report the short horizon first, so the meter is the
+ * account's most immediate limit and the detail line is the longer one; that
+ * ordering is a presentation choice and no longer a claim about *meaning*,
+ * which is what it silently became when an absent window let its neighbour
+ * inherit its slot.
+ */
 function cellStatus(account: StatusAccountView, now: Date): CellStatus {
   if (account.error || !account.usage) {
     return { kind: "error", primary: null, secondary: null, waitMs: Infinity };
@@ -92,12 +107,12 @@ function cellStatus(account: StatusAccountView, now: Date): CellStatus {
   const secondary = windows[1] ?? null;
   const blocked = windows.filter((window) => window.usedPercent >= 100);
   if (blocked.length > 0) {
-    const waitMs = Math.min(
-      ...blocked.map((window) =>
-        Math.max(0, new Date(window.resetsAt).getTime() - now.getTime()),
-      ),
+    const waits = blocked.map((window) =>
+      window.resetsAt === null
+        ? Number.POSITIVE_INFINITY
+        : Math.max(0, new Date(window.resetsAt).getTime() - now.getTime()),
     );
-    return { kind: "blocked", primary, secondary, waitMs };
+    return { kind: "blocked", primary, secondary, waitMs: Math.min(...waits) };
   }
   return { kind: "ready", primary, secondary, waitMs: 0 };
 }
@@ -215,19 +230,22 @@ function meterCell(
   }
   const window = status.primary;
   if (!window) {
-    // No active window means nothing used — an idle, fully available account.
-    return cell(`${meter(0)} 0%`);
+    // No windows at all is the provider declining to report, which is not the
+    // same as reporting nothing spent. An idle account now arrives as real
+    // windows at 0% and takes the ordinary path below; drawing "0%" here too
+    // would put a number where there is no reading.
+    return cell(chalk.dim("no usage reported"));
   }
   const percent = Math.round(window.usedPercent);
   if (status.kind === "blocked") {
-    const wait = timeUntil(
-      new Date(now.getTime() + status.waitMs).toISOString(),
-      now,
-    );
-    return cell(`${meter(100)} ${chalk.red("full")} ${chalk.dim(`· ${wait}`)}`);
+    const wait = Number.isFinite(status.waitMs)
+      ? ` ${chalk.dim(`· ${timeUntil(new Date(now.getTime() + status.waitMs).toISOString(), now)}`)}`
+      : "";
+    return cell(`${meter(100)} ${chalk.red("full")}${wait}`);
   }
+  // An idle window has nothing counting down, so there is no clock to show.
   const reset =
-    window.usedPercent > 0
+    window.usedPercent > 0 && window.resetsAt !== null
       ? ` ${chalk.dim(`· ${timeUntil(window.resetsAt, now)}`)}`
       : "";
   return cell(`${meter(percent)} ${percent}%${reset}`);
@@ -240,22 +258,46 @@ function detailCell(account: StatusAccountView | undefined, now: Date): string {
   const cell = (content: string): string => `  ${pad(content, width)}`;
   if (!account?.usage) return cell("");
   const status = cellStatus(account, now);
-  const parts: string[] = [];
-  if (account.usage.plan) parts.push(account.usage.plan);
-  const weekly = status.secondary;
-  if (weekly && weekly.usedPercent < 100) {
-    parts.push(
-      `wk ${Math.round(weekly.usedPercent)}% · ${timeUntil(weekly.resetsAt, now)}`,
-    );
+
+  const plan = account.usage.plan || null;
+  // Named from the window itself. The old line said "wk" over whatever landed
+  // in the second slot, which was a guess dressed as a fact.
+  //
+  // Shown even at 100%, which it used to be hidden at. The meter above can only
+  // say the account is *full*; it cannot say which limit filled. Those are
+  // different situations — a spent session frees up in the hour, a spent week
+  // does not — and the one being hidden was precisely the case where naming it
+  // matters most.
+  const second = status.secondary;
+  const reading =
+    second === null
+      ? null
+      : `${WINDOW_LABEL[second.kind]} ${Math.round(second.usedPercent)}%${
+          second.resetsAt === null
+            ? ""
+            : ` · ${timeUntil(second.resetsAt, now)}`
+        }`;
+  const renews = account.usage.renewsAt
+    ? `renews ${timeUntil(account.usage.renewsAt, now)}`
+    : null;
+
+  // Widest first, and what goes when it will not fit is a judgement about which
+  // of these is worth the column. The renewal date goes first; then the plan,
+  // which is a static label the reader already knows and the recommendation
+  // line repeats. The usage reading is never what gets dropped — it is the only
+  // part that changes, and dropping it is how a team pool at 59% came to be
+  // trimmed off a row that had just learned how to measure it.
+  for (const tier of [
+    [plan, reading, renews],
+    [plan, reading],
+    [reading ?? plan],
+  ]) {
+    const line = tier
+      .filter((part): part is string => part !== null)
+      .join(" · ");
+    if (visibleLength(line) <= width) return cell(chalk.dim(line));
   }
-  if (account.usage.renewsAt) {
-    parts.push(`renews ${timeUntil(account.usage.renewsAt, now)}`);
-  }
-  // Drop trailing parts rather than truncating text mid-word.
-  while (parts.length > 1 && parts.join(" · ").length > width) {
-    parts.pop();
-  }
-  return cell(chalk.dim(truncate(parts.join(" · "), width)));
+  return cell(chalk.dim(truncate(reading ?? plan ?? "", width)));
 }
 
 // ─── Sections ────────────────────────────────────────────────────────────────

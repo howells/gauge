@@ -22,7 +22,8 @@ import { claudeAccountNamesByUuid } from "./services/machine-logins.js";
 import type { PlaywrightStorageState } from "./storage-state.js";
 
 interface UsageLimit {
-  resets_at: string;
+  /** Null when the window is idle: nothing spent, so nothing counting down. */
+  resets_at: string | null;
   utilization: number;
 }
 
@@ -455,9 +456,8 @@ async function fetchUsageViaOAuth(
     if (!token) return null;
     const reading = await fetchOAuthUsage(token);
     if (!reading) return null;
-    const [session, weekly] = reading.windows;
     const limit = (
-      window: { resetsAt: string; usedPercent: number } | undefined,
+      window: { resetsAt: string | null; usedPercent: number } | null,
     ): UsageLimit | null =>
       window
         ? { resets_at: window.resetsAt, utilization: window.usedPercent }
@@ -469,9 +469,9 @@ async function fetchUsageViaOAuth(
       orgUuid: "",
       usage: {
         extra_usage: null,
-        five_hour: limit(session),
+        five_hour: limit(reading.session),
         iguana_necktie: null,
-        seven_day: limit(weekly),
+        seven_day: limit(reading.weekly),
         seven_day_cowork: null,
         seven_day_oauth_apps: null,
         seven_day_opus: null,
