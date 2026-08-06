@@ -1,8 +1,14 @@
-name: Release v3
+name: Release
 
+# Every semver tag, not one literal version. This was `v3.0.0`, so it fired
+# exactly once and then sat silent: v3.1.0 was tagged, nothing ran, and the
+# release had to go out by hand. A trigger that only matches the release it was
+# written for is one that has to be remembered at every future release, which is
+# the thing automation is for. The tag-matches-package-version step below is
+# what keeps the wildcard honest.
 on:
   push:
-    tags: ["v3.0.0"]
+    tags: ["v[0-9]+.[0-9]+.[0-9]+"]
 
 permissions:
   contents: read

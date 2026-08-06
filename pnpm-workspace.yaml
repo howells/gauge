@@ -7,3 +7,15 @@ onlyBuiltDependencies:
 # carried picomatch@4.0.3 alongside the pinned 4.0.4.
 overrides:
   picomatch: 4.0.4
+  # Seven brace-expansion advisories, all denial-of-service, all reached only
+  # through dev tooling: `c8 > test-exclude > glob > minimatch` and
+  # `@howells/lint > ultracite > glob > minimatch`. Nothing gauge ships depends
+  # on it. But `pnpm audit --audit-level high` is a gate in both CI and the
+  # release workflow, so an unpatched transitive dev dependency is the
+  # difference between a release that publishes and one that does not.
+  #
+  # Pinned per major because the tree genuinely holds two: minimatch 9 resolves
+  # the 2.x line and minimatch 10 the 5.x line, and collapsing both onto one
+  # version would hand a caller a different major than it asked for.
+  brace-expansion@2: 2.1.4
+  brace-expansion@5: 5.0.9
