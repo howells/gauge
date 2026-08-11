@@ -50,6 +50,28 @@ test("legacy migration preflight detects v2 state without mutating it", () => {
   assert.deepEqual(fs.readdirSync(root), before);
 });
 
+test("v3 root metadata does not masquerade as a legacy account", () => {
+  const root = dataRoot();
+  for (const filename of ["display.json", "claude-session.previous.json"]) {
+    fs.writeFileSync(path.join(root, filename), "{}\n", { mode: 0o600 });
+  }
+
+  assert.deepEqual(inspectLegacyState(root), {
+    journal: false,
+    legacy: false,
+    tombstones: [],
+  });
+  assert.deepEqual(planLegacyMigration(root), { accounts: [] });
+
+  fs.writeFileSync(path.join(root, "unknown.json"), "{}\n", { mode: 0o600 });
+  assert.equal(inspectLegacyState(root).legacy, true);
+  assert.throws(
+    () => planLegacyMigration(root),
+    (error: unknown) =>
+      error instanceof CLIError && error.code === "MIGRATION_CONFLICT",
+  );
+});
+
 test("migration rejects provider and name conflicts before writing", () => {
   const root = dataRoot();
   writeLegacy(root, "codex-work", {

@@ -154,7 +154,7 @@ export function switchClaudeSession(
   let backedUp: string | null = null;
   const current = readClaudeSession(homeDir);
   if (current) {
-    backedUp = path.join(dataDir, "claude-session.previous.json");
+    backedUp = path.join(dataDir, "backups", "claude-session.previous.json");
     fs.mkdirSync(path.dirname(backedUp), { recursive: true });
     fs.writeFileSync(backedUp, `${JSON.stringify(current, null, 2)}\n`, {
       mode: 0o600,

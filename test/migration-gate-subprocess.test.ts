@@ -38,6 +38,17 @@ function fixture(): Fixture {
   return { cwd, dataRoot, home, root: fixtureRoot };
 }
 
+function v3Fixture(): Fixture {
+  const state = fixture();
+  fs.unlinkSync(path.join(state.dataRoot, "personal.json"));
+  for (const filename of ["display.json", "claude-session.previous.json"]) {
+    fs.writeFileSync(path.join(state.dataRoot, filename), "{}\n", {
+      mode: 0o600,
+    });
+  }
+  return state;
+}
+
 function run(fixtureValue: Fixture, args: string[]) {
   const env = { ...process.env };
   for (const name of [
@@ -93,6 +104,23 @@ test("account commands return exact MIGRATION_REQUIRED recovery steps", (t) => {
       },
     });
   }
+});
+
+test("v3 root metadata does not trigger the migration gate", (t) => {
+  const state = v3Fixture();
+  t.after(() => fs.rmSync(state.root, { force: true, recursive: true }));
+
+  const result = run(state, [
+    "list",
+    "--format",
+    "json",
+    "--fields",
+    "accounts.name",
+  ]);
+
+  assert.equal(result.status, 0);
+  assert.equal(result.stderr, "");
+  assert.equal(json(result.stdout).command, "list");
 });
 
 test("describe and doctor remain available while legacy state exists", (t) => {

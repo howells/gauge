@@ -50,3 +50,12 @@ test("migration preflight is read-only for missing data roots", () => {
   assert.doesNotThrow(() => assertStateCommandAllowed("status", root));
   assert.equal(fs.existsSync(root), false);
 });
+
+test("migration preflight ignores v3 metadata at the data root", () => {
+  const root = fs.mkdtempSync(path.join(os.tmpdir(), "gauge-preflight-"));
+  for (const filename of ["display.json", "claude-session.previous.json"]) {
+    fs.writeFileSync(path.join(root, filename), "{}\n", { mode: 0o600 });
+  }
+
+  assert.doesNotThrow(() => assertStateCommandAllowed("list", root));
+});

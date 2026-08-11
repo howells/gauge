@@ -30,6 +30,27 @@ test("doctor is read-only and reports a missing data root as ready", () => {
   );
 });
 
+test("doctor ignores v3 metadata at the data root", () => {
+  const root = fs.mkdtempSync(path.join(os.tmpdir(), "gauge-doctor-"));
+  fs.chmodSync(root, 0o700);
+  for (const filename of ["display.json", "claude-session.previous.json"]) {
+    fs.writeFileSync(path.join(root, filename), "{}\n", { mode: 0o600 });
+  }
+
+  const report = runDoctorChecks({
+    chromePath: null,
+    dataRoot: root,
+    env: {},
+    nodeVersion: "20.18.0",
+  });
+
+  assert.ok(
+    report.checks.some(
+      (check) => check.id === "state/migration" && check.status === "pass",
+    ),
+  );
+});
+
 test("doctor reports legacy migration and unsafe data-root failures without credentials", () => {
   const parent = fs.mkdtempSync(path.join(os.tmpdir(), "gauge-doctor-"));
   const realRoot = path.join(parent, "real");

@@ -443,20 +443,34 @@ function buildEntry(root: string, filename: string): LegacyMigrationEntry {
 }
 
 /**
+ * Files v3 itself writes to the data root, which are not accounts to migrate.
+ *
+ * Load-bearing, because the legacy test below is "any .json here": anything v3
+ * drops at the root and forgets to name reads as legacy state and locks every
+ * account-dependent command behind the migration gate. Worse, `migrate` then
+ * fails to parse it as an account, so the gate's own escape hatch closes too —
+ * the CLI wedges with no way out of it. Prefer writing new state under
+ * `accounts/v3/` or its own directory; add here only what has already shipped.
+ */
+const V3_ROOT_FILES = new Set([
+  // Reader preferences, written by v3 and never migrated from anything.
+  "display.json",
+  "migration-v3.json",
+  // The Claude Code session displaced by a switch, kept so it can be undone.
+  // Shipped at the root in 4.0.0; written under `backups/` since.
+  "claude-session.previous.json",
+]);
+
+/**
  * Whether a file at the data root is a v2 account config awaiting migration.
  *
- * The test is "any .json here", because in v2 every account was one. That makes
- * the exemption list load-bearing: a *new* v3 file dropped at the root reads as
- * legacy state and locks every account-dependent command behind the migration
- * gate until it is named here. `display.json` is one such file — reader
- * preferences, written by v3 and never migrated from anything.
+ * The test is "any .json here", because in v2 every account was one.
  */
-function isLegacyConfigFilename(filename: string): boolean {
+export function isLegacyConfigFilename(filename: string): boolean {
   return (
     filename.endsWith(".json") &&
     !filename.startsWith(".") &&
-    filename !== "migration-v3.json" &&
-    filename !== "display.json" &&
+    !V3_ROOT_FILES.has(filename) &&
     !filename.endsWith("-storage.json")
   );
 }

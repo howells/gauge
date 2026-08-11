@@ -2,6 +2,7 @@ import fs from "node:fs";
 import os from "node:os";
 import path from "node:path";
 import { AccountConfigV3Schema } from "../domain/account.js";
+import { isLegacyConfigFilename } from "../migrate.js";
 import { validateCodexHome } from "../persistence/external-credential-writer.js";
 import { parseStorageStateJsonValue } from "../storage-state.js";
 
@@ -106,12 +107,7 @@ function inspectDataRoot(dataRoot: string, checks: DoctorCheck[]): void {
     ? fs.realpathSync(dataRoot)
     : dataRoot;
   const rootNames = fs.readdirSync(readableRoot);
-  const legacy = rootNames.some(
-    (name) =>
-      name.endsWith(".json") &&
-      name !== "migration-v3.json" &&
-      !name.endsWith("-storage.json"),
-  );
+  const legacy = rootNames.some(isLegacyConfigFilename);
   const journal = rootNames.includes("migration-v3.json");
   checks.push(
     legacy || journal

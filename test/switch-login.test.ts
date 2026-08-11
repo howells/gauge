@@ -141,3 +141,65 @@ test("switchClaudeSession refuses an unparseable stored payload", async () => {
   // Refused before the keychain is touched at all.
   assert.throws(() => switchClaudeSession("broken", dataDir, home));
 });
+
+test("switchClaudeSession keeps displaced credentials outside the migration namespace", async (t) => {
+  const { switchClaudeSession, captureClaudeSession } = await import(
+    "../src/services/claude-session.js"
+  );
+  const { dataDir, home } = scratch();
+  captureClaudeSession(dataDir, "next", {
+    credentials: JSON.stringify({ claudeAiOauth: { accessToken: "next" } }),
+    keychainAccount: "next-account",
+    profile: { emailAddress: "next@example.com" },
+  });
+  fs.mkdirSync(home, { recursive: true });
+  fs.writeFileSync(
+    path.join(home, ".claude.json"),
+    JSON.stringify({ oauthAccount: { emailAddress: "previous@example.com" } }),
+    { mode: 0o600 },
+  );
+
+  const bin = fs.mkdtempSync(path.join(os.tmpdir(), "gauge-security-bin-"));
+  const security = path.join(bin, "security");
+  fs.writeFileSync(
+    security,
+    `#!/usr/bin/env node
+const args = process.argv.slice(2);
+if (args[0] === "find-generic-password" && args.includes("-w")) {
+  process.stdout.write('{"claudeAiOauth":{"accessToken":"previous"}}\\n');
+} else if (args[0] === "find-generic-password") {
+  process.stdout.write('"acct"<blob>="previous-account"\\n');
+} else if (args[0] !== "add-generic-password") {
+  process.exitCode = 1;
+}
+`,
+    { mode: 0o700 },
+  );
+  const originalPath = process.env.PATH;
+  const originalPlatform = process.platform;
+  process.env.PATH = `${bin}:${originalPath ?? ""}`;
+  t.after(() => {
+    process.env.PATH = originalPath;
+    Object.defineProperty(process, "platform", { value: originalPlatform });
+    fs.rmSync(bin, { force: true, recursive: true });
+  });
+  Object.defineProperty(process, "platform", { value: "darwin" });
+
+  const result = switchClaudeSession("next", dataDir, home);
+
+  const expectedBackup = path.join(
+    dataDir,
+    "backups",
+    "claude-session.previous.json",
+  );
+  assert.equal(result.backedUp, expectedBackup);
+  assert.equal(fs.statSync(expectedBackup).mode & 0o777, 0o600);
+  assert.equal(
+    JSON.parse(fs.readFileSync(expectedBackup, "utf8")).profile.emailAddress,
+    "previous@example.com",
+  );
+  assert.equal(
+    fs.existsSync(path.join(dataDir, "claude-session.previous.json")),
+    false,
+  );
+});
