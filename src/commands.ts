@@ -25,6 +25,7 @@ interface CommandOptions extends OutputOptions {
   quick?: boolean;
   quiet?: boolean;
   renewsAt?: string;
+  signal?: AbortSignal;
   storageStateFile?: string;
   storageStateJson?: string;
 }
@@ -253,6 +254,7 @@ export async function runAddCommand(
     const success = await addCursorAccount(payload.name, {
       authKey: artifacts.authKey,
       quiet: options.quiet,
+      signal: options.signal,
     });
     if (!success) {
       throw new CLIError(`Failed to add Cursor account "${payload.name}".`, {
@@ -274,7 +276,10 @@ export async function runAddCommand(
     };
   }
 
-  const success = await addAccount(payload.name, { quiet: options.quiet });
+  const success = await addAccount(payload.name, {
+    quiet: options.quiet,
+    signal: options.signal,
+  });
   if (!success) {
     throw new CLIError(`Failed to add account "${payload.name}".`, {
       code: "ADD_FAILED",
@@ -381,6 +386,7 @@ export async function runRefreshCommand(
     const success = await addCursorAccount(payload.name, {
       authKey: artifacts.authKey,
       quiet: options.quiet,
+      signal: options.signal,
     });
     if (!success) {
       throw new CLIError(
@@ -407,7 +413,10 @@ export async function runRefreshCommand(
     };
   }
 
-  const success = await addAccount(payload.name, { quiet: options.quiet });
+  const success = await addAccount(payload.name, {
+    quiet: options.quiet,
+    signal: options.signal,
+  });
   if (!success) {
     throw new CLIError(`Failed to refresh account "${payload.name}".`, {
       code: "REFRESH_FAILED",

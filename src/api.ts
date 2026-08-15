@@ -56,12 +56,14 @@ const USER_AGENT =
 /** Open a Chrome browser for the user to log in and persist the session. */
 export async function addAccount(
   name: string,
-  options: { authKey?: string; quiet?: boolean } = {},
+  options: { authKey?: string; quiet?: boolean; signal?: AbortSignal } = {},
 ): Promise<boolean> {
   assertChromeInstalled();
   const authKey = options.authKey ?? name;
   const profileDir = getProfileDir(authKey);
   const quiet = options.quiet ?? false;
+  const signal = options.signal;
+  throwIfAborted(signal);
 
   // Use launchPersistentContext with a real Chrome executable
   // This creates a more realistic browser fingerprint
@@ -89,55 +91,65 @@ export async function addAccount(
     ignoreDefaultArgs: ["--enable-automation"],
   });
 
-  const page = context.pages()[0] || (await context.newPage());
-
-  await page.goto(`${CLAUDE_URL}/login`, { waitUntil: "domcontentloaded" });
-
-  const loginDetected = await waitForLoginSignal(page, LOGIN_TIMEOUT_MS);
-  if (!loginDetected) {
-    if (!quiet) {
-      console.error("Login timed out. Please try again.");
-    }
-    await context.close();
-    return false;
-  }
-
-  if (!quiet) {
-    console.log("Login detected, verifying...");
-  }
-
-  // Give it a moment for cookies to settle
-  await page.waitForTimeout(2000);
-
   try {
-    await assertLoggedIn(page);
-  } catch {
-    if (!quiet) {
-      console.error(
-        "Login verification failed. Please make sure you're logged in.",
-      );
+    throwIfAborted(signal);
+    const page = context.pages()[0] || (await context.newPage());
+
+    await raceWithAbort(
+      page.goto(`${CLAUDE_URL}/login`, { waitUntil: "domcontentloaded" }),
+      signal,
+    );
+
+    const loginDetected = await waitForLoginSignal(
+      page,
+      LOGIN_TIMEOUT_MS,
+      signal,
+    );
+    if (!loginDetected) {
+      if (!quiet) {
+        console.error("Login timed out. Please try again.");
+      }
+      return false;
     }
+
+    if (!quiet) {
+      console.log("Login detected, verifying...");
+    }
+
+    // Give it a moment for cookies to settle
+    await waitForTimeout(page, 2000, signal);
+
+    try {
+      await assertLoggedIn(page);
+    } catch {
+      if (!quiet) {
+        console.error(
+          "Login verification failed. Please make sure you're logged in.",
+        );
+      }
+      return false;
+    }
+
+    const storagePath = getStorageStatePath(authKey);
+    await context.storageState({ path: storagePath });
+    lockFile(storagePath);
+    return true;
+  } finally {
     await context.close();
-    return false;
   }
-
-  const storagePath = getStorageStatePath(authKey);
-  await context.storageState({ path: storagePath });
-  lockFile(storagePath);
-
-  await context.close();
-  return true;
 }
 
 /** Open Chrome for Cursor login and persist the session as storage state. */
 export async function addCursorAccount(
   name: string,
-  options: { authKey?: string; quiet?: boolean } = {},
+  options: { authKey?: string; quiet?: boolean; signal?: AbortSignal } = {},
 ): Promise<boolean> {
   assertChromeInstalled();
   const authKey = options.authKey ?? name;
   const profileDir = getProfileDir(authKey);
   const quiet = options.quiet ?? false;
+  const signal = options.signal;
+  throwIfAborted(signal);
 
   if (!quiet) {
     console.log(`\nOpening browser for Cursor account "${name}"...`);
@@ -160,25 +172,35 @@ export async function addCursorAccount(
     ignoreDefaultArgs: ["--enable-automation"],
   });
 
-  const page = context.pages()[0] || (await context.newPage());
-  await page.goto(`${CURSOR_URL}/login`, { waitUntil: "domcontentloaded" });
+  try {
+    throwIfAborted(signal);
+    const page = context.pages()[0] || (await context.newPage());
+    await raceWithAbort(
+      page.goto(`${CURSOR_URL}/login`, { waitUntil: "domcontentloaded" }),
+      signal,
+    );
 
-  const loginDetected = await waitForCursorLoginSignal(page, LOGIN_TIMEOUT_MS);
-  if (!loginDetected) {
-    if (!quiet) {
-      console.error("Cursor login timed out. Please try again.");
+    const loginDetected = await waitForCursorLoginSignal(
+      page,
+      LOGIN_TIMEOUT_MS,
+      signal,
+    );
+    if (!loginDetected) {
+      if (!quiet) {
+        console.error("Cursor login timed out. Please try again.");
+      }
+      return false;
     }
+
+    await waitForTimeout(page, 1000, signal);
+    const storagePath = getStorageStatePath(authKey);
+    await context.storageState({ path: storagePath });
+    lockFile(storagePath);
+
+    return true;
+  } finally {
     await context.close();
-    return false;
   }
-
-  await page.waitForTimeout(1000);
-  const storagePath = getStorageStatePath(authKey);
-  await context.storageState({ path: storagePath });
-  lockFile(storagePath);
-
-  await context.close();
-  return true;
 }
 
 /** Fetch usage data for a single account, falling back to browser if the API request fails. */
@@ -308,9 +330,11 @@ export async function fetchAllUsage(
 async function waitForLoginSignal(
   page: Page,
   timeoutMs: number,
+  signal?: AbortSignal,
 ): Promise<boolean> {
   const start = Date.now();
   while (Date.now() - start < timeoutMs) {
+    throwIfAborted(signal);
     const currentUrl = page.url();
     if (LOGIN_URL_RE.test(currentUrl)) {
       return true;
@@ -332,7 +356,7 @@ async function waitForLoginSignal(
       // Ignore transient navigation errors while the user is logging in.
     }
 
-    await page.waitForTimeout(2000);
+    await waitForTimeout(page, 2000, signal);
   }
   return false;
 }
@@ -340,9 +364,11 @@ async function waitForLoginSignal(
 async function waitForCursorLoginSignal(
   page: Page,
   timeoutMs: number,
+  signal?: AbortSignal,
 ): Promise<boolean> {
   const start = Date.now();
   while (Date.now() - start < timeoutMs) {
+    throwIfAborted(signal);
     if (/cursor\.com/i.test(page.url())) {
       try {
         const ok = await page.evaluate(async () => {
@@ -363,9 +389,39 @@ async function waitForCursorLoginSignal(
       }
     }
 
-    await page.waitForTimeout(2000);
+    await waitForTimeout(page, 2000, signal);
   }
   return false;
+}
+
+function throwIfAborted(signal: AbortSignal | undefined): void {
+  if (signal?.aborted) {
+    throw new Error("Cancelled");
+  }
+}
+
+async function raceWithAbort<T>(
+  promise: Promise<T>,
+  signal: AbortSignal | undefined,
+): Promise<T> {
+  if (!signal) return promise;
+  throwIfAborted(signal);
+  return Promise.race([promise, abortPromise(signal)]);
+}
+
+async function waitForTimeout(
+  page: Page,
+  ms: number,
+  signal: AbortSignal | undefined,
+): Promise<void> {
+  await raceWithAbort(page.waitForTimeout(ms), signal);
+}
+
+function abortPromise(signal: AbortSignal): Promise<never> {
+  return new Promise((_, reject) => {
+    const abort = (): void => reject(new Error("Cancelled"));
+    signal.addEventListener("abort", abort, { once: true });
+  });
 }
 
 async function assertLoggedIn(page: Page): Promise<void> {

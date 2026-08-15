@@ -295,6 +295,9 @@ export function formatInteractiveDashboard(
 
   if (statusMessage) {
     lines.push(`${INDENT}${chalk.dim(statusMessage)}`);
+    lines.push(
+      `${INDENT}${chalk.dim("a  add account   ·   r  refresh   ·   q  quit")}`,
+    );
     lines.push("");
   } else {
     lines.push(recommendationLine(groups));
@@ -304,7 +307,11 @@ export function formatInteractiveDashboard(
     const selected = rows[selectedIndex];
     const canRefresh =
       selected?.claude?.error != null || selected?.cursor?.error != null;
-    const hintParts = [chalk.dim("↑↓  j/k  navigate"), chalk.dim("r  refresh")];
+    const hintParts = [
+      chalk.dim("↑↓  j/k  navigate"),
+      chalk.dim("a  add account"),
+      chalk.dim("r  refresh"),
+    ];
     if (canRefresh) hintParts.push(chalk.dim("enter  re-auth"));
     hintParts.push(chalk.dim("q  quit"));
     lines.push(`${INDENT}${hintParts.join(chalk.dim("   ·   "))}`);

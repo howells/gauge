@@ -3,6 +3,7 @@ import readline from "node:readline";
 import chalk from "chalk";
 import { listAccountDetails } from "./accounts.js";
 import { addAccount, addCursorAccount, fetchAllUsage } from "./api.js";
+import { runAddCommand } from "./commands.js";
 import { markCurrentAccounts } from "./current-account.js";
 import {
   buildGrid,
@@ -12,8 +13,30 @@ import {
   type ProviderGroups,
 } from "./display.js";
 import { fetchCodexAccounts, fetchCursorAccounts } from "./provider-usage.js";
+import type { Provider } from "./types.js";
 
 const INDENT = "   ";
+const PROVIDER_CHOICES: Array<{
+  description: string;
+  label: string;
+  provider: Provider;
+}> = [
+  {
+    description: "browser login or storage-state file",
+    label: "Claude",
+    provider: "claude",
+  },
+  {
+    description: "existing Codex home with auth.json",
+    label: "Codex",
+    provider: "codex",
+  },
+  {
+    description: "browser login or storage-state file",
+    label: "Cursor",
+    provider: "cursor",
+  },
+];
 
 async function fetchAllGroups(): Promise<ProviderGroups> {
   const allConfigs = listAccountDetails();
@@ -58,6 +81,8 @@ export async function runTUI(): Promise<void> {
   let selectedIndex = 0;
   let statusMessage: string | null = null;
   let isProcessing = false;
+  let activeBrowserAbort: AbortController | null = null;
+  let activeBrowserAbortCleanup: (() => void) | null = null;
   let lastLineCount = 0;
 
   function writeLines(content: string): void {
@@ -66,6 +91,11 @@ export async function runTUI(): Promise<void> {
     }
     process.stdout.write(content);
     lastLineCount = (content.match(/\n/g) ?? []).length;
+  }
+
+  function clearScreen(): void {
+    process.stdout.write("\x1b[2J\x1b[H");
+    lastLineCount = 0;
   }
 
   writeLines(
@@ -112,6 +142,18 @@ export async function runTUI(): Promise<void> {
   ): Promise<void> => {
     if (!key) return;
 
+    if (
+      activeBrowserAbort &&
+      (key.name === "escape" ||
+        key.name === "q" ||
+        (key.ctrl && key.name === "c"))
+    ) {
+      statusMessage = "Cancelling browser auth...";
+      activeBrowserAbort.abort();
+      redraw();
+      return;
+    }
+
     if ((key.ctrl && key.name === "c") || key.name === "q") {
       cleanup();
       process.exit(0);
@@ -138,6 +180,13 @@ export async function runTUI(): Promise<void> {
       return;
     }
 
+    if (key.name === "a") {
+      isProcessing = true;
+      await doAddAccount();
+      isProcessing = false;
+      return;
+    }
+
     if (key.name === "return") {
       const row = rows[selectedIndex];
       if (row?.claude?.error != null || row?.cursor?.error != null) {
@@ -150,29 +199,130 @@ export async function runTUI(): Promise<void> {
 
   process.stdin.on("keypress", onKeypress);
 
-  async function doRefresh(row: GridRow): Promise<void> {
+  async function doAddAccount(): Promise<void> {
+    process.stdin.off("keypress", onKeypress);
     process.stdin.setRawMode(false);
+    clearScreen();
+    process.stdout.write(formatAddHeader());
+
+    try {
+      const provider = await promptProvider();
+      if (!provider) {
+        statusMessage = "Add cancelled.";
+        return;
+      }
+
+      const name = await promptRequired("Account name");
+      if (!name) {
+        statusMessage = "Add cancelled.";
+        return;
+      }
+
+      const options: {
+        codexHome?: string;
+        dryRun?: boolean;
+        provider: Provider;
+        quiet: boolean;
+        renewsAt?: string;
+        storageStateFile?: string;
+      } = {
+        provider,
+        quiet: true,
+      };
+
+      if (provider === "codex") {
+        const codexHome = await promptRequired(
+          "Codex home",
+          process.env.CODEX_HOME ?? "~/.codex",
+        );
+        if (!codexHome) {
+          statusMessage = "Add cancelled.";
+          return;
+        }
+        options.codexHome = expandHomePath(codexHome);
+      } else {
+        const storageStateFile = await promptLine(
+          "Storage-state file (blank opens browser)",
+        );
+        if (isCancelInput(storageStateFile)) {
+          statusMessage = "Add cancelled.";
+          return;
+        }
+        if (storageStateFile) {
+          options.storageStateFile = expandHomePath(storageStateFile);
+        }
+      }
+
+      const renewsAt = await promptLine("Renewal date (optional, YYYY-MM-DD)");
+      if (isCancelInput(renewsAt)) {
+        statusMessage = "Add cancelled.";
+        return;
+      }
+      if (renewsAt) options.renewsAt = renewsAt;
+
+      if (!options.storageStateFile && provider !== "codex") {
+        process.stdout.write(
+          `\nOpening browser for ${provider}:${name}. Log in, then close the tab. Press Esc or q here to cancel.\n`,
+        );
+      }
+
+      const signal =
+        !options.storageStateFile && provider !== "codex"
+          ? beginBrowserAuthCancel()
+          : undefined;
+      try {
+        await runAddCommand(name, { ...options, dryRun: false, signal });
+      } finally {
+        endBrowserAuthCancel();
+      }
+      await reloadValues("Reloading...");
+      statusMessage = `Added ${provider}:${name}.`;
+    } catch (error) {
+      const message = error instanceof Error ? error.message : String(error);
+      statusMessage = message === "Cancelled" ? "Add cancelled." : message;
+    } finally {
+      if (process.stdin.isTTY) process.stdin.setRawMode(true);
+      process.stdin.resume();
+      process.stdin.on("keypress", onKeypress);
+      clearScreen();
+      redraw();
+    }
+  }
+
+  async function doRefresh(row: GridRow): Promise<void> {
+    process.stdin.setRawMode(true);
     const provider = row.claude?.error ? "claude" : "cursor";
-    statusMessage = `Opening browser for ${provider}:${row.label} — log in and close the tab...`;
+    statusMessage = `Opening browser for ${provider}:${row.label} — log in and close the tab. Esc/q cancels.`;
     redraw();
 
     const account = listAccountDetails(provider).find(
       (item) => item.name === row.label,
     );
-    const ok =
-      provider === "claude"
-        ? await addAccount(row.label, {
-            authKey: account?.authKey,
-            quiet: true,
-          })
-        : await addCursorAccount(row.label, {
-            authKey: account?.authKey,
-            quiet: true,
-          });
+    const signal = beginBrowserAuthCancel();
+    let ok = false;
+    try {
+      ok =
+        provider === "claude"
+          ? await addAccount(row.label, {
+              authKey: account?.authKey,
+              quiet: true,
+              signal,
+            })
+          : await addCursorAccount(row.label, {
+              authKey: account?.authKey,
+              quiet: true,
+              signal,
+            });
+    } catch (error) {
+      const message = error instanceof Error ? error.message : String(error);
+      statusMessage = message === "Cancelled" ? "Re-auth cancelled." : message;
+    } finally {
+      endBrowserAuthCancel();
+    }
 
     if (ok) {
       await reloadValues("Reloading...");
-    } else {
+    } else if (statusMessage === null) {
       statusMessage = `Re-auth failed for ${row.label}  ·  enter to retry`;
     }
 
@@ -185,4 +335,112 @@ export async function runTUI(): Promise<void> {
     process.stdin.off("keypress", onKeypress);
     process.stdout.write("\n");
   }
+
+  function beginBrowserAuthCancel(): AbortSignal {
+    const controller = new AbortController();
+    const abort = (): void => {
+      if (controller.signal.aborted) return;
+      statusMessage = "Cancelling browser auth...";
+      controller.abort();
+      redraw();
+    };
+    const onData = (chunk: Buffer): void => {
+      if (
+        chunk.includes(0x03) ||
+        chunk.includes(0x1b) ||
+        chunk.includes(0x71)
+      ) {
+        abort();
+      }
+    };
+    activeBrowserAbort = controller;
+    activeBrowserAbortCleanup = () => {
+      process.stdin.off("data", onData);
+    };
+    if (process.stdin.isTTY) process.stdin.setRawMode(true);
+    process.stdin.resume();
+    process.stdin.on("data", onData);
+    return controller.signal;
+  }
+
+  function endBrowserAuthCancel(): void {
+    activeBrowserAbort = null;
+    activeBrowserAbortCleanup?.();
+    activeBrowserAbortCleanup = null;
+  }
+}
+
+function formatAddHeader(): string {
+  const lines = [
+    "",
+    `${INDENT}${chalk.bold("Add account")}`,
+    "",
+    ...PROVIDER_CHOICES.map(
+      (choice, index) =>
+        `${INDENT}${index + 1}. ${choice.label.padEnd(6)} ${chalk.dim(choice.description)}`,
+    ),
+    "",
+    `${INDENT}${chalk.dim("Type q at any prompt to cancel.")}`,
+    "",
+  ];
+  return lines.join("\n");
+}
+
+async function promptProvider(): Promise<Provider | null> {
+  const answer = await promptLine("Provider [1/2/3 or claude/codex/cursor]");
+  if (isCancelInput(answer)) return null;
+  const normalized = answer.toLowerCase();
+  if (normalized === "1" || normalized === "claude" || normalized === "c") {
+    return "claude";
+  }
+  if (normalized === "2" || normalized === "codex" || normalized === "x") {
+    return "codex";
+  }
+  if (normalized === "3" || normalized === "cursor" || normalized === "u") {
+    return "cursor";
+  }
+  process.stdout.write("Choose 1, 2, 3, claude, codex, or cursor.\n");
+  return promptProvider();
+}
+
+async function promptRequired(
+  label: string,
+  defaultValue?: string,
+): Promise<string | null> {
+  const answer = await promptLine(label, defaultValue);
+  if (isCancelInput(answer)) return null;
+  if (answer) return answer;
+  process.stdout.write(`${label} is required.\n`);
+  return promptRequired(label, defaultValue);
+}
+
+async function promptLine(
+  label: string,
+  defaultValue?: string,
+): Promise<string> {
+  const suffix = defaultValue ? ` (${defaultValue})` : "";
+  return new Promise((resolve) => {
+    const rl = readline.createInterface({
+      input: process.stdin,
+      output: process.stdout,
+    });
+    rl.question(`${INDENT}${label}${suffix}: `, (answer) => {
+      rl.close();
+      const trimmed = answer.trim();
+      resolve(trimmed || defaultValue || "");
+    });
+  });
+}
+
+function isCancelInput(value: string): boolean {
+  const normalized = value.trim().toLowerCase();
+  return normalized === "q" || normalized === "quit" || normalized === "cancel";
+}
+
+function expandHomePath(value: string): string {
+  if (value === "~") return process.env.HOME ?? value;
+  if (value.startsWith("~/")) {
+    return `${process.env.HOME ?? "~"}${value.slice(1)}`;
+  }
+  return value;
 }
