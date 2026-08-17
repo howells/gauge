@@ -2,6 +2,7 @@ import fs from "node:fs";
 import os from "node:os";
 import path from "node:path";
 import process from "node:process";
+import { codexHomesRoot } from "./codex-home.js";
 
 /**
  * Point a tool on this machine at a different account gauge already holds.
@@ -28,7 +29,7 @@ export interface CodexSwitchTarget {
 
 /** The accounts a Codex switch could move to, newest credentials first. */
 export function codexSwitchTargets(dataDir: string): CodexSwitchTarget[] {
-  const root = path.join(dataDir, "codex-homes");
+  const root = codexHomesRoot(dataDir);
   let names: string[];
   try {
     names = fs.readdirSync(root);

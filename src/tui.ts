@@ -4,16 +4,23 @@ import readline from "node:readline";
 import chalk from "chalk";
 import {
   codexLoginRemedy,
+  runAddCommand,
   runRefreshCommand,
   runStatusCommand,
 } from "./commands.js";
-import { getDataDir } from "./paths.js";
+import { assertSafeName, getDataDir } from "./paths.js";
 import {
   captureClaudeSession,
   capturedClaudeSessions,
   readClaudeSession,
   switchClaudeSession,
 } from "./services/claude-session.js";
+import {
+  codexHomeHasLogin,
+  createCodexHome,
+  managedCodexHome,
+  resolveCodexHomeInput,
+} from "./services/codex-home.js";
 import { claudeAccountNamesByUuid } from "./services/machine-logins.js";
 import {
   renderStatusDashboard,
@@ -37,6 +44,19 @@ interface BrokenAccount {
   name: string;
   provider: string;
 }
+
+/**
+ * What each column is called when the subject is the account, not the app.
+ *
+ * Deliberately not the app names the sign-in offer uses: you sign *Claude Code*
+ * in, but the thing you add is a *Claude* account, and the two are only the same
+ * word by coincidence for Codex.
+ */
+const SURFACE_NAME: Record<"claude" | "codex" | "cursor", string> = {
+  claude: "Claude",
+  codex: "Codex",
+  cursor: "Cursor",
+};
 
 /**
  * The accounts in a status payload that failed to read.
@@ -113,27 +133,40 @@ function footer(
               ? `log in to Codex as ${selected?.label}`
               : "log in to Claude Code",
           )}`;
+  // Two lines, split by what the key depends on. Everything above moves the
+  // cursor or acts on the whole view; everything below acts on the one cell the
+  // cursor is in, and rereads differently as it moves. One run of them came to
+  // 113 columns against a 112-column grid, which is the point at which a legend
+  // stops being glanceable anyway.
   const keys = [
     `${chalk.bold("↑↓")} ${chalk.dim("account")}`,
     `${chalk.bold("←→")} ${chalk.dim("app")}`,
-    action,
+    `${chalk.bold("a")} ${chalk.dim("add account")}`,
     `${chalk.bold("r")} ${chalk.dim("reload")}`,
     `${chalk.bold("q")} ${chalk.dim("quit")}`,
   ].join(chalk.dim("  ·  "));
-  if (broken.length === 0) return `   ${keys}\n`;
-  const offers = broken
-    .map(
-      (account, index) =>
-        `${chalk.bold(String(index + 1))} ${chalk.dim(`re-auth ${account.provider}:${account.name}`)}`,
-    )
-    .join(chalk.dim("  ·  "));
-  return `   ${keys}\n   ${offers}\n`;
+  const lines = [keys, action];
+  if (broken.length > 0) {
+    lines.push(
+      broken
+        .map(
+          (account, index) =>
+            `${chalk.bold(String(index + 1))} ${chalk.dim(`re-auth ${account.provider}:${account.name}`)}`,
+        )
+        .join(chalk.dim("  ·  ")),
+    );
+  }
+  return `${lines.map((line) => `   ${line}`).join("\n")}\n`;
 }
 
 /** Present the shared status service as a small keyboard-controlled terminal view. */
 export async function runTUI(): Promise<void> {
   let previousLineCount = 0;
   let processing = false;
+  // A typed answer is not a set of shortcuts. While a prompt is open every key
+  // belongs to the line being typed, or `q` in the middle of an account name
+  // would quit the view it was being added to.
+  let prompting = false;
   let broken: BrokenAccount[] = [];
   let targets: SwitchTarget[] = [];
   let rowLabels: string[] = [];
@@ -383,6 +416,224 @@ export async function runTUI(): Promise<void> {
     refreshTargets();
   };
 
+  /**
+   * One line of typed input, read from the keypress stream the view already owns.
+   *
+   * Not `readline.createInterface`, which is the obvious way and does not work
+   * here: a second interface over the same stdin takes the keypress machinery
+   * with it when it closes, and the view is left with a terminal in raw mode that
+   * no longer emits anything — the grid draws, and every key after the prompt is
+   * swallowed. Echoing the line by hand is a few more lines than the handoff and
+   * leaves exactly one input regime for the whole view.
+   *
+   * Ctrl-C and escape cancel the answer rather than the process — abandoning half
+   * an account name is not abandoning the dashboard — and are reported as `null`
+   * so a caller can tell them apart from an empty line, which usually means "take
+   * the default you just showed me".
+   */
+  const ask = async (question: string): Promise<string | null> => {
+    // Raw mode only for the length of the answer. Everything else this flow
+    // prints — and everything the browser login prints through it — wants the
+    // terminal's ordinary line discipline, or a plain "\n" leaves the cursor
+    // where it was and the output walks off to the right.
+    process.stdin.setRawMode(true);
+    process.stdout.write(question);
+    const typed: string[] = [];
+    return await new Promise<string | null>((resolve) => {
+      const onKey = (
+        value: string | undefined,
+        key: {
+          ctrl?: boolean;
+          meta?: boolean;
+          name?: string;
+          sequence?: string;
+        },
+      ): void => {
+        const done = (answer: string | null): void => {
+          process.stdin.off("keypress", onKey);
+          process.stdin.setRawMode(false);
+          process.stdout.write("\n");
+          resolve(answer);
+        };
+        if ((key.ctrl && key.name === "c") || key.name === "escape") {
+          done(null);
+          return;
+        }
+        if (key.name === "return" || key.name === "enter") {
+          done(typed.join("").trim());
+          return;
+        }
+        if (key.name === "backspace") {
+          if (typed.pop() !== undefined) process.stdout.write("\b \b");
+          return;
+        }
+        // Printable single characters only. A control byte or an arrow key's
+        // escape sequence must never reach the answer: both would be invisible
+        // in the echo and would then be validated as part of a name.
+        const character = value ?? key.sequence ?? "";
+        if (key.ctrl || key.meta || character.length !== 1) return;
+        if (character < " " || character === "\x7f") return;
+        typed.push(character);
+        process.stdout.write(character);
+      };
+      process.stdin.on("keypress", onKey);
+    });
+  };
+
+  /**
+   * Which app the account is for, defaulting to the column the cursor is in.
+   *
+   * Asked rather than taken from the column, even though the column is nearly
+   * always the answer. The grid only draws a column for an app that already has
+   * an account in it, so a first Codex account has no cell to stand on and the
+   * column alone could never reach one — which is most of the point of being
+   * able to add from here. Enter takes the default, so the common case is still
+   * one keystroke.
+   */
+  const askProvider = async (
+    fallback: "claude" | "codex" | "cursor" | undefined,
+  ): Promise<"claude" | "codex" | "cursor" | null> => {
+    const preset = fallback ?? "claude";
+    for (;;) {
+      const answer = await ask(
+        `   ${chalk.dim(`app claude/codex/cursor [${preset}]:`)} `,
+      );
+      if (answer === null) return null;
+      if (answer === "") return preset;
+      const provider = answer.toLowerCase();
+      if (
+        provider === "claude" ||
+        provider === "codex" ||
+        provider === "cursor"
+      ) {
+        return provider;
+      }
+      process.stdout.write(
+        `   ${chalk.dim(`"${answer}" is not one of them.`)}\n`,
+      );
+    }
+  };
+
+  /** Whether gauge already tracks this name for this app. */
+  const alreadyConfigured = (name: string, provider: string): boolean =>
+    (snapshot?.views ?? []).some(
+      (view) =>
+        view.source === "configured" &&
+        view.provider === provider &&
+        view.name === name,
+    );
+
+  /**
+   * Give a new Codex account a home of its own, logging in if it has none.
+   *
+   * The Codex CLI reads whichever `auth.json` sits in `CODEX_HOME`, so a second
+   * account is a second directory — and `gauge add codex` will only accept one
+   * that already holds a login. Offering gauge's own path as the default is what
+   * makes a *new* account possible from here: point the CLI's login at an empty
+   * home and the credentials land somewhere gauge can switch back to. Typing an
+   * existing home instead imports the login already in it, untouched.
+   */
+  const prepareCodexHome = async (name: string): Promise<string | null> => {
+    const managed = managedCodexHome(getDataDir(), name);
+    const typed = await ask(`   ${chalk.dim(`codex home [${managed}]:`)} `);
+    if (typed === null) return null;
+    const home = typed === "" ? managed : resolveCodexHomeInput(typed);
+    if (codexHomeHasLogin(home)) return home;
+
+    createCodexHome(home);
+    process.stdout.write(
+      `\n   ${chalk.dim(`no login there yet · codex login · CODEX_HOME=${home}`)}\n\n`,
+    );
+    const login = spawnSync("codex", ["login"], {
+      env: { ...process.env, CODEX_HOME: home },
+      stdio: "inherit",
+    });
+    if (login.error) throw login.error;
+    if (login.status !== 0) {
+      throw new Error(`codex login exited ${login.status}`);
+    }
+    return home;
+  };
+
+  /**
+   * Add an account to the app the cursor is in, without leaving the view.
+   *
+   * The dashboard is where a person discovers they want another account, and
+   * sending them back to a shell to type a command it could have run itself is
+   * the copying this view exists to remove. The work is `runAddCommand`'s, the
+   * same call the CLI makes — the view contributes the questions and nothing
+   * about how an account is stored.
+   */
+  /**
+   * The questions, in order, and what they produce.
+   *
+   * Separated from the handing-back below so that abandoning the flow is a
+   * `return` like any other. Every one of these exits used to return from the
+   * whole action, which skipped the part that gives the keyboard back — one
+   * cancelled add and the grid stopped responding to any key at all.
+   */
+  const askForNewAccount = async (
+    column: "claude" | "codex" | "cursor" | undefined,
+  ): Promise<string> => {
+    const provider = await askProvider(column);
+    if (provider === null) return chalk.dim("cancelled");
+    const surface = SURFACE_NAME[provider];
+    const name = await ask(`   ${chalk.dim("name:")} `);
+    if (name === null || name === "") return chalk.dim("cancelled");
+    // Checked before anything is opened or logged in to, because both of the
+    // failures below are certain in advance and neither is worth discovering at
+    // the end of a browser flow.
+    assertSafeName(name);
+    if (alreadyConfigured(name, provider)) {
+      return `${chalk.red("✗")} ${chalk.dim(`${surface} already has an account called ${name}`)}`;
+    }
+
+    let codexHome: string | undefined;
+    if (provider === "codex") {
+      const home = await prepareCodexHome(name);
+      if (home === null) return chalk.dim("cancelled");
+      codexHome = home;
+    } else {
+      process.stdout.write(
+        `\n   ${chalk.dim(`opening a browser to log in to ${surface}`)}\n`,
+      );
+    }
+
+    const result = await runAddCommand(name, { codexHome, provider });
+    const summary = result.human?.trim();
+    return `${chalk.green("✓")} ${chalk.dim(summary || `${surface} account ${name} added`)}`;
+  };
+
+  const addAccount = async (
+    column: "claude" | "codex" | "cursor" | undefined,
+  ): Promise<void> => {
+    prompting = true;
+    process.stdin.setRawMode(false);
+    previousLineCount = 0;
+    process.stdout.write(
+      `\n   ${chalk.cyan("+")} ${chalk.bold("add an account")}\n\n`,
+    );
+    let outcome: string;
+    try {
+      outcome = await askForNewAccount(column);
+    } catch (error) {
+      const message = error instanceof Error ? error.message : String(error);
+      outcome = `${chalk.red("✗")} ${chalk.dim(message)}`;
+    }
+    // Back to the grid's own regime, which is what the wait below reads and what
+    // the key handler expects to find when this returns.
+    process.stdin.setRawMode(true);
+    process.stdout.write(
+      `\n   ${outcome}\n\n   ${chalk.dim("any key to continue")}`,
+    );
+    await new Promise<void>((resolve) =>
+      process.stdin.once("keypress", () => resolve()),
+    );
+    prompting = false;
+    previousLineCount = 0;
+    await reload();
+  };
+
   const signInAs = async (
     name: string,
     provider: "claude" | "codex" | "cursor",
@@ -430,6 +681,9 @@ export async function runTUI(): Promise<void> {
         _value: string,
         key: { ctrl?: boolean; name?: string },
       ): void => {
+        // Checked before the quit keys, not after: while a prompt is open these
+        // keystrokes are letters in an answer, and the prompt has its own ctrl-C.
+        if (prompting) return;
         if ((key.ctrl && key.name === "c") || key.name === "q") {
           resolve();
           return;
@@ -477,6 +731,15 @@ export async function runTUI(): Promise<void> {
           if (provider === "cursor") return;
           processing = true;
           signInAs(name, provider)
+            .catch(reject)
+            .finally(() => {
+              processing = false;
+            });
+          return;
+        }
+        if (key.name === "a") {
+          processing = true;
+          addAccount(columns[column])
             .catch(reject)
             .finally(() => {
               processing = false;
