@@ -21,14 +21,16 @@ jobs:
       - uses: actions/checkout@v4
         with:
           fetch-depth: 0
-      # 10.30.2, not 10.15.1 and not 11.x. Trusted publishing needs pnpm to let
-      # the OIDC token win over the static `_authToken` that setup-node writes;
-      # that fix (pnpm#11495) landed after 10.15.1, so on the old pin an empty
+      # Version comes from `packageManager` in package.json — one source of
+      # truth, because naming it here as well is an error, not a belt-and-braces:
+      # action-setup fails outright when the two disagree.
+      #
+      # That pin is 10.30.2, deliberately. Trusted publishing needs pnpm to let
+      # the OIDC token win over the static `_authToken` setup-node writes, and
+      # that fix (pnpm#11495) landed after 10.15.1 — so on the old pin an empty
       # token could suppress OIDC. pnpm 11 broke OIDC outright (pnpm#11566,
-      # E404 on every package), so this pin must not drift upward past 10.x.
+      # E404 on every package), so this must not drift upward past 10.x.
       - uses: pnpm/action-setup@v4
-        with:
-          version: 10.30.2
       - uses: actions/setup-node@v4
         with:
           node-version: 24
