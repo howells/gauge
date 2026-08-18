@@ -21,9 +21,14 @@ jobs:
       - uses: actions/checkout@v4
         with:
           fetch-depth: 0
+      # 10.30.2, not 10.15.1 and not 11.x. Trusted publishing needs pnpm to let
+      # the OIDC token win over the static `_authToken` that setup-node writes;
+      # that fix (pnpm#11495) landed after 10.15.1, so on the old pin an empty
+      # token could suppress OIDC. pnpm 11 broke OIDC outright (pnpm#11566,
+      # E404 on every package), so this pin must not drift upward past 10.x.
       - uses: pnpm/action-setup@v4
         with:
-          version: 10.15.1
+          version: 10.30.2
       - uses: actions/setup-node@v4
         with:
           node-version: 24
@@ -61,6 +66,9 @@ jobs:
       #   - Or add an automation token as the `NPM_TOKEN` repository secret.
       #
       # Until then this step fails and the tag is published by hand.
+      # No NODE_AUTH_TOKEN. Under trusted publishing the credential is the OIDC
+      # identity from `id-token: write` above, and writing an empty `_authToken`
+      # into .npmrc is the thing that stops it being used. If you ever go back
+      # to a token, restore the env block and pin pnpm >= 10.30.2 so the two
+      # cannot fight.
       - run: pnpm publish --access public --provenance --no-git-checks
-        env:
-          NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
