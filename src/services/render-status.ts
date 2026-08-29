@@ -50,6 +50,29 @@ function timeUntil(iso: string, now: Date): string {
   return `${Math.max(1, minutes)}m`;
 }
 
+/**
+ * A renewal as the date it falls on, not a countdown to it.
+ *
+ * A usage window's reset is a countdown — "free in 2d" is the whole answer. A
+ * billing date is a calendar fact the reader compares against payday and card
+ * expiry, and a rolling "renews 19d" says nothing the reader can put in a
+ * calendar. Rendered in UTC so the day shown is the day the subscription
+ * system recorded, never a local-midnight artefact.
+ */
+function renewalLabel(iso: string, now: Date): string | null {
+  const date = new Date(iso);
+  if (Number.isNaN(date.getTime())) return null;
+  const month = new Intl.DateTimeFormat("en-GB", {
+    day: "numeric",
+    month: "short",
+    timeZone: "UTC",
+  }).format(date);
+  const year = date.getUTCFullYear();
+  return year === now.getUTCFullYear()
+    ? month
+    : `${month} ${String(year).slice(2)}`;
+}
+
 // ─── Meters ──────────────────────────────────────────────────────────────────
 
 const METER_WIDTH = 10;
@@ -121,7 +144,9 @@ function cellStatus(account: StatusAccountView, now: Date): CellStatus {
 
 const INDENT = "   ";
 const COL_LABEL = 21;
-const COL_CELL = 27;
+// Wide enough for the widest claude detail — plan, reading, countdown and the
+// September renewal, whose en-GB month runs four letters.
+const COL_CELL = 34;
 
 const PROVIDER_ORDER: Provider[] = ["claude", "codex", "cursor"];
 const PROVIDER_NAME: Record<Provider, string> = {
@@ -277,27 +302,46 @@ function detailCell(account: StatusAccountView | undefined, now: Date): string {
             ? ""
             : ` · ${timeUntil(second.resetsAt, now)}`
         }`;
-  const renews = account.usage.renewsAt
-    ? `renews ${timeUntil(account.usage.renewsAt, now)}`
-    : null;
+  // Where a drawn countdown already lands on the renewal instant — Cursor's
+  // windows reset on the billing date — the date would say the same thing
+  // twice, so the countdown stands in for it.
+  const renewsAt = account.usage.renewsAt ?? null;
+  const drawnResets = [
+    ...(status.primary && status.primary.usedPercent > 0
+      ? [status.primary.resetsAt]
+      : []),
+    ...(status.secondary ? [status.secondary.resetsAt] : []),
+  ];
+  const renewalDate = renewsAt ? renewalLabel(renewsAt, now) : null;
+  const renewsAtMs = renewsAt ? Date.parse(renewsAt) : null;
+  const renews =
+    renewalDate &&
+    renewsAtMs !== null &&
+    !drawnResets.some(
+      (reset) => reset !== null && Date.parse(reset) === renewsAtMs,
+    )
+      ? `renews ${renewalDate}`
+      : null;
 
   // Widest first, and what goes when it will not fit is a judgement about which
-  // of these is worth the column. The renewal date goes first; then the plan,
-  // which is a static label the reader already knows and the recommendation
-  // line repeats. The usage reading is never what gets dropped — it is the only
-  // part that changes, and dropping it is how a team pool at 59% came to be
-  // trimmed off a row that had just learned how to measure it.
+  // of these is worth the column. The usage reading is never what gets dropped
+  // — it is the only part that changes, and dropping it is how a team pool at
+  // 59% came to be trimmed off a row that had just learned how to measure it.
+  // The plan label goes before the renewal date does: the renewal is the fact
+  // the reader came for, and the plan is the one the recommendation line
+  // already repeats for whichever account it picks.
   for (const tier of [
     [plan, reading, renews],
-    [plan, reading],
+    [reading, renews],
     [reading ?? plan],
+    [renews],
   ]) {
     const line = tier
       .filter((part): part is string => part !== null)
       .join(" · ");
     if (visibleLength(line) <= width) return cell(chalk.dim(line));
   }
-  return cell(chalk.dim(truncate(reading ?? plan ?? "", width)));
+  return cell(chalk.dim(truncate(reading ?? plan ?? renews ?? "", width)));
 }
 
 // ─── Sections ────────────────────────────────────────────────────────────────

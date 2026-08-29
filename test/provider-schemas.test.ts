@@ -106,6 +106,98 @@ test("provider ingress schemas strip unknown fields and bound normalized values"
   // A window the API does not mention at all stays absent.
   assert.equal(idle.seven_day_opus, null);
 
+  // The `limits` array is the fallback reading for the same horizons when the
+  // legacy fields stop being populated, and the model-scoped sub-limit is
+  // never promoted to the whole week.
+  const fromLimits = ClaudeUsageResponseSchema.parse({
+    five_hour: { utilization: 0, resets_at: null },
+    limits: [
+      {
+        kind: "session",
+        group: "session",
+        percent: 12,
+        severity: "normal",
+        resets_at: "2026-08-29T18:00:00Z",
+        scope: null,
+        is_active: true,
+      },
+      {
+        kind: "weekly_all",
+        group: "weekly",
+        percent: 100,
+        severity: "critical",
+        resets_at: "2026-09-05T11:00:00Z",
+        scope: null,
+        is_active: true,
+      },
+      {
+        kind: "weekly_scoped",
+        group: "weekly",
+        percent: 54,
+        severity: "normal",
+        resets_at: "2026-09-05T11:00:00Z",
+        scope: { model: { id: null, display_name: "Fable" }, surface: null },
+        is_active: false,
+      },
+    ],
+  });
+  assert.deepEqual(fromLimits.five_hour, {
+    resets_at: null,
+    utilization: 0,
+  });
+  assert.deepEqual(fromLimits.seven_day, {
+    resets_at: "2026-09-05T11:00:00.000Z",
+    utilization: 100,
+  });
+
+  // A legacy window that is still populated wins over its `limits` twin.
+  const legacyWins = ClaudeUsageResponseSchema.parse({
+    seven_day: { utilization: 93, resets_at: "2026-09-02T09:00:00Z" },
+    limits: [
+      {
+        kind: "weekly_all",
+        group: "weekly",
+        percent: 100,
+        severity: "critical",
+        resets_at: "2026-09-05T11:00:00Z",
+        scope: null,
+        is_active: true,
+      },
+    ],
+  });
+  assert.deepEqual(legacyWins.seven_day, {
+    resets_at: "2026-09-02T09:00:00.000Z",
+    utilization: 93,
+  });
+
+  // Absent legacy field and absent fallback entry alike stay absent.
+  const neither = ClaudeUsageResponseSchema.parse({
+    seven_day: null,
+    limits: [
+      {
+        kind: "weekly_scoped",
+        group: "weekly",
+        percent: 54,
+        severity: "normal",
+        resets_at: null,
+        scope: null,
+        is_active: false,
+      },
+    ],
+  });
+  assert.equal(neither.seven_day, null);
+  assert.equal(neither.five_hour, null);
+
+  const nullLimits = ClaudeUsageResponseSchema.parse({
+    five_hour: { utilization: 8, resets_at: null },
+    limits: null,
+  });
+  assert.deepEqual(nullLimits.five_hour, {
+    resets_at: null,
+    utilization: 8,
+  });
+  assert.equal(nullLimits.seven_day, null);
+
   const codex = CodexUsageResponseSchema.parse({
     plan_type: "pro",
     rate_limit: {
