@@ -10,6 +10,7 @@ import {
   derivePlan,
   extractClaudeRenewal,
   fetchAllUsage,
+  fetchRenewalOnly,
   fetchUsageForAccount,
   normalizeDate,
 } from "../src/api.js";
@@ -177,6 +178,30 @@ test("request acquisition contains usage and optional-renewal failures", async (
     },
   );
   assert.equal(renewalIgnored.renewsAt, "2026-07-30T00:00:00.000Z");
+});
+
+test("optional renewal enrichment contains acquisition and disposal failures", async () => {
+  const storagePath = temporaryFile("state.json", "{}");
+  const acquisitionFailure = {
+    newRequestContext: async () => {
+      throw new Error("request context unavailable");
+    },
+  } as unknown as ApiRuntime;
+  assert.equal(await fetchRenewalOnly(storagePath, acquisitionFailure), null);
+
+  const disposalFailure = requestRuntime(
+    async (url) =>
+      url === "/api/organizations"
+        ? response(200, [organization])
+        : response(200, { next_charge_at: "2026-09-12T10:00:00Z" }),
+    () => {
+      throw new Error("dispose failed");
+    },
+  ) as ApiRuntime;
+  assert.equal(
+    await fetchRenewalOnly(storagePath, disposalFailure),
+    "2026-09-12T10:00:00.000Z",
+  );
 });
 
 test("missing, aborted, and never-refresh acquisitions fail without browser writes", async () => {

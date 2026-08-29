@@ -1,4 +1,5 @@
 import { z } from "zod";
+import { ClaudeLimitSchema, windowFromLimits } from "./upstream-schemas.js";
 
 /**
  * Read a Claude account's usage from its Claude Code OAuth token.
@@ -36,6 +37,11 @@ const Window = z
 const UsageResponse = z.object({
   five_hour: Window,
   seven_day: Window,
+  limits: z
+    .array(ClaudeLimitSchema)
+    .max(100)
+    .nullish()
+    .transform((value) => value ?? undefined),
 });
 
 const ProfileResponse = z.object({
@@ -137,8 +143,19 @@ export async function fetchOAuthUsage(
     });
     if (!usageRes.ok) return null;
     const usage = UsageResponse.parse(await usageRes.json());
-    const session = toWindow(usage.five_hour);
-    const weekly = toWindow(usage.seven_day);
+    // Same fallback as the cookie path: the named window wins, and the
+    // `limits` entry for the same horizon takes over when the legacy field is
+    // no longer populated.
+    const fromLimits = (
+      kind: "session" | "weekly_all",
+    ): OAuthUsageWindow | null => {
+      const window = windowFromLimits(usage.limits, kind);
+      return window
+        ? { resetsAt: window.resets_at, usedPercent: window.utilization }
+        : null;
+    };
+    const session = toWindow(usage.five_hour) ?? fromLimits("session");
+    const weekly = toWindow(usage.seven_day) ?? fromLimits("weekly_all");
     if (!session && !weekly) return null;
 
     // The profile is what names the plan; usage alone cannot. A failure here

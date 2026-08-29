@@ -118,6 +118,77 @@ test("fetchOAuthUsage keeps the reading when only the profile fails", async () =
   assert.equal(reading?.weekly, null);
 });
 
+test("fetchOAuthUsage falls back to the limits array when the legacy weekly field is gone", async () => {
+  const reading = await fetchOAuthUsage(
+    "token",
+    responder({
+      "/api/oauth/usage": {
+        status: 200,
+        body: {
+          five_hour: { utilization: 0, resets_at: null },
+          seven_day: null,
+          limits: [
+            {
+              kind: "session",
+              group: "session",
+              percent: 0,
+              severity: "normal",
+              resets_at: null,
+              scope: null,
+              is_active: true,
+            },
+            {
+              kind: "weekly_all",
+              group: "weekly",
+              percent: 100,
+              severity: "critical",
+              resets_at: "2026-09-05T11:00:00Z",
+              scope: null,
+              is_active: true,
+            },
+            {
+              kind: "weekly_scoped",
+              group: "weekly",
+              percent: 54,
+              severity: "normal",
+              resets_at: "2026-09-05T11:00:00Z",
+              scope: { model: { id: null, display_name: "Fable" } },
+              is_active: false,
+            },
+          ],
+        },
+      },
+      "/api/oauth/profile": { status: 500 },
+    }),
+  );
+
+  assert.deepEqual(reading?.session, { resetsAt: null, usedPercent: 0 });
+  assert.deepEqual(reading?.weekly, {
+    resetsAt: "2026-09-05T11:00:00.000Z",
+    usedPercent: 100,
+  });
+});
+
+test("fetchOAuthUsage treats null limits as absent", async () => {
+  const reading = await fetchOAuthUsage(
+    "token",
+    responder({
+      "/api/oauth/usage": {
+        status: 200,
+        body: {
+          five_hour: { utilization: 10, resets_at: null },
+          seven_day: null,
+          limits: null,
+        },
+      },
+      "/api/oauth/profile": { status: 500 },
+    }),
+  );
+
+  assert.deepEqual(reading?.session, { resetsAt: null, usedPercent: 10 });
+  assert.equal(reading?.weekly, null);
+});
+
 test("planFromRateLimitTier names the tiers the dashboard shows", () => {
   // Codes, because `local-adapters` owns the one map from code to label.
   assert.equal(planFromRateLimitTier("default_claude_max_20x"), "max_20x");

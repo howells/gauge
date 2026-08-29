@@ -291,6 +291,17 @@ export async function fetchUsageForAccount(
   // is a reason to fall through quietly and never a reason to fail an account.
   const viaToken = await fetchUsageViaOAuth(name, renewsAt);
   if (viaToken) {
+    // The token endpoint names no renewal date, so an account served by it
+    // would sit on the dashboard with usage but no billing clock. The cookies
+    // can name it without a browser, and one small request is cheap next to
+    // the reading that already succeeded.
+    if (!viaToken.renewsAt) {
+      viaToken.renewsAt = await fetchRenewalOnly(
+        storagePath,
+        runtime,
+        options.signal,
+      );
+    }
     return viaToken;
   }
 
@@ -480,6 +491,49 @@ async function fetchUsageViaOAuth(
     } satisfies AccountUsage;
   } catch {
     return null;
+  }
+}
+
+/**
+ * The renewal date alone, from the account's cookies and without a browser.
+ *
+ * Companion to `fetchUsageViaOAuth`, which names no billing date: this fetches
+ * the first organisation's subscription details the way `fetchUsageViaRequest`
+ * does, but nothing else. Every failure mode returns null — a missing renewal
+ * is a gap on one line of the dashboard, never a reason to fail a reading.
+ */
+export async function fetchRenewalOnly(
+  storagePath: string,
+  runtime: ApiRuntime = defaultRuntime,
+  signal?: AbortSignal,
+): Promise<string | null> {
+  if (!fs.existsSync(storagePath)) return null;
+  let api: Awaited<ReturnType<ApiRuntime["newRequestContext"]>> | null = null;
+  try {
+    api = await acquireAbortableResource(
+      runtime.newRequestContext({
+        baseURL: CLAUDE_URL,
+        storageState: storagePath,
+        extraHTTPHeaders: {
+          "User-Agent": USER_AGENT,
+          Accept: "application/json",
+        },
+      }),
+      signal,
+      (lateApi) => lateApi.dispose(),
+    );
+    const orgsRes = await abortable(api.get("/api/organizations"), signal);
+    if (!orgsRes.ok()) return null;
+    const orgs = ClaudeOrganizationListSchema.safeParse(
+      await parseBoundedApiResponse(orgsRes, signal),
+    );
+    const org = orgs.success ? orgs.data[0] : undefined;
+    if (!org) return null;
+    return await fetchRenewalViaRequest(api, org.uuid, signal);
+  } catch {
+    return null;
+  } finally {
+    await api?.dispose().catch(() => undefined);
   }
 }
 

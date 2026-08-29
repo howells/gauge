@@ -47,6 +47,41 @@ export const ClaudeOrganizationListSchema = z
   )
   .max(100);
 
+/**
+ * One entry of the `limits` array that now ships beside the legacy windows.
+ *
+ * The named windows (`five_hour`, `seven_day`, …) still carry the readings, so
+ * the array is parsed only as the fallback they will need when the legacy
+ * fields stop being populated. `weekly_scoped` — a model-scoped sub-limit — is
+ * deliberately not mapped onto anything yet: it meters a slice of the week, not
+ * the week, and drawing it as the weekly figure would understate usage.
+ */
+export const ClaudeLimitSchema = z.object({
+  is_active: z
+    .boolean()
+    .nullish()
+    .transform((value) => value ?? false),
+  kind: ShortString,
+  percent: Percentage,
+  resets_at: NormalizedDate.nullish().transform((value) => value ?? null),
+  scope: z.unknown().optional(),
+});
+
+export type ClaudeLimit = z.infer<typeof ClaudeLimitSchema>;
+
+/**
+ * The named limit a window falls back to, or null when the array is absent or
+ * does not carry that kind.
+ */
+export function windowFromLimits(
+  limits: ClaudeLimit[] | undefined,
+  kind: "session" | "weekly_all",
+): { resets_at: string | null; utilization: number } | null {
+  const limit = limits?.find((entry) => entry.kind === kind);
+  if (!limit) return null;
+  return { resets_at: limit.resets_at, utilization: limit.percent };
+}
+
 export const ClaudeUsageResponseSchema = z
   .object({
     five_hour: ClaudeWindow.nullish(),
@@ -56,17 +91,28 @@ export const ClaudeUsageResponseSchema = z
     seven_day_oauth_apps: ClaudeWindow.nullish(),
     seven_day_opus: ClaudeWindow.nullish(),
     seven_day_sonnet: ClaudeWindow.nullish(),
+    limits: z
+      .array(ClaudeLimitSchema)
+      .max(100)
+      .nullish()
+      .transform((value) => value ?? undefined),
   })
-  .transform((value) => ({
-    extra_usage: null,
-    five_hour: value.five_hour ?? null,
-    iguana_necktie: value.iguana_necktie ?? null,
-    seven_day: value.seven_day ?? null,
-    seven_day_cowork: value.seven_day_cowork ?? null,
-    seven_day_oauth_apps: value.seven_day_oauth_apps ?? null,
-    seven_day_opus: value.seven_day_opus ?? null,
-    seven_day_sonnet: value.seven_day_sonnet ?? null,
-  }));
+  .transform((value) => {
+    // The legacy window wins whenever it is present; the `limits` entry is the
+    // reading for the same horizon and only takes over when the legacy field
+    // has stopped being populated.
+    return {
+      extra_usage: null,
+      five_hour: value.five_hour ?? windowFromLimits(value.limits, "session"),
+      iguana_necktie: value.iguana_necktie ?? null,
+      seven_day:
+        value.seven_day ?? windowFromLimits(value.limits, "weekly_all"),
+      seven_day_cowork: value.seven_day_cowork ?? null,
+      seven_day_oauth_apps: value.seven_day_oauth_apps ?? null,
+      seven_day_opus: value.seven_day_opus ?? null,
+      seven_day_sonnet: value.seven_day_sonnet ?? null,
+    };
+  });
 
 export const ClaudeRenewalSchema = z.object({
   next_charge_at: NormalizedDate.optional(),
