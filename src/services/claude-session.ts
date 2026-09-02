@@ -133,38 +133,82 @@ export interface LastClaudeSwitch {
   previousEmail: string | null;
   /** Its account UUID, for joining against configured account names. */
   previousUuid: string | null;
-  /** When the switch happened, from the backup's own mtime. */
+  /** When the switch happened. */
   switchedAt: Date;
 }
 
+const switchLog = (dataDir: string): string =>
+  path.join(dataDir, "backups", "claude-switch-log.json");
+const SWITCH_LOG_LIMIT = 50;
+
 /**
- * The session the machine was most recently switched away from, if there was one.
+ * Record a switch in an append-only log beside the backup.
  *
- * `switchClaudeSession` keeps the session it replaced in a backup file, which
- * makes the last switch a fact gauge can read back rather than remember. The
- * reader that needs it is the dashboard: already-running Claude Code processes
- * keep the previous account's tokens in memory, so after a switch they go on
- * spending that account while displaying the new one — the backup is what names
- * the account being spent.
+ * The backup names only the session replaced by the *latest* switch, and one
+ * switch is not the whole story: a Claude Code session opened before several
+ * switches can still be running any of the accounts those switches displaced.
+ * The log keeps every displaced account with its switch time, so the dashboard
+ * can name all of them and not just the most recent.
  */
-export function lastClaudeSwitch(dataDir: string): LastClaudeSwitch | null {
-  const file = path.join(dataDir, "backups", "claude-session.previous.json");
-  const stored = record(readJson(file));
-  const profile = record(stored?.profile);
-  if (!profile) return null;
-  let switchedAt: Date;
+function appendSwitchLog(dataDir: string, entry: LastClaudeSwitch): void {
+  const file = switchLog(dataDir);
+  let previous: unknown = null;
   try {
-    switchedAt = fs.statSync(file).mtime;
+    previous = readJson(file);
   } catch {
-    return null;
+    previous = null;
   }
-  return {
-    previousEmail:
-      typeof profile.emailAddress === "string" ? profile.emailAddress : null,
-    previousUuid:
-      typeof profile.accountUuid === "string" ? profile.accountUuid : null,
-    switchedAt,
-  };
+  const list = Array.isArray(previous)
+    ? previous.slice(-(SWITCH_LOG_LIMIT - 1))
+    : [];
+  list.push({
+    previousEmail: entry.previousEmail,
+    previousUuid: entry.previousUuid,
+    switchedAt: entry.switchedAt.toISOString(),
+  });
+  fs.mkdirSync(path.dirname(file), { recursive: true });
+  fs.writeFileSync(file, `${JSON.stringify(list, null, 2)}\n`, { mode: 0o600 });
+}
+
+/**
+ * Every account the machine was switched away from within `maxAgeMs`.
+ *
+ * Read from the switch log rather than the backup, for the same reason the log
+ * exists: the backup forgets all but the latest switch, and a running session
+ * does not care which switch displaced the tokens it holds. Sorted oldest
+ * first, deduplicated by identity, so the dashboard can name the set once.
+ */
+export function claudeSwitchesWithin(
+  dataDir: string,
+  now: Date,
+  maxAgeMs: number,
+): LastClaudeSwitch[] {
+  const raw = readJson(switchLog(dataDir));
+  if (!Array.isArray(raw)) return [];
+  const cutoff = now.getTime() - maxAgeMs;
+  const byIdentity = new Map<string, LastClaudeSwitch>();
+  for (const item of raw) {
+    const entry = record(item);
+    const email =
+      typeof entry?.previousEmail === "string" ? entry.previousEmail : null;
+    const uuid =
+      typeof entry?.previousUuid === "string" ? entry.previousUuid : null;
+    const iso = typeof entry?.switchedAt === "string" ? entry.switchedAt : null;
+    if (!iso) continue;
+    const switchedAt = new Date(iso);
+    const time = switchedAt.getTime();
+    if (!Number.isFinite(time) || time < cutoff || time > now.getTime()) {
+      continue;
+    }
+    byIdentity.set(`${uuid ?? ""}|${email ?? ""}`, {
+      previousEmail: email,
+      previousUuid: uuid,
+      switchedAt,
+    });
+  }
+  return [...byIdentity.values()].sort(
+    (left, right) => left.switchedAt.getTime() - right.switchedAt.getTime(),
+  );
 }
 
 /**
@@ -197,6 +241,20 @@ export function switchClaudeSession(
     fs.mkdirSync(path.dirname(backedUp), { recursive: true });
     fs.writeFileSync(backedUp, `${JSON.stringify(current, null, 2)}\n`, {
       mode: 0o600,
+    });
+    const currentProfile = record(current.profile);
+    const email =
+      typeof currentProfile?.emailAddress === "string"
+        ? currentProfile.emailAddress
+        : null;
+    const uuid =
+      typeof currentProfile?.accountUuid === "string"
+        ? currentProfile.accountUuid
+        : null;
+    appendSwitchLog(dataDir, {
+      previousEmail: email,
+      previousUuid: uuid,
+      switchedAt: new Date(),
     });
   }
 

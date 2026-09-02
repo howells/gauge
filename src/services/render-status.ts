@@ -5,7 +5,10 @@ import type { Provider } from "../domain/account.js";
 import type { UsageRecommendation } from "../domain/recommendation.js";
 import type { AccountSnapshot } from "../domain/snapshot.js";
 import { getDataDir } from "../paths.js";
-import { lastClaudeSwitch } from "./claude-session.js";
+import {
+  claudeSwitchesWithin,
+  type LastClaudeSwitch,
+} from "./claude-session.js";
 import {
   claudeAccountNamesByUuid,
   readMachineLogins,
@@ -428,7 +431,7 @@ function errorLines(accounts: StatusAccountView[]): string[] {
  * is called out as untracked, because an account you are working in and not
  * watching is the one most likely to run out without warning.
  */
-function machineLines(accounts: StatusAccountView[], now: Date): string[] {
+function machineLines(accounts: StatusAccountView[]): string[] {
   const logins = readMachineLogins();
   if (logins.length === 0) return [];
 
@@ -471,25 +474,6 @@ function machineLines(accounts: StatusAccountView[], now: Date): string[] {
       return `${INDENT}${surface}  ${detail}`;
     }),
   ];
-  const switched = lastClaudeSwitch(getDataDir());
-  if (!switched) return lines;
-  const previous =
-    (switched.previousUuid ? byUuid.get(switched.previousUuid) : undefined) ??
-    switched.previousEmail ??
-    "another account";
-  const warning = renderSwitchWarning(
-    {
-      previous,
-      previousUuid: switched.previousUuid,
-      previousEmail: switched.previousEmail,
-      switchedAt: switched.switchedAt,
-      signedIn: claudeCode
-        ? { uuid: claudeCode.accountId, email: claudeCode.email }
-        : null,
-    },
-    now,
-  );
-  if (warning) lines.push(warning);
   return lines;
 }
 
@@ -504,13 +488,10 @@ function machineLines(accounts: StatusAccountView[], now: Date): string[] {
 const SWITCH_WARNING_MAX_AGE_MS = 24 * 60 * 60 * 1000;
 
 export interface ClaudeSwitchWarning {
-  /** The account the machine was switched away from, named for display. */
-  previous: string;
-  previousUuid: string | null;
-  previousEmail: string | null;
+  /** Every account displaced by a recent switch, named for display. */
+  previous: string[];
+  /** When the most recent of those switches happened. */
   switchedAt: Date;
-  /** The account Claude Code is signed into now, as read from its own state. */
-  signedIn: { uuid: string | null; email: string | null } | null;
 }
 
 /**
@@ -519,31 +500,96 @@ export interface ClaudeSwitchWarning {
  *
  * A switch rewrites the credentials on disk, but sessions opened before it hold
  * the old account's tokens in memory — so they keep spending that account while
- * every status panel shows the new one. The line names the account actually
- * being spent and the one act that stops it. A switch that landed back on the
- * account it displaced describes no mismatch, so it stays silent.
+ * every status panel shows the new one. The line names every account a recent
+ * switch displaced and the one act that stops the spend.
  */
 export function renderSwitchWarning(
   switched: ClaudeSwitchWarning | null,
   now: Date,
 ): string | null {
-  if (!switched) return null;
+  if (!switched || switched.previous.length === 0) return null;
   const ageMs = now.getTime() - switched.switchedAt.getTime();
   if (ageMs <= 0 || ageMs > SWITCH_WARNING_MAX_AGE_MS) return null;
   const minutes = Math.floor(ageMs / 60_000);
   const hours = Math.floor(minutes / 60);
   const ago = hours > 0 ? `${hours}h` : `${Math.max(1, minutes)}m`;
-  const sameUuid =
-    switched.previousUuid !== null &&
-    switched.signedIn?.uuid != null &&
-    switched.signedIn.uuid === switched.previousUuid;
-  const sameEmail =
-    switched.previousEmail != null &&
-    switched.signedIn?.email != null &&
-    switched.signedIn.email.toLowerCase() ===
-      switched.previousEmail.toLowerCase();
-  if (sameUuid || sameEmail) return null;
-  return `${INDENT}${chalk.yellow("⚠")} switched from ${chalk.white(switched.previous)} ${chalk.dim(`${ago} ago`)} ${chalk.dim("·")} Claude Code sessions opened before then may still be spending ${chalk.white(switched.previous)} ${chalk.dim("· restart them")}`;
+  const names = switched.previous.join(" and ");
+  const spend = switched.previous.length > 1 ? "one of them" : names;
+  return `${INDENT}${chalk.yellow("⚠")} switched from ${chalk.white(names)} ${chalk.dim(`${ago} ago`)} ${chalk.dim("·")} Claude Code sessions opened before then may still be spending ${chalk.white(spend)} ${chalk.dim("· restart them")}`;
+}
+
+/**
+ * The warning for this machine right now: every account a recent switch
+ * displaced, minus the one Claude Code is signed into again.
+ *
+ * Drawn at the top of the dashboard rather than beside the signed-in inventory
+ * at the foot of it, because it is the one line that explains a grid that
+ * disagrees with the tool on screen — and a warning below the fold explains
+ * nothing.
+ */
+function switchWarningLines(
+  accounts: StatusAccountView[],
+  now: Date,
+): string[] {
+  const switches = claudeSwitchesWithin(
+    getDataDir(),
+    now,
+    SWITCH_WARNING_MAX_AGE_MS,
+  );
+  if (switches.length === 0) return [];
+  const byUuid = claudeAccountNamesByUuid(getDataDir());
+  const byEmail = new Map<string, string>();
+  for (const account of accounts) {
+    const email = account.usage?.email;
+    if (email) byEmail.set(email.toLowerCase(), account.name);
+  }
+  const signedIn = readClaudeCodeLogin();
+  const live = switches.filter((entry) => !sameIdentity(entry, signedIn));
+  if (live.length === 0) return [];
+  const names = [
+    ...new Set(
+      live.map(
+        (entry) =>
+          (entry.previousUuid ? byUuid.get(entry.previousUuid) : undefined) ??
+          (entry.previousEmail
+            ? (byEmail.get(entry.previousEmail.toLowerCase()) ??
+              entry.previousEmail)
+            : undefined) ??
+          "another account",
+      ),
+    ),
+  ];
+  const mostRecent = live.reduce((latest, entry) =>
+    entry.switchedAt.getTime() > latest.switchedAt.getTime() ? entry : latest,
+  );
+  const warning = renderSwitchWarning(
+    { previous: names, switchedAt: mostRecent.switchedAt },
+    now,
+  );
+  return warning ? [warning] : [];
+}
+
+/** The Claude Code login as machine-logins sees it, for identity comparison. */
+function readClaudeCodeLogin(): { uuid: string | null; email: string | null } {
+  const login = readMachineLogins().find(
+    (candidate) => candidate.surface === "Claude Code",
+  );
+  return { uuid: login?.accountId ?? null, email: login?.email ?? null };
+}
+
+/** Whether a displaced account is the one Claude Code is signed into again. */
+function sameIdentity(
+  entry: LastClaudeSwitch,
+  signedIn: { uuid: string | null; email: string | null },
+): boolean {
+  if (entry.previousUuid !== null && entry.previousUuid === signedIn.uuid) {
+    return true;
+  }
+  return (
+    entry.previousEmail != null &&
+    signedIn.email != null &&
+    entry.previousEmail.toLowerCase() === signedIn.email.toLowerCase()
+  );
 }
 
 function renderEmptyState(): string {
@@ -622,6 +668,7 @@ export function renderStatusDashboard(
 
   const lines: string[] = [""];
   lines.push(header(accounts, now));
+  lines.push(...switchWarningLines(accounts, now));
   lines.push("");
   lines.push(columnHeader(providers));
   for (const row of rows) {
@@ -653,7 +700,7 @@ export function renderStatusDashboard(
   lines.push(`${INDENT}${chalk.dim("─".repeat(width))}`);
   lines.push(recommendationLine(recommendation, accounts, now));
   lines.push(...errorLines(accounts));
-  lines.push(...machineLines(accounts, now));
+  lines.push(...machineLines(accounts));
   lines.push("");
   return lines.join("\n");
 }

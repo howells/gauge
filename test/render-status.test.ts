@@ -145,11 +145,8 @@ test("an account with no renewal date draws no renewal text", () => {
 test("a recent switch warns that running sessions still spend the old account", () => {
   const line = renderSwitchWarning(
     {
-      previous: "gmail",
-      previousUuid: "gmail-uuid",
-      previousEmail: "person@gmail.com",
+      previous: ["gmail"],
       switchedAt: new Date("2026-08-29T12:20:00Z"),
-      signedIn: { uuid: "other-uuid", email: "person@materialinstruments.com" },
     },
     NOW,
   );
@@ -159,39 +156,24 @@ test("a recent switch warns that running sessions still spend the old account", 
   assert.match(line, /restart them/);
 });
 
-test("a switch that landed back on the displaced account stays silent", () => {
-  const byUuid = renderSwitchWarning(
+test("several recent switches name every displaced account", () => {
+  const line = renderSwitchWarning(
     {
-      previous: "gmail",
-      previousUuid: "gmail-uuid",
-      previousEmail: "person@gmail.com",
+      previous: ["danielhowells", "materialinstruments"],
       switchedAt: new Date("2026-08-29T12:20:00Z"),
-      signedIn: { uuid: "gmail-uuid", email: null },
     },
     NOW,
   );
-  assert.equal(byUuid, null);
-  const byEmail = renderSwitchWarning(
-    {
-      previous: "gmail",
-      previousUuid: null,
-      previousEmail: "person@gmail.com",
-      switchedAt: new Date("2026-08-29T12:20:00Z"),
-      signedIn: { uuid: null, email: "Person@gmail.com" },
-    },
-    NOW,
-  );
-  assert.equal(byEmail, null);
+  assert.ok(line);
+  assert.match(line, /switched from danielhowells and materialinstruments/);
+  assert.match(line, /may still be spending one of them/);
 });
 
 test("a switch older than a day stops warning", () => {
   const line = renderSwitchWarning(
     {
-      previous: "gmail",
-      previousUuid: "gmail-uuid",
-      previousEmail: "person@gmail.com",
+      previous: ["gmail"],
       switchedAt: new Date("2026-08-28T12:00:00Z"),
-      signedIn: { uuid: "other-uuid", email: "person@materialinstruments.com" },
     },
     NOW,
   );
