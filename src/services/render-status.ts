@@ -5,6 +5,7 @@ import type { Provider } from "../domain/account.js";
 import type { UsageRecommendation } from "../domain/recommendation.js";
 import type { AccountSnapshot } from "../domain/snapshot.js";
 import { getDataDir } from "../paths.js";
+import { lastClaudeSwitch } from "./claude-session.js";
 import {
   claudeAccountNamesByUuid,
   readMachineLogins,
@@ -427,7 +428,7 @@ function errorLines(accounts: StatusAccountView[]): string[] {
  * is called out as untracked, because an account you are working in and not
  * watching is the one most likely to run out without warning.
  */
-function machineLines(accounts: StatusAccountView[]): string[] {
+function machineLines(accounts: StatusAccountView[], now: Date): string[] {
   const logins = readMachineLogins();
   if (logins.length === 0) return [];
 
@@ -440,7 +441,7 @@ function machineLines(accounts: StatusAccountView[]): string[] {
   const byUuid = claudeAccountNamesByUuid(getDataDir());
 
   const width = Math.max(...logins.map((login) => login.surface.length));
-  return [
+  const lines: string[] = [
     "",
     `${INDENT}${chalk.dim("signed in on this machine")}`,
     ...logins.map((login) => {
@@ -470,6 +471,79 @@ function machineLines(accounts: StatusAccountView[]): string[] {
       return `${INDENT}${surface}  ${detail}`;
     }),
   ];
+  const switched = lastClaudeSwitch(getDataDir());
+  if (!switched) return lines;
+  const previous =
+    (switched.previousUuid ? byUuid.get(switched.previousUuid) : undefined) ??
+    switched.previousEmail ??
+    "another account";
+  const warning = renderSwitchWarning(
+    {
+      previous,
+      previousUuid: switched.previousUuid,
+      previousEmail: switched.previousEmail,
+      switchedAt: switched.switchedAt,
+      signedIn: claudeCode
+        ? { uuid: claudeCode.accountId, email: claudeCode.email }
+        : null,
+    },
+    now,
+  );
+  if (warning) lines.push(warning);
+  return lines;
+}
+
+/**
+ * How long a switch stays worth warning about.
+ *
+ * The warning exists because Claude Code sessions already running keep the
+ * previous account's tokens until they exit, and a session can run for the best
+ * part of a day. Past that horizon the sessions the warning describes are
+ * unlikely to still exist, and one more permanent line on the dashboard is noise.
+ */
+const SWITCH_WARNING_MAX_AGE_MS = 24 * 60 * 60 * 1000;
+
+export interface ClaudeSwitchWarning {
+  /** The account the machine was switched away from, named for display. */
+  previous: string;
+  previousUuid: string | null;
+  previousEmail: string | null;
+  switchedAt: Date;
+  /** The account Claude Code is signed into now, as read from its own state. */
+  signedIn: { uuid: string | null; email: string | null } | null;
+}
+
+/**
+ * The one-line cost of a recent account switch, or null when there is nothing
+ * left to say.
+ *
+ * A switch rewrites the credentials on disk, but sessions opened before it hold
+ * the old account's tokens in memory — so they keep spending that account while
+ * every status panel shows the new one. The line names the account actually
+ * being spent and the one act that stops it. A switch that landed back on the
+ * account it displaced describes no mismatch, so it stays silent.
+ */
+export function renderSwitchWarning(
+  switched: ClaudeSwitchWarning | null,
+  now: Date,
+): string | null {
+  if (!switched) return null;
+  const ageMs = now.getTime() - switched.switchedAt.getTime();
+  if (ageMs <= 0 || ageMs > SWITCH_WARNING_MAX_AGE_MS) return null;
+  const minutes = Math.floor(ageMs / 60_000);
+  const hours = Math.floor(minutes / 60);
+  const ago = hours > 0 ? `${hours}h` : `${Math.max(1, minutes)}m`;
+  const sameUuid =
+    switched.previousUuid !== null &&
+    switched.signedIn?.uuid != null &&
+    switched.signedIn.uuid === switched.previousUuid;
+  const sameEmail =
+    switched.previousEmail != null &&
+    switched.signedIn?.email != null &&
+    switched.signedIn.email.toLowerCase() ===
+      switched.previousEmail.toLowerCase();
+  if (sameUuid || sameEmail) return null;
+  return `${INDENT}${chalk.yellow("⚠")} switched from ${chalk.white(switched.previous)} ${chalk.dim(`${ago} ago`)} ${chalk.dim("·")} Claude Code sessions opened before then may still be spending ${chalk.white(switched.previous)} ${chalk.dim("· restart them")}`;
 }
 
 function renderEmptyState(): string {
@@ -579,7 +653,7 @@ export function renderStatusDashboard(
   lines.push(`${INDENT}${chalk.dim("─".repeat(width))}`);
   lines.push(recommendationLine(recommendation, accounts, now));
   lines.push(...errorLines(accounts));
-  lines.push(...machineLines(accounts));
+  lines.push(...machineLines(accounts, now));
   lines.push("");
   return lines.join("\n");
 }

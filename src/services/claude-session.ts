@@ -128,6 +128,45 @@ export interface ClaudeSwitchResult {
   name: string;
 }
 
+export interface LastClaudeSwitch {
+  /** The address of the account the machine was switched away from. */
+  previousEmail: string | null;
+  /** Its account UUID, for joining against configured account names. */
+  previousUuid: string | null;
+  /** When the switch happened, from the backup's own mtime. */
+  switchedAt: Date;
+}
+
+/**
+ * The session the machine was most recently switched away from, if there was one.
+ *
+ * `switchClaudeSession` keeps the session it replaced in a backup file, which
+ * makes the last switch a fact gauge can read back rather than remember. The
+ * reader that needs it is the dashboard: already-running Claude Code processes
+ * keep the previous account's tokens in memory, so after a switch they go on
+ * spending that account while displaying the new one — the backup is what names
+ * the account being spent.
+ */
+export function lastClaudeSwitch(dataDir: string): LastClaudeSwitch | null {
+  const file = path.join(dataDir, "backups", "claude-session.previous.json");
+  const stored = record(readJson(file));
+  const profile = record(stored?.profile);
+  if (!profile) return null;
+  let switchedAt: Date;
+  try {
+    switchedAt = fs.statSync(file).mtime;
+  } catch {
+    return null;
+  }
+  return {
+    previousEmail:
+      typeof profile.emailAddress === "string" ? profile.emailAddress : null,
+    previousUuid:
+      typeof profile.accountUuid === "string" ? profile.accountUuid : null,
+    switchedAt,
+  };
+}
+
 /**
  * Sign the Claude Code CLI in as a previously captured account.
  *

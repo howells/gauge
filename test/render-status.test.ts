@@ -1,7 +1,10 @@
 import assert from "node:assert/strict";
 import { test } from "node:test";
 import type { StatusAccountView } from "../src/services/render-status.js";
-import { renderStatusDashboard } from "../src/services/render-status.js";
+import {
+  renderStatusDashboard,
+  renderSwitchWarning,
+} from "../src/services/render-status.js";
 
 const NOW = new Date("2026-08-29T13:00:00Z");
 
@@ -137,4 +140,64 @@ test("an account with no renewal date draws no renewal text", () => {
     }),
   );
   assert.equal(output.includes("renews"), false);
+});
+
+test("a recent switch warns that running sessions still spend the old account", () => {
+  const line = renderSwitchWarning(
+    {
+      previous: "gmail",
+      previousUuid: "gmail-uuid",
+      previousEmail: "person@gmail.com",
+      switchedAt: new Date("2026-08-29T12:20:00Z"),
+      signedIn: { uuid: "other-uuid", email: "person@materialinstruments.com" },
+    },
+    NOW,
+  );
+  assert.ok(line);
+  assert.match(line, /switched from gmail 40m ago/);
+  assert.match(line, /may still be spending gmail/);
+  assert.match(line, /restart them/);
+});
+
+test("a switch that landed back on the displaced account stays silent", () => {
+  const byUuid = renderSwitchWarning(
+    {
+      previous: "gmail",
+      previousUuid: "gmail-uuid",
+      previousEmail: "person@gmail.com",
+      switchedAt: new Date("2026-08-29T12:20:00Z"),
+      signedIn: { uuid: "gmail-uuid", email: null },
+    },
+    NOW,
+  );
+  assert.equal(byUuid, null);
+  const byEmail = renderSwitchWarning(
+    {
+      previous: "gmail",
+      previousUuid: null,
+      previousEmail: "person@gmail.com",
+      switchedAt: new Date("2026-08-29T12:20:00Z"),
+      signedIn: { uuid: null, email: "Person@gmail.com" },
+    },
+    NOW,
+  );
+  assert.equal(byEmail, null);
+});
+
+test("a switch older than a day stops warning", () => {
+  const line = renderSwitchWarning(
+    {
+      previous: "gmail",
+      previousUuid: "gmail-uuid",
+      previousEmail: "person@gmail.com",
+      switchedAt: new Date("2026-08-28T12:00:00Z"),
+      signedIn: { uuid: "other-uuid", email: "person@materialinstruments.com" },
+    },
+    NOW,
+  );
+  assert.equal(line, null);
+});
+
+test("no switch draws no warning", () => {
+  assert.equal(renderSwitchWarning(null, NOW), null);
 });
