@@ -1,6 +1,6 @@
 {
   "name": "@howells/gauge",
-  "version": "4.2.0",
+  "version": "4.3.0",
   "description": "At-a-glance usage dashboard for Claude, Codex, and Cursor accounts",
   "license": "MIT",
   "repository": {
