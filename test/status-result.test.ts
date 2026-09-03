@@ -370,3 +370,49 @@ test("an account idle on every window is still recommendable", () => {
   });
   assert.equal(recommendation.maximumUtilization, 0);
 });
+
+test("a model-scoped Codex session is shown without blocking the whole account", () => {
+  const result = buildStatusResult(
+    snapshot({
+      accounts: [
+        {
+          error: null,
+          source: {
+            id: { provider: "codex", name: "gmail" },
+            order: 0,
+            provider: "codex",
+            source: "configured",
+          },
+          usage: {
+            plan: "Pro 20x",
+            windows: [
+              {
+                kind: "session",
+                label: "GPT-5.3-Codex-Spark",
+                usedPercent: 100,
+                resetsAt: "2026-07-11T13:00:00.000Z",
+              },
+              {
+                kind: "weekly",
+                usedPercent: 71,
+                resetsAt: "2026-07-16T12:00:00.000Z",
+              },
+            ],
+          },
+        },
+      ],
+      summary: { total: 1, succeeded: 1, failed: 0, timed_out: 0 },
+    }),
+    { now, quick: false },
+  );
+
+  const plain = result.human.replace(/\x1b\[[0-9;]*m/g, "");
+  assert.match(plain, /gmail\s+█+ 100%/u);
+  assert.match(plain, /Spark session · wk 71% · 5d/u);
+  assert.doesNotMatch(plain, /gmail\s+█+ full/u);
+  assert.equal(
+    (result.data as { recommendation: { status: string } }).recommendation
+      .status,
+    "use_now",
+  );
+});

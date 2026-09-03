@@ -207,6 +207,34 @@ test("provider ingress schemas strip unknown fields and bound normalized values"
   });
   assert.equal(codex.rate_limit.primary_window?.used_percent, 0);
 
+  const currentCodex = CodexUsageResponseSchema.parse({
+    rate_limit: {
+      primary_window: {
+        used_percent: 71,
+        limit_window_seconds: 10_080 * 60,
+        reset_at: 1_800_000_000,
+      },
+    },
+    additional_rate_limits: [
+      {
+        limit_name: "GPT-5.3-Codex-Spark",
+        metered_feature: "codex_bengalfox",
+        rate_limit: {
+          primary_window: {
+            used_percent: 37,
+            limit_window_seconds: 300 * 60,
+            reset_at: 1_700_000_000,
+          },
+        },
+      },
+    ],
+  });
+  assert.equal(
+    currentCodex.additional_rate_limits[0]?.rate_limit.primary_window
+      ?.limit_window_seconds,
+    300 * 60,
+  );
+
   const cursor = CursorUsageResponseSchema.parse({
     individualUsage: { plan: { totalPercentUsed: 150 } },
     membershipType: "pro",

@@ -104,9 +104,16 @@ type WindowView = NonNullable<AccountSnapshot["usage"]>["windows"][number];
 const WINDOW_LABEL: Record<WindowView["kind"], string> = {
   session: "session",
   weekly: "wk",
+  monthly: "mo",
   included: "plan",
   on_demand: "on-demand",
 };
+
+/** Keep provider-owned model labels legible in one compact status cell. */
+function compactWindowLabel(window: WindowView): string | null {
+  if (!window.label) return null;
+  return window.label.replace(/^GPT-[^-]+-Codex-/u, "");
+}
 
 interface CellStatus {
   kind: "ready" | "blocked" | "error";
@@ -132,7 +139,11 @@ function cellStatus(account: StatusAccountView, now: Date): CellStatus {
   const windows = account.usage.windows;
   const primary = windows[0] ?? null;
   const secondary = windows[1] ?? null;
-  const blocked = windows.filter((window) => window.usedPercent >= 100);
+  // A labelled window belongs to one model pool. It can be full without the
+  // account being blocked for every other Codex model.
+  const blocked = windows.filter(
+    (window) => !window.label && window.usedPercent >= 100,
+  );
   if (blocked.length > 0) {
     const waits = blocked.map((window) =>
       window.resetsAt === null
@@ -273,11 +284,14 @@ function meterCell(
     return cell(`${meter(100)} ${chalk.red("full")}${wait}`);
   }
   // An idle window has nothing counting down, so there is no clock to show.
+  const horizon = ["weekly", "monthly"].includes(window.kind)
+    ? ` ${chalk.dim(`· ${WINDOW_LABEL[window.kind]}`)}`
+    : "";
   const reset =
     window.usedPercent > 0 && window.resetsAt !== null
       ? ` ${chalk.dim(`· ${timeUntil(window.resetsAt, now)}`)}`
       : "";
-  return cell(`${meter(percent)} ${percent}%${reset}`);
+  return cell(`${meter(percent)} ${percent}%${horizon}${reset}`);
 }
 
 function detailCell(account: StatusAccountView | undefined, now: Date): string {
@@ -298,6 +312,13 @@ function detailCell(account: StatusAccountView | undefined, now: Date): string {
   // does not — and the one being hidden was precisely the case where naming it
   // matters most.
   const second = status.secondary;
+  const primaryScope = status.primary
+    ? compactWindowLabel(status.primary)
+    : null;
+  const scopedPrimary =
+    primaryScope && status.primary
+      ? `${primaryScope} ${WINDOW_LABEL[status.primary.kind]}`
+      : null;
   const reading =
     second === null
       ? null
@@ -335,9 +356,10 @@ function detailCell(account: StatusAccountView | undefined, now: Date): string {
   // the reader came for, and the plan is the one the recommendation line
   // already repeats for whichever account it picks.
   for (const tier of [
-    [plan, reading, renews],
-    [reading, renews],
-    [reading ?? plan],
+    [plan, scopedPrimary, reading, renews],
+    [scopedPrimary, reading, renews],
+    [scopedPrimary, reading],
+    [reading ?? scopedPrimary ?? plan],
     [renews],
   ]) {
     const line = tier

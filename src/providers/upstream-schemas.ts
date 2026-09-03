@@ -120,6 +120,7 @@ export const ClaudeRenewalSchema = z.object({
 });
 
 const ProviderWindow = z.object({
+  limit_window_seconds: z.number().finite().positive().optional(),
   reset_at: ResetValue.optional(),
   resetsAt: ResetValue.optional(),
   totalPercentUsed: Percentage.optional(),
@@ -127,15 +128,28 @@ const ProviderWindow = z.object({
   usedPercent: Percentage.optional(),
 });
 
+const CodexRateLimitSchema = z
+  .object({
+    primary_window: ProviderWindow.nullish(),
+    secondary_window: ProviderWindow.nullish(),
+  })
+  .default({});
+
 export const CodexUsageResponseSchema = z.object({
+  additional_rate_limits: z
+    .array(
+      z.object({
+        limit_name: ShortString.nullish(),
+        metered_feature: ShortString,
+        normal_model_slug: ShortString.nullish(),
+        rate_limit: CodexRateLimitSchema,
+      }),
+    )
+    .max(100)
+    .default([]),
   plan_type: ShortString.optional(),
-  rate_limit: z
-    .object({
-      // Accounts without an active window report null, not absence.
-      primary_window: ProviderWindow.nullish(),
-      secondary_window: ProviderWindow.nullish(),
-    })
-    .default({}),
+  // Accounts without an active window report null, not absence.
+  rate_limit: CodexRateLimitSchema,
 });
 
 export const CodexRefreshResponseSchema = z.object({

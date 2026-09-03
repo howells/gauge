@@ -9,6 +9,7 @@ const NormalizedDateSchema = z
 
 const UsageWindowSchema = z.strictObject({
   kind: z.enum(USAGE_WINDOW_KINDS),
+  label: z.string().min(1).max(100).optional(),
   // Null is a reading, not a gap: an idle window has spent nothing, so it has
   // nothing to count down to. Dropping such a window is what let a seven-day
   // figure be drawn as a five-hour one.

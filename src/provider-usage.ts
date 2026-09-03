@@ -17,6 +17,8 @@ const CURSOR_BASE_URL = "https://cursor.com";
 const MAX_PROVIDER_RESPONSE_BYTES = 1_000_000;
 
 interface RateWindow {
+  /** Provider-owned scope name when this limit applies to one model pool. */
+  label?: string;
   /** Null when the window is idle: nothing spent, so nothing counting down. */
   resetsAt: string | null;
   usedPercent: number;
@@ -33,6 +35,7 @@ interface UnifiedAccount {
   renewsAt?: string | null;
   session: RateWindow | null;
   weekly: RateWindow | null;
+  monthly: RateWindow | null;
 }
 
 interface CodexSource {
@@ -129,6 +132,56 @@ export function toRateWindow(value: unknown): RateWindow | null {
   };
 }
 
+type CodexWindowKind = "session" | "weekly" | "monthly";
+
+interface ClassifiedCodexWindow {
+  kind: CodexWindowKind;
+  window: RateWindow;
+}
+
+/**
+ * Classify a Codex window by the duration the provider declares.
+ *
+ * Current payloads can put a seven-day window in `primary_window`, so primary
+ * and secondary are no longer meanings. Positional fallbacks remain only for
+ * older payloads that predate `limit_window_seconds`.
+ */
+function classifyCodexWindow(
+  value: unknown,
+  fallback: "session" | "weekly",
+  label?: string,
+): ClassifiedCodexWindow | null {
+  const window = toRateWindow(value);
+  if (!window) return null;
+  const seconds = isRecord(value)
+    ? numberValue(value.limit_window_seconds)
+    : undefined;
+  const minutes = seconds === undefined ? undefined : seconds / 60;
+  const kind =
+    minutes === undefined
+      ? fallback
+      : minutes <= 24 * 60
+        ? "session"
+        : minutes <= 8 * 24 * 60
+          ? "weekly"
+          : "monthly";
+  return {
+    kind,
+    window: label ? { ...window, label } : window,
+  };
+}
+
+function classifiedCodexWindows(
+  rateLimit: unknown,
+  label?: string,
+): ClassifiedCodexWindow[] {
+  if (!isRecord(rateLimit)) return [];
+  return [
+    classifyCodexWindow(rateLimit.primary_window, "session", label),
+    classifyCodexWindow(rateLimit.secondary_window, "weekly", label),
+  ].filter((window): window is ClassifiedCodexWindow => window !== null);
+}
+
 export function decodeJwtPayload(
   token: string | undefined,
 ): Record<string, unknown> {
@@ -174,6 +227,7 @@ function errorAccount(
     plan: "",
     session: null,
     weekly: null,
+    monthly: null,
     error: message,
   };
 }
@@ -471,9 +525,20 @@ async function fetchCodexAccount(
     "";
 
   const usage = CodexUsageResponseSchema.parse(body);
-  const rateLimit = usage.rate_limit;
-  const session = toRateWindow(rateLimit.primary_window);
-  const weekly = toRateWindow(rateLimit.secondary_window);
+  const general = classifiedCodexWindows(usage.rate_limit);
+  const additional = usage.additional_rate_limits.flatMap((limit) =>
+    classifiedCodexWindows(
+      limit.rate_limit,
+      limit.limit_name ?? limit.normal_model_slug ?? limit.metered_feature,
+    ),
+  );
+  const pick = (kind: CodexWindowKind): RateWindow | null =>
+    general.find((candidate) => candidate.kind === kind)?.window ??
+    additional.find((candidate) => candidate.kind === kind)?.window ??
+    null;
+  const session = pick("session");
+  const weekly = pick("weekly");
+  const monthly = pick("monthly");
   const label = source.label ?? (email ? labelFromEmail(email) : "codex");
 
   return {
@@ -484,6 +549,7 @@ async function fetchCodexAccount(
     renewsAt: source.renewsAt,
     session,
     weekly,
+    monthly,
   };
 }
 
@@ -791,6 +857,7 @@ async function fetchCursorAccount(
             usedPercent: secondaryPercent,
             resetsAt: end,
           },
+    monthly: null,
   };
 }
 

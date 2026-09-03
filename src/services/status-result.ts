@@ -109,7 +109,10 @@ function toRecommendationCandidate(
       name,
     },
     order: index,
-    windows: account.usage?.windows ?? [],
+    // A labelled window is scoped to one provider-owned model pool. It belongs
+    // in status output, but exhausting it does not make the whole account
+    // unusable, so only account-wide windows drive the recommendation.
+    windows: account.usage?.windows.filter((window) => !window.label) ?? [],
     // Carried so the policy can tell a Max 20x from a free tier. It never
     // reorders the recommendation — see `findWaitFor`.
     ...(account.usage?.plan && { plan: account.usage.plan }),

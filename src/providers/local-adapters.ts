@@ -20,6 +20,7 @@ import type { ProviderUsageResult, UsageProviderAdapter } from "./types.js";
 /** One window as a provider reports it, already named for the limit it meters. */
 interface NamedWindow {
   kind: UsageWindowKind;
+  label?: string;
   resetsAt: string | null;
   usedPercent: number;
 }
@@ -58,6 +59,18 @@ function namedWindows(
     account.session ? { ...account.session, kind: first } : null,
     account.weekly ? { ...account.weekly, kind: second } : null,
   ].filter((window): window is NamedWindow => window !== null);
+}
+
+function namedCodexWindows(account: {
+  monthly: Omit<NamedWindow, "kind"> | null;
+  session: Omit<NamedWindow, "kind"> | null;
+  weekly: Omit<NamedWindow, "kind"> | null;
+}): NamedWindow[] {
+  const windows: NamedWindow[] = [];
+  if (account.session) windows.push({ ...account.session, kind: "session" });
+  if (account.weekly) windows.push({ ...account.weekly, kind: "weekly" });
+  if (account.monthly) windows.push({ ...account.monthly, kind: "monthly" });
+  return windows;
 }
 
 export function buildLocalSources(
@@ -186,7 +199,7 @@ export function createLocalAdapters(
         if (!result) return null;
         return {
           ...result,
-          windows: namedWindows(result, ["session", "weekly"]),
+          windows: namedCodexWindows(result),
         };
       },
     ),

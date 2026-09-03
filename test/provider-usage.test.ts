@@ -50,6 +50,67 @@ test("formats known Codex plan names", () => {
   assert.equal(formatCodexPlan("team_enterprise"), "Team Enterprise");
 });
 
+test("Codex reports an additional five-hour model window beside the general week", async () => {
+  // Current /wham/usage payloads can make the legacy `rate_limit` weekly-only
+  // and put the remaining five-hour window in `additional_rate_limits`. Gauge
+  // used to discard that array and call the seven-day legacy window a session.
+  const homePath = fs.mkdtempSync(path.join(os.tmpdir(), "gauge-codex-"));
+  fs.writeFileSync(
+    path.join(homePath, "auth.json"),
+    JSON.stringify({ tokens: { access_token: "existing-access" } }),
+    { mode: 0o600 },
+  );
+  const originalFetch = globalThis.fetch;
+  const originalHome = process.env.CODEX_HOME;
+  process.env.CODEX_HOME = homePath;
+  globalThis.fetch = async () =>
+    new Response(
+      JSON.stringify({
+        plan_type: "pro",
+        rate_limit: {
+          primary_window: {
+            used_percent: 71,
+            limit_window_seconds: 10_080 * 60,
+            reset_at: 1_800_000_000,
+          },
+        },
+        additional_rate_limits: [
+          {
+            limit_name: "GPT-5.3-Codex-Spark",
+            metered_feature: "codex_bengalfox",
+            rate_limit: {
+              primary_window: {
+                used_percent: 37,
+                limit_window_seconds: 300 * 60,
+                reset_at: 1_700_000_000,
+              },
+              secondary_window: {
+                used_percent: 12,
+                limit_window_seconds: 10_080 * 60,
+                reset_at: 1_800_000_000,
+              },
+            },
+          },
+        ],
+      }),
+      { status: 200 },
+    );
+
+  try {
+    const accounts = await fetchCodexAccounts([], {
+      credentialRefresh: "never",
+    });
+    assert.equal(accounts[0]?.session?.usedPercent, 37);
+    assert.equal(accounts[0]?.session?.label, "GPT-5.3-Codex-Spark");
+    assert.equal(accounts[0]?.weekly?.usedPercent, 71);
+    assert.equal(accounts[0]?.weekly?.label, undefined);
+  } finally {
+    globalThis.fetch = originalFetch;
+    if (originalHome === undefined) delete process.env.CODEX_HOME;
+    else process.env.CODEX_HOME = originalHome;
+  }
+});
+
 test("extracts only Cursor cookies from Playwright storage state", () => {
   const header = parseStorageStateCookies({
     cookies: [
