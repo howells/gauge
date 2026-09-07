@@ -27,7 +27,7 @@ before(() => {
   );
   const compile = spawnSync(
     path.join(root, "node_modules", ".bin", "tsc"),
-    ["-p", path.join(buildRoot, "tsconfig.json")],
+    ["-p", path.join(buildRoot, "tsconfig.json"), "--types", "node"],
     { cwd: buildRoot, encoding: "utf8" },
   );
   assert.equal(compile.status, 0, compile.stderr);
