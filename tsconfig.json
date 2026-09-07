@@ -5,11 +5,7 @@
     "rootDir": "./src",
     "declaration": false,
     "sourceMap": false,
-    "types": [
-      "node"
-    ]
+    "types": ["node"]
   },
-  "include": [
-    "src/**/*"
-  ]
+  "include": ["src/**/*"]
 }
