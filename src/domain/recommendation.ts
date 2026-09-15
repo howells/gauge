@@ -18,6 +18,13 @@ interface RecommendationWindow {
 }
 
 export interface RecommendationCandidate {
+  /**
+   * Usage-limit resets that apply to the account's current state, when its
+   * provider grants them. Redeeming one clears the spent limits at once, so
+   * a blocked account holding one is a blocked account that can be made
+   * usable immediately.
+   */
+  applicableResets?: number;
   error?: RecommendationError;
   id: RecommendationAccountId;
   order: number;
@@ -43,12 +50,18 @@ export interface UsageRecommendation {
   availableAt: string | null;
   averageUtilization: number;
   maximumUtilization: number;
+  /**
+   * The account is usable only by redeeming a usage-limit reset, which
+   * spends one of its credits. Absent when nothing needs redeeming.
+   */
+  viaReset?: true;
   status: "use_now" | "wait";
   /** A better account that frees up soon, when one exists. Never replaces `account`. */
   waitFor?: RecommendationAlternative;
 }
 
 interface RankedCandidate {
+  applicableResets: number;
   averageUtilization: number;
   candidate: RecommendationCandidate;
   maximumUtilization: number;
@@ -89,10 +102,13 @@ export function recommendUsage(
 
     const utilizations = windows.map((window) => window.usedPercent);
     const blockers = windows.filter((window) => window.usedPercent >= 100);
-    // Blocked with no readable reset means blocked for an unknown time, which
-    // must not collapse to the 0 that means "free now".
+    const applicableResets = candidate.applicableResets ?? 0;
+    // Blocked with an applicable reset in hand is not blocked for long: the
+    // reset redeems the spent limits at once. Blocked with no readable reset
+    // means blocked for an unknown time, which must not collapse to the 0
+    // that means "free now".
     const resetAt =
-      blockers.length === 0
+      blockers.length === 0 || applicableResets > 0
         ? 0
         : blockers.reduce((latest, window) => {
             const at = resetTime(window);
@@ -101,6 +117,7 @@ export function recommendUsage(
 
     return [
       {
+        applicableResets,
         averageUtilization:
           utilizations.reduce((sum, value) => sum + value, 0) /
           utilizations.length,
@@ -141,6 +158,11 @@ export function recommendUsage(
     averageUtilization: best.averageUtilization,
     maximumUtilization: best.maximumUtilization,
     status: best.resetAt === 0 ? "use_now" : "wait",
+    // A reset-unblocked account only stands at the front of a queue when
+    // nothing is genuinely free, so saying what the pick costs is safe: it
+    // never competes with an account that needs nothing spent.
+    ...(best.resetAt === 0 &&
+      best.applicableResets > 0 && { viaReset: true as const }),
     ...(waitFor && { waitFor }),
   };
 }

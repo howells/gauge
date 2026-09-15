@@ -1,5 +1,6 @@
 import assert from "node:assert/strict";
 import { test } from "node:test";
+import { stripVTControlCharacters } from "node:util";
 import type { StatusAccountView } from "../src/services/render-status.js";
 import {
   renderStatusDashboard,
@@ -13,6 +14,8 @@ function view(overrides: {
   provider?: string;
   plan?: string;
   renewsAt?: string | null;
+  resetsApplicable?: number;
+  resetsAvailable?: number;
   windows: Array<{
     kind: "session" | "weekly" | "included" | "on_demand";
     resetsAt: string | null;
@@ -29,13 +32,19 @@ function view(overrides: {
       ...(overrides.renewsAt === undefined
         ? {}
         : { renewsAt: overrides.renewsAt }),
+      ...(overrides.resetsAvailable === undefined
+        ? {}
+        : { resetsAvailable: overrides.resetsAvailable }),
+      ...(overrides.resetsApplicable === undefined
+        ? {}
+        : { resetsApplicable: overrides.resetsApplicable }),
       windows: overrides.windows,
     },
   };
 }
 
 function render(account: StatusAccountView): string {
-  return renderStatusDashboard([account], null, NOW);
+  return stripVTControlCharacters(renderStatusDashboard([account], null, NOW));
 }
 
 test("a claude cell shows the renewal date beside the plan and reading", () => {
@@ -142,6 +151,75 @@ test("an account with no renewal date draws no renewal text", () => {
   assert.equal(output.includes("renews"), false);
 });
 
+test("a blocked codex cell names its applicable resets instead of the wait", () => {
+  // The wait describes a wait a redeemed reset removes, so the reset is the
+  // fact the cell exists to carry.
+  const output = render(
+    view({
+      provider: "codex",
+      plan: "Pro 20x",
+      resetsAvailable: 2,
+      resetsApplicable: 1,
+      windows: [
+        {
+          kind: "weekly",
+          resetsAt: "2026-08-31T20:59:59Z",
+          usedPercent: 100,
+        },
+      ],
+    }),
+  );
+  assert.match(output, /full · 1 reset/);
+});
+
+test("a blocked cell without resets still counts down", () => {
+  const output = render(
+    view({
+      provider: "codex",
+      plan: "Pro 20x",
+      resetsAvailable: 0,
+      resetsApplicable: 0,
+      windows: [
+        {
+          kind: "weekly",
+          resetsAt: "2026-08-31T20:59:59Z",
+          usedPercent: 100,
+        },
+      ],
+    }),
+  );
+  assert.match(output, /full · 2d/);
+});
+
+test("the detail line names the resets an account holds", () => {
+  const output = render(
+    view({
+      provider: "codex",
+      plan: "Pro 20x",
+      resetsAvailable: 3,
+      resetsApplicable: 0,
+      windows: [
+        { kind: "session", resetsAt: null, usedPercent: 0 },
+        { kind: "weekly", resetsAt: null, usedPercent: 40 },
+      ],
+    }),
+  );
+  assert.match(output, /wk 40% · 3 resets/);
+});
+
+test("a holding of zero resets draws nothing", () => {
+  const output = render(
+    view({
+      provider: "codex",
+      plan: "Pro 20x",
+      resetsAvailable: 0,
+      resetsApplicable: 0,
+      windows: [{ kind: "weekly", resetsAt: null, usedPercent: 40 }],
+    }),
+  );
+  assert.equal(output.includes("reset"), false);
+});
+
 test("a recent switch warns that running sessions still spend the old account", () => {
   const line = renderSwitchWarning(
     {
@@ -151,9 +229,10 @@ test("a recent switch warns that running sessions still spend the old account", 
     NOW,
   );
   assert.ok(line);
-  assert.match(line, /switched from gmail 40m ago/);
-  assert.match(line, /may still be spending gmail/);
-  assert.match(line, /restart them/);
+  const text = stripVTControlCharacters(line);
+  assert.match(text, /switched from gmail 40m ago/);
+  assert.match(text, /may still be spending gmail/);
+  assert.match(text, /restart them/);
 });
 
 test("several recent switches name every displaced account", () => {
@@ -165,8 +244,9 @@ test("several recent switches name every displaced account", () => {
     NOW,
   );
   assert.ok(line);
-  assert.match(line, /switched from danielhowells and materialinstruments/);
-  assert.match(line, /may still be spending one of them/);
+  const text = stripVTControlCharacters(line);
+  assert.match(text, /switched from danielhowells and materialinstruments/);
+  assert.match(text, /may still be spending one of them/);
 });
 
 test("a switch older than a day stops warning", () => {

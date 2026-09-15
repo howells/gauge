@@ -135,21 +135,20 @@ const CodexRateLimitSchema = z
   })
   .default({});
 
+/** Usage-limit resets an account holds: redeeming one clears the spent limits. */
+const CodexResetCreditsSchema = z.object({
+  applicable_available_count: z.number().finite().int().nonnegative(),
+  available_count: z.number().finite().int().nonnegative(),
+});
+
 export const CodexUsageResponseSchema = z.object({
-  additional_rate_limits: z
-    .array(
-      z.object({
-        limit_name: ShortString.nullish(),
-        metered_feature: ShortString,
-        normal_model_slug: ShortString.nullish(),
-        rate_limit: CodexRateLimitSchema,
-      }),
-    )
-    .max(100)
-    .default([]),
   plan_type: ShortString.optional(),
-  // Accounts without an active window report null, not absence.
+  // Accounts without an active window report null, not absence. The general
+  // block is the account's frontier usage; the model pools reported beside it
+  // are deliberately unread — gauge shows frontier only.
   rate_limit: CodexRateLimitSchema,
+  // Absent from payloads that predate the resets feature.
+  rate_limit_reset_credits: CodexResetCreditsSchema.optional(),
 });
 
 export const CodexRefreshResponseSchema = z.object({

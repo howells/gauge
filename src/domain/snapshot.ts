@@ -62,6 +62,14 @@ interface UsageWindow {
 export interface UsageReading {
   email?: string;
   plan: string;
+  /**
+   * Codex usage-limit resets: `resetsApplicable` of the `resetsAvailable`
+   * held apply to the account's current usage state, and redeeming one
+   * clears the spent limits at once. Absent where a provider has no such
+   * concept.
+   */
+  resetsApplicable?: number;
+  resetsAvailable?: number;
   renewsAt?: string | null;
   windows: UsageWindow[];
 }

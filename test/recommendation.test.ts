@@ -102,6 +102,101 @@ test("recommendUsage uses configured order as the final tie breaker", () => {
   assert.deepEqual(result?.account, { provider: "claude", name: "first" });
 });
 
+test("recommendUsage offers a blocked account holding an applicable reset instead of a long wait", () => {
+  // Codex grants usage-limit resets that clear spent limits at once, so an
+  // account at 100% with one in hand is a better answer than the earliest
+  // natural reset.
+  const result = recommendUsage(
+    [
+      candidate("codex", "resettable", 0, [
+        { usedPercent: 100, resetsAt: "2026-07-13T12:00:00.000Z" },
+      ]),
+      candidate("claude", "blocked", 1, [
+        { usedPercent: 100, resetsAt: "2026-07-11T18:00:00.000Z" },
+      ]),
+    ],
+    now,
+  );
+  const withReset = {
+    ...candidate("codex", "resettable", 0, [
+      { usedPercent: 100, resetsAt: "2026-07-13T12:00:00.000Z" },
+    ]),
+    applicableResets: 2,
+  };
+
+  const resetResult = recommendUsage(
+    [
+      withReset,
+      candidate("claude", "blocked", 1, [
+        { usedPercent: 100, resetsAt: "2026-07-11T18:00:00.000Z" },
+      ]),
+    ],
+    now,
+  );
+
+  // Without a reset the account stays a wait, ranked by its natural reset.
+  assert.deepEqual(result?.account, { provider: "claude", name: "blocked" });
+  assert.equal(result?.status, "wait");
+  // With one, it is usable now, and the pick names its cost.
+  assert.deepEqual(resetResult?.account, {
+    provider: "codex",
+    name: "resettable",
+  });
+  assert.equal(resetResult?.status, "use_now");
+  assert.equal(resetResult?.viaReset, true);
+});
+
+test("recommendUsage prefers a genuinely free account over one needing a reset redeemed", () => {
+  const result = recommendUsage(
+    [
+      {
+        ...candidate("codex", "resettable", 0, [
+          { usedPercent: 100, resetsAt: "2026-07-13T12:00:00.000Z" },
+        ]),
+        applicableResets: 2,
+      },
+      candidate("claude", "light", 1, [
+        { usedPercent: 10, resetsAt: "2026-07-11T13:00:00.000Z" },
+      ]),
+    ],
+    now,
+  );
+
+  assert.deepEqual(result?.account, { provider: "claude", name: "light" });
+  assert.equal(result?.viaReset, undefined);
+});
+
+test("recommendUsage offers a natural reset beside a pick that costs a credit", () => {
+  // A reset spends a credit; a natural reset forty minutes out does not, so
+  // the wait is still worth naming beside the pick.
+  const result = recommendUsage(
+    [
+      {
+        ...candidate("codex", "resettable", 0, [
+          { usedPercent: 100, resetsAt: "2026-07-13T12:00:00.000Z" },
+        ]),
+        applicableResets: 1,
+      },
+      {
+        ...candidate("claude", "soon", 1, [
+          { usedPercent: 100, resetsAt: "2026-07-11T12:40:00.000Z" },
+          { usedPercent: 20, resetsAt: "2026-07-16T12:00:00.000Z" },
+        ]),
+        plan: "Max 20x",
+      },
+    ],
+    now,
+  );
+
+  assert.deepEqual(result?.account, { provider: "codex", name: "resettable" });
+  assert.equal(result?.viaReset, true);
+  assert.deepEqual(result?.waitFor?.account, {
+    provider: "claude",
+    name: "soon",
+  });
+  assert.equal(result?.waitFor?.availableAt, "2026-07-11T12:40:00.000Z");
+});
+
 test("recommendUsage returns null when there is no current usable usage data", () => {
   assert.equal(recommendUsage([], now), null);
   assert.equal(

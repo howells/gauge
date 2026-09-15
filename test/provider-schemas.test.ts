@@ -206,6 +206,20 @@ test("provider ingress schemas strip unknown fields and bound normalized values"
     raw_body: "discarded",
   });
   assert.equal(codex.rate_limit.primary_window?.used_percent, 0);
+  assert.equal(codex.rate_limit_reset_credits, undefined);
+
+  const codexWithResets = CodexUsageResponseSchema.parse({
+    plan_type: "pro",
+    rate_limit: {},
+    rate_limit_reset_credits: {
+      applicable_available_count: 1,
+      available_count: 3,
+    },
+  });
+  assert.deepEqual(codexWithResets.rate_limit_reset_credits, {
+    applicable_available_count: 1,
+    available_count: 3,
+  });
 
   const currentCodex = CodexUsageResponseSchema.parse({
     rate_limit: {
@@ -230,9 +244,9 @@ test("provider ingress schemas strip unknown fields and bound normalized values"
     ],
   });
   assert.equal(
-    currentCodex.additional_rate_limits[0]?.rate_limit.primary_window
-      ?.limit_window_seconds,
-    300 * 60,
+    currentCodex.additional_rate_limits,
+    undefined,
+    "model pools reported beside the frontier limit are not carried",
   );
 
   const cursor = CursorUsageResponseSchema.parse({

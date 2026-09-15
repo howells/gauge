@@ -50,10 +50,10 @@ test("formats known Codex plan names", () => {
   assert.equal(formatCodexPlan("team_enterprise"), "Team Enterprise");
 });
 
-test("Codex reports an additional five-hour model window beside the general week", async () => {
-  // Current /wham/usage payloads can make the legacy `rate_limit` weekly-only
-  // and put the remaining five-hour window in `additional_rate_limits`. Gauge
-  // used to discard that array and call the seven-day legacy window a session.
+test("Codex reads only the frontier rate limit and ignores model pools", async () => {
+  // Payloads report side pools (Spark, gpt-reserve) beside the frontier limit
+  // in `additional_rate_limits`. Their windows meter other models, so gauge
+  // leaves them unread rather than drawing one as the account's session.
   const homePath = fs.mkdtempSync(path.join(os.tmpdir(), "gauge-codex-"));
   fs.writeFileSync(
     path.join(homePath, "auth.json"),
@@ -100,10 +100,88 @@ test("Codex reports an additional five-hour model window beside the general week
     const accounts = await fetchCodexAccounts([], {
       credentialRefresh: "never",
     });
-    assert.equal(accounts[0]?.session?.usedPercent, 37);
-    assert.equal(accounts[0]?.session?.label, "GPT-5.3-Codex-Spark");
+    // The frontier week is the account's only reading; the Spark pool's
+    // five-hour window never stands in for a frontier session.
+    assert.equal(accounts[0]?.session, null);
     assert.equal(accounts[0]?.weekly?.usedPercent, 71);
     assert.equal(accounts[0]?.weekly?.label, undefined);
+    assert.equal(accounts[0]?.monthly, null);
+  } finally {
+    globalThis.fetch = originalFetch;
+    if (originalHome === undefined) delete process.env.CODEX_HOME;
+    else process.env.CODEX_HOME = originalHome;
+  }
+});
+
+test("Codex carries usage-limit reset credits through to the account reading", async () => {
+  // The /wham/usage payload embeds `rate_limit_reset_credits`, the resets the
+  // Codex CLI redeems to clear spent limits at once. Gauge used to drop it.
+  const homePath = fs.mkdtempSync(path.join(os.tmpdir(), "gauge-codex-"));
+  fs.writeFileSync(
+    path.join(homePath, "auth.json"),
+    JSON.stringify({ tokens: { access_token: "existing-access" } }),
+    { mode: 0o600 },
+  );
+  const originalFetch = globalThis.fetch;
+  const originalHome = process.env.CODEX_HOME;
+  process.env.CODEX_HOME = homePath;
+  globalThis.fetch = async () =>
+    new Response(
+      JSON.stringify({
+        plan_type: "pro",
+        rate_limit: {
+          primary_window: {
+            used_percent: 100,
+            limit_window_seconds: 10_080 * 60,
+            reset_at: 1_800_000_000,
+          },
+        },
+        rate_limit_reset_credits: {
+          applicable_available_count: 1,
+          available_count: 3,
+        },
+      }),
+      { status: 200 },
+    );
+
+  try {
+    const [account] = await fetchCodexAccounts([], {
+      credentialRefresh: "never",
+    });
+    assert.equal(account?.resetsAvailable, 3);
+    assert.equal(account?.resetsApplicable, 1);
+  } finally {
+    globalThis.fetch = originalFetch;
+    if (originalHome === undefined) delete process.env.CODEX_HOME;
+    else process.env.CODEX_HOME = originalHome;
+  }
+});
+
+test("Codex accounts without a reset-credits block read as holding none", async () => {
+  const homePath = fs.mkdtempSync(path.join(os.tmpdir(), "gauge-codex-"));
+  fs.writeFileSync(
+    path.join(homePath, "auth.json"),
+    JSON.stringify({ tokens: { access_token: "existing-access" } }),
+    { mode: 0o600 },
+  );
+  const originalFetch = globalThis.fetch;
+  const originalHome = process.env.CODEX_HOME;
+  process.env.CODEX_HOME = homePath;
+  globalThis.fetch = async () =>
+    new Response(
+      JSON.stringify({
+        plan_type: "pro",
+        rate_limit: {},
+      }),
+      { status: 200 },
+    );
+
+  try {
+    const [account] = await fetchCodexAccounts([], {
+      credentialRefresh: "never",
+    });
+    assert.equal(account?.resetsAvailable, undefined);
+    assert.equal(account?.resetsApplicable, undefined);
   } finally {
     globalThis.fetch = originalFetch;
     if (originalHome === undefined) delete process.env.CODEX_HOME;

@@ -61,6 +61,45 @@ test("complete status snapshots are ok and recommend with one shared policy", ()
   );
 });
 
+test("a blocked account with an applicable reset is recommended as usable via reset", () => {
+  const result = buildStatusResult(
+    snapshot({
+      accounts: [
+        {
+          error: null,
+          source: {
+            id: { provider: "codex", name: "full" },
+            order: 0,
+            provider: "codex",
+            source: "configured",
+          },
+          usage: {
+            plan: "Pro 20x",
+            resetsAvailable: 2,
+            resetsApplicable: 1,
+            windows: [
+              {
+                kind: "weekly",
+                usedPercent: 100,
+                resetsAt: "2026-07-13T12:00:00.000Z",
+              },
+            ],
+          },
+        },
+      ],
+      summary: { total: 1, succeeded: 1, failed: 0, timed_out: 0 },
+    }),
+    { now, quick: false },
+  );
+
+  const recommendation = (
+    result.data as { recommendation: { status: string; viaReset?: true } }
+  ).recommendation;
+  assert.equal(recommendation.status, "use_now");
+  assert.equal(recommendation.viaReset, true);
+  assert.match(result.human, /ready now · via reset/);
+});
+
 test("partial snapshots stay ok and account failures use typed errors", () => {
   const result = buildStatusResult(
     snapshot({

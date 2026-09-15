@@ -37,6 +37,8 @@ interface ProviderReading {
   email?: string;
   error?: string;
   plan: string;
+  resetsApplicable?: number;
+  resetsAvailable?: number;
   renewsAt?: string | null;
   windows: NamedWindow[];
 }
@@ -394,6 +396,12 @@ function toUsageReading(account: ProviderReading): UsageReading {
     plan: account.plan,
     windows: account.windows,
     ...(account.email && { email: account.email }),
+    ...(account.resetsApplicable !== undefined && {
+      resetsApplicable: account.resetsApplicable,
+    }),
+    ...(account.resetsAvailable !== undefined && {
+      resetsAvailable: account.resetsAvailable,
+    }),
     ...(account.renewsAt !== undefined && { renewsAt: account.renewsAt }),
   });
 }

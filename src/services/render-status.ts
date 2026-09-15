@@ -278,6 +278,15 @@ function meterCell(
   }
   const percent = Math.round(window.usedPercent);
   if (status.kind === "blocked") {
+    // When the account holds an applicable usage-limit reset, that is the
+    // answer the reader came for: the wait countdown describes a wait a
+    // redeemed reset removes. The count still travels in the JSON output.
+    const resets = account.usage?.resetsApplicable ?? 0;
+    if (resets > 0) {
+      return cell(
+        `${meter(100)} ${chalk.red("full")} ${chalk.dim(`· ${resets} reset${resets === 1 ? "" : "s"}`)}`,
+      );
+    }
     const wait = Number.isFinite(status.waitMs)
       ? ` ${chalk.dim(`· ${timeUntil(new Date(now.getTime() + status.waitMs).toISOString(), now)}`)}`
       : "";
@@ -327,6 +336,11 @@ function detailCell(account: StatusAccountView | undefined, now: Date): string {
             ? ""
             : ` · ${timeUntil(second.resetsAt, now)}`
         }`;
+  // Resets the account holds, only when it holds any. A holding of zero is
+  // the common case and not worth a permanent column of noise.
+  const resetsHeld = account.usage.resetsAvailable ?? 0;
+  const resets =
+    resetsHeld > 0 ? `${resetsHeld} reset${resetsHeld === 1 ? "" : "s"}` : null;
   // Where a drawn countdown already lands on the renewal instant — Cursor's
   // windows reset on the billing date — the date would say the same thing
   // twice, so the countdown stands in for it.
@@ -356,11 +370,11 @@ function detailCell(account: StatusAccountView | undefined, now: Date): string {
   // the reader came for, and the plan is the one the recommendation line
   // already repeats for whichever account it picks.
   for (const tier of [
-    [plan, scopedPrimary, reading, renews],
-    [scopedPrimary, reading, renews],
-    [scopedPrimary, reading],
+    [plan, scopedPrimary, reading, resets, renews],
+    [scopedPrimary, reading, resets, renews],
+    [scopedPrimary, reading, resets],
     [reading ?? scopedPrimary ?? plan],
-    [renews],
+    [resets ?? renews],
   ]) {
     const line = tier
       .filter((part): part is string => part !== null)
@@ -407,7 +421,12 @@ function recommendationLine(
   );
   const plan = picked?.usage?.plan ? chalk.dim(` · ${picked.usage.plan}`) : "";
   if (recommendation.status === "use_now") {
-    const line = `${INDENT}${chalk.green("→")} ${chalk.bold(id)}  ${chalk.dim("ready now")}${plan}`;
+    // Naming the cost keeps "ready now" honest: this pick stands usable
+    // because redeeming a reset would clear it, and the credit is spent.
+    const ready = chalk.dim(
+      recommendation.viaReset ? "ready now · via reset" : "ready now",
+    );
+    const line = `${INDENT}${chalk.green("→")} ${chalk.bold(id)}  ${ready}${plan}`;
     // The second line is the one the dashboard could not say before: something
     // better is about to free up, and switching now would be the worse move.
     const alternative = recommendation.waitFor;
@@ -735,7 +754,10 @@ export function renderQuickRecommendation(
   if (!recommendation) return "No account recommendation available.\n";
   const id = `${recommendation.account.provider}:${recommendation.account.name}`;
   if (recommendation.status === "use_now") {
-    return `${chalk.green("→")} ${chalk.bold(id)}  ${chalk.dim("ready now")}\n`;
+    const ready = chalk.dim(
+      recommendation.viaReset ? "ready now · via reset" : "ready now",
+    );
+    return `${chalk.green("→")} ${chalk.bold(id)}  ${ready}\n`;
   }
   const wait = recommendation.availableAt
     ? timeUntil(recommendation.availableAt, now)

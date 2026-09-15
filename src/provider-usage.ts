@@ -17,8 +17,6 @@ const CURSOR_BASE_URL = "https://cursor.com";
 const MAX_PROVIDER_RESPONSE_BYTES = 1_000_000;
 
 interface RateWindow {
-  /** Provider-owned scope name when this limit applies to one model pool. */
-  label?: string;
   /** Null when the window is idle: nothing spent, so nothing counting down. */
   resetsAt: string | null;
   usedPercent: number;
@@ -32,6 +30,13 @@ interface UnifiedAccount {
   plan: string;
   provider: Provider;
   providerAccountId?: string;
+  /**
+   * Codex usage-limit resets: `resetsApplicable` of the `resetsAvailable`
+   * held apply to the account's current usage state, and redeeming one
+   * clears the spent limits at once.
+   */
+  resetsApplicable?: number;
+  resetsAvailable?: number;
   renewsAt?: string | null;
   session: RateWindow | null;
   weekly: RateWindow | null;
@@ -140,16 +145,18 @@ interface ClassifiedCodexWindow {
 }
 
 /**
- * Classify a Codex window by the duration the provider declares.
+ * Classify a frontier window by the duration the provider declares.
  *
- * Current payloads can put a seven-day window in `primary_window`, so primary
- * and secondary are no longer meanings. Positional fallbacks remain only for
- * older payloads that predate `limit_window_seconds`.
+ * The general `rate_limit` block is the account's frontier usage and the only
+ * thing gauge reads. Side pools (Spark, gpt-reserve) report beside it in
+ * `additional_rate_limits` and are deliberately unread: their windows meter
+ * other models, and drawing one as the account's meter understates frontier
+ * usage. Positional fallbacks remain only for payloads that predate
+ * `limit_window_seconds`.
  */
 function classifyCodexWindow(
   value: unknown,
   fallback: "session" | "weekly",
-  label?: string,
 ): ClassifiedCodexWindow | null {
   const window = toRateWindow(value);
   if (!window) return null;
@@ -157,28 +164,24 @@ function classifyCodexWindow(
     ? numberValue(value.limit_window_seconds)
     : undefined;
   const minutes = seconds === undefined ? undefined : seconds / 60;
-  const kind =
-    minutes === undefined
-      ? fallback
-      : minutes <= 24 * 60
-        ? "session"
-        : minutes <= 8 * 24 * 60
-          ? "weekly"
-          : "monthly";
   return {
-    kind,
-    window: label ? { ...window, label } : window,
+    kind:
+      minutes === undefined
+        ? fallback
+        : minutes <= 24 * 60
+          ? "session"
+          : minutes <= 8 * 24 * 60
+            ? "weekly"
+            : "monthly",
+    window,
   };
 }
 
-function classifiedCodexWindows(
-  rateLimit: unknown,
-  label?: string,
-): ClassifiedCodexWindow[] {
+function classifiedCodexWindows(rateLimit: unknown): ClassifiedCodexWindow[] {
   if (!isRecord(rateLimit)) return [];
   return [
-    classifyCodexWindow(rateLimit.primary_window, "session", label),
-    classifyCodexWindow(rateLimit.secondary_window, "weekly", label),
+    classifyCodexWindow(rateLimit.primary_window, "session"),
+    classifyCodexWindow(rateLimit.secondary_window, "weekly"),
   ].filter((window): window is ClassifiedCodexWindow => window !== null);
 }
 
@@ -525,21 +528,14 @@ async function fetchCodexAccount(
     "";
 
   const usage = CodexUsageResponseSchema.parse(body);
-  const general = classifiedCodexWindows(usage.rate_limit);
-  const additional = usage.additional_rate_limits.flatMap((limit) =>
-    classifiedCodexWindows(
-      limit.rate_limit,
-      limit.limit_name ?? limit.normal_model_slug ?? limit.metered_feature,
-    ),
-  );
+  const windows = classifiedCodexWindows(usage.rate_limit);
   const pick = (kind: CodexWindowKind): RateWindow | null =>
-    general.find((candidate) => candidate.kind === kind)?.window ??
-    additional.find((candidate) => candidate.kind === kind)?.window ??
-    null;
+    windows.find((candidate) => candidate.kind === kind)?.window ?? null;
   const session = pick("session");
   const weekly = pick("weekly");
   const monthly = pick("monthly");
   const label = source.label ?? (email ? labelFromEmail(email) : "codex");
+  const resets = usage.rate_limit_reset_credits;
 
   return {
     provider: "codex",
@@ -550,6 +546,10 @@ async function fetchCodexAccount(
     session,
     weekly,
     monthly,
+    ...(resets && {
+      resetsApplicable: resets.applicable_available_count,
+      resetsAvailable: resets.available_count,
+    }),
   };
 }
 
