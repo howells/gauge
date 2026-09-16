@@ -41,7 +41,13 @@ jobs:
     runs-on: ubuntu-latest
     timeout-minutes: 15
     steps:
+      # Full history, not the default shallow clone. test/v2-contract-golden
+      # runs `git archive` against a baseline commit and builds it, to prove the
+      # v2 contract is a fixed point; at depth 1 that commit is not a tree
+      # object and the test cannot run at all.
       - uses: actions/checkout@v7
+        with:
+          fetch-depth: 0
 
       - uses: pnpm/action-setup@v6
 
@@ -112,17 +118,20 @@ jobs:
           fi
           echo "$name@$version is not published yet (registry returned $status)."
 
-      # This is the gate the previous workflow ran, kept intact. It is wider
-      # than the other repositories' because gauge enforces coverage floors and
-      # a schema/docs parity check that nothing else would catch.
+      # This is the gate the previous workflow ran, kept whole. It is wider than
+      # the other repositories' because gauge enforces coverage floors and a
+      # schema/docs parity check that nothing else would catch. The only change
+      # is the order: build moved ahead of test.
       - name: Verify and pack
         run: |
           set -euo pipefail
           pnpm audit --audit-level high
           pnpm typecheck
           pnpm lint
-          pnpm test
+          # Build before test: test/cli-subprocess runs the packaged bin out of
+          # dist/, which exists on a developer machine and not on a fresh runner.
           pnpm build
+          pnpm test
           pnpm coverage
           pnpm coverage:critical
           pnpm schema:check
