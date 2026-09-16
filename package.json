@@ -39,7 +39,8 @@
     "package:smoke": "node scripts/package-smoke.js",
     "knip": "knip --reporter compact",
     "prepack": "pnpm build && pnpm schema:check",
-    "lint": "howells-check .",
+    "lint": "node scripts/check-lint-baseline.mjs",
+    "lint:all": "howells-check .",
     "format": "howells-fix",
     "typecheck": "tsc --noEmit"
   },
