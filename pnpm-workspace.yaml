@@ -19,3 +19,9 @@ overrides:
   # version would hand a caller a different major than it asked for.
   brace-expansion@2: 2.1.4
   brace-expansion@5: 5.0.9
+  # Denial of service parsing a malformed TOML document, reached only through
+  # `knip > smol-toml`. Nothing gauge ships parses TOML. Same reasoning as the
+  # brace-expansion pins above: `pnpm audit --audit-level high` gates both CI
+  # and the release workflow, so an unpatched transitive dev dependency stops a
+  # release. knip asks for ^1.6.1, so 1.8.0 is the range it already accepts.
+  smol-toml: 1.8.0
