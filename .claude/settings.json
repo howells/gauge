@@ -6,17 +6,7 @@
         "hooks": [
           {
             "type": "command",
-            "command": "jq -r '.tool_input.file_path' | { read file_path; case \"$file_path\" in *.js|*.ts|*.jsx|*.tsx|*.json|*.jsonc|*.css|*.graphql) howells-format \"$file_path\" 2>/dev/null || true ;; esac; }"
-          }
-        ]
-      }
-    ],
-    "Stop": [
-      {
-        "hooks": [
-          {
-            "type": "command",
-            "command": "git diff --name-only --diff-filter=d HEAD | grep -E '\\.(js|ts|jsx|tsx|json|jsonc|css|graphql)$' | xargs howells-format 2>/dev/null || true"
+            "command": "f=$(jq -r '.tool_input.file_path // empty'); [ -f \"$f\" ] || exit 0; case \"$f\" in *.js|*.jsx|*.ts|*.tsx|*.mjs|*.cjs|*.mts|*.cts|*.json|*.jsonc|*.css|*.md|*.mdx) cd \"$(dirname \"$f\")\" && \"$CLAUDE_PROJECT_DIR/node_modules/.bin/howells-oxfmt\" --write \"$f\" >/dev/null ;; esac"
           }
         ]
       }
