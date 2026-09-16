@@ -1,76 +1,191 @@
-name: Release
+# The only GitHub Actions workflow in this repository, and the only thing it does
+# is publish to npm. Checks run locally; nothing here runs on push, on pull
+# request, or on a schedule.
+#
+# It exists because npm will not let a package be published unattended from a
+# developer machine. Trusted publishing (OIDC) is the one path that needs no
+# token and no one-time code, and it only works from a hosted CI runner.
+#
+# Renaming this file breaks publishing: npm's trusted publisher configuration
+# names the workflow by filename.
+name: Publish
 
-# Every semver tag, not one literal version. This was `v3.0.0`, so it fired
-# exactly once and then sat silent: v3.1.0 was tagged, nothing ran, and the
-# release had to go out by hand. A trigger that only matches the release it was
-# written for is one that has to be remembered at every future release, which is
-# the thing automation is for. The tag-matches-package-version step below is
-# what keeps the wildcard honest.
+# A version tag is what ships a release. The tag stays in the repo as the record
+# of what went out, and the job refuses to run when the tag and the package.json
+# version disagree, so a mistyped tag stops rather than publishes.
+# workflow_dispatch is kept for the dry run and for re-running a failed publish
+# without cutting a second tag.
 on:
   push:
-    tags: ["v[0-9]+.[0-9]+.[0-9]+"]
+    tags:
+      - "v[0-9]+.[0-9]+.[0-9]+"
+  workflow_dispatch:
+    inputs:
+      dry_run:
+        description: Run every check and pack the tarball, but do not publish
+        type: boolean
+        default: false
 
+# id-token is what npm exchanges for publish rights. Nothing here writes to the
+# repository.
 permissions:
   contents: read
   id-token: write
 
+concurrency:
+  group: release-${{ github.ref }}
+  cancel-in-progress: false
+
 jobs:
   publish:
     runs-on: ubuntu-latest
+    timeout-minutes: 15
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
+
+      - uses: pnpm/action-setup@v6
+
+      - uses: actions/setup-node@v7
         with:
-          fetch-depth: 0
-      # Version comes from `packageManager` in package.json — one source of
-      # truth, because naming it here as well is an error, not a belt-and-braces:
-      # action-setup fails outright when the two disagree.
-      #
-      # That pin is 10.30.2, deliberately. Trusted publishing needs pnpm to let
-      # the OIDC token win over the static `_authToken` setup-node writes, and
-      # that fix (pnpm#11495) landed after 10.15.1 — so on the old pin an empty
-      # token could suppress OIDC. pnpm 11 broke OIDC outright (pnpm#11566,
-      # E404 on every package), so this must not drift upward past 10.x.
-      - uses: pnpm/action-setup@v4
-      - uses: actions/setup-node@v4
-        with:
-          node-version: 24
+          node-version: 24.15.0
           cache: pnpm
-          registry-url: https://registry.npmjs.org
-      - run: pnpm install --frozen-lockfile
-      - name: Verify tag matches package version
-        run: test "${GITHUB_REF_NAME}" = "v$(node -p "require('./package.json').version")"
-      - run: pnpm audit --audit-level high
-      - run: pnpm typecheck
-      - run: pnpm lint
-      # Built before the suite runs, for the reason spelled out in ci.yml: some
-      # of these tests read the built package.
-      - run: pnpm build
-      - run: pnpm coverage
-      - run: pnpm coverage:critical
-      - run: pnpm schema:check
-      - run: pnpm docs:check
-      - run: pnpm package:smoke
-      - run: pnpm knip
-      # Every gate above passed on the v4.0.0 tag and this step still failed:
-      # `404 Not Found - PUT`, which is what npm answers an unauthenticated
-      # publish. `setup-node` writes an .npmrc reading `${NODE_AUTH_TOKEN}`, and
-      # nothing was putting a token there — so the workflow could not have
-      # published even with the secret set. 4.0.0 went out from a laptop, the
-      # same way 3.1.0 did.
+
+      # Trusted publishing needs npm 11.5.1 or later. Node 24.15 already ships
+      # 11.12.1, so assert rather than reinstall: a global npm install is a
+      # moving part that buys nothing and can itself fail.
+      - name: Check npm can do trusted publishing
+        run: |
+          set -euo pipefail
+          have=$(npm --version)
+          need=11.5.1
+          if [ "$(printf '%s\n%s\n' "$need" "$have" | sort -V | head -1)" != "$need" ]; then
+            echo "::error::npm $have predates trusted publishing (need >= $need)"
+            exit 1
+          fi
+          echo "npm $have"
+
+      - name: Install
+        run: pnpm install --frozen-lockfile
+
+      # A tag push carries the version in the tag itself; a manual run takes it
+      # from the manifest. Both end at the same outputs, so every step below is
+      # trigger-agnostic.
+      - name: Resolve the release target
+        id: version
+        run: |
+          set -euo pipefail
+          manifest=package.json
+          name=$(node -p "require('./$manifest').name")
+          version=$(node -p "require('./$manifest').version")
+          if [ "$GITHUB_EVENT_NAME" = "push" ]; then
+            tagged="${GITHUB_REF_NAME#v}"
+            # The tag is a claim about what is being shipped; the manifest is
+            # what actually ships. A mistyped tag stops here instead of
+            # publishing a version nobody asked for.
+            if [ "$tagged" != "$version" ]; then
+              echo "::error::tag says $tagged but $manifest says $version"
+              exit 1
+            fi
+          fi
+          {
+            echo "manifest=$manifest"
+            echo "name=$name"
+            echo "version=$version"
+            echo "slug=howells-gauge"
+          } >> "$GITHUB_OUTPUT"
+          echo "Publishing $name@$version from $GITHUB_SHA"
+      # A clearer failure than npm's 403 when the version is already taken.
+      # Skipped on a dry run: a rehearsal of the checks should not need a
+      # version bump to be allowed to run.
+      - name: Refuse to republish an existing version
+        if: ${{ !inputs.dry_run }}
+        run: |
+          set -euo pipefail
+          name='${{ steps.version.outputs.name }}'
+          version='${{ steps.version.outputs.version }}'
+          encoded=$(node -p "encodeURIComponent('$name')")
+          status=$(curl -s -o /dev/null -w '%{http_code}' -H 'Authorization:' \
+            "https://registry.npmjs.org/$encoded/$version")
+          if [ "$status" = "200" ]; then
+            echo "::error::$name@$version is already on the registry. Bump the version first."
+            exit 1
+          fi
+          echo "$name@$version is not published yet (registry returned $status)."
+
+      # This is the gate the previous workflow ran, kept intact. It is wider
+      # than the other repositories' because gauge enforces coverage floors and
+      # a schema/docs parity check that nothing else would catch.
+      - name: Verify and pack
+        run: |
+          set -euo pipefail
+          pnpm audit --audit-level high
+          pnpm typecheck
+          pnpm lint
+          pnpm test
+          pnpm build
+          pnpm coverage
+          pnpm coverage:critical
+          pnpm schema:check
+          pnpm docs:check
+          pnpm package:smoke
+          pnpm knip
+          mkdir -p "$GITHUB_WORKSPACE/release-artifacts"
+          pnpm pack --pack-destination "$GITHUB_WORKSPACE/release-artifacts"
+      # Installing the tarball into a fresh consumer outside the working
+      # directory is what catches an uninstallable package, and a green build
+      # does not replace it. It also catches a workspace: or catalog: specifier
+      # that never got rewritten, which installs fine from the repo and fails
+      # for the first stranger who runs npm install.
+      - name: Install the tarball into a fresh consumer
+        run: |
+          set -euo pipefail
+          tarball=$(ls "$GITHUB_WORKSPACE"/release-artifacts/*.tgz)
+          if tar -xzOf "$tarball" package/package.json | grep -q '"\(workspace\|catalog\):'; then
+            echo "::error::the tarball still names a workspace: or catalog: specifier"
+            exit 1
+          fi
+          consumer=$(mktemp -d)
+          echo '{"private":true,"type":"module"}' > "$consumer/package.json"
+          cd "$consumer"
+          npm install --ignore-scripts --no-audit --no-fund --no-package-lock "$tarball"
+          node -e "
+            const { existsSync } = require('node:fs');
+            const name = '${{ steps.version.outputs.name }}';
+            const installed = 'node_modules/' + name + '/package.json';
+            if (!existsSync(installed)) {
+              throw new Error(name + ' did not install into the consumer');
+            }
+            const manifest = require('./' + installed);
+            if (manifest.version !== '${{ steps.version.outputs.version }}') {
+              throw new Error('installed ' + manifest.version + ', expected ${{ steps.version.outputs.version }}');
+            }
+            console.log('Installed ' + name + '@' + manifest.version + ' from the packed tarball');
+          "
+      # Publishing the packed tarball, never the working directory. No --access
+      # flag; publishConfig decides, and npm access is package-level rather than
+      # version-level.
       #
-      # Wired now, so the automation works the moment a credential exists. Two
-      # ways to give it one, either is enough:
-      #
-      #   - Trusted publishing: on npmjs.com, under the package's Settings,
-      #     link this repository and `release.yml`. npm then accepts the OIDC
-      #     identity from `id-token: write` above and no secret is needed. This
-      #     is the better one — nothing long-lived to leak or rotate.
-      #   - Or add an automation token as the `NPM_TOKEN` repository secret.
-      #
-      # Until then this step fails and the tag is published by hand.
-      # No NODE_AUTH_TOKEN. Under trusted publishing the credential is the OIDC
-      # identity from `id-token: write` above, and writing an empty `_authToken`
-      # into .npmrc is the thing that stops it being used. If you ever go back
-      # to a token, restore the env block and pin pnpm >= 10.30.2 so the two
-      # cannot fight.
-      - run: pnpm publish --access public --provenance --no-git-checks
+      # --provenance is passed explicitly. npm documents trusted publishing as
+      # attaching provenance by itself; measured as a controlled pair on
+      # @howells/lint, the flag is what actually attaches it.
+      - name: Publish
+        if: ${{ !inputs.dry_run }}
+        run: |
+          set -euo pipefail
+          npm publish "$(ls "$GITHUB_WORKSPACE"/release-artifacts/*.tgz)" --provenance
+
+      # Proves anonymous consumers can reach the release, which a successful
+      # publish does not prove on its own. No credentials exist on this runner -
+      # trusted publishing leaves no token behind - so the install is genuinely
+      # anonymous, and a restricted package fails it.
+      - name: Verify anonymous resolution
+        if: ${{ !inputs.dry_run }}
+        run: node scripts/check-published-package.mjs "${{ steps.version.outputs.manifest }}"
+
+      - name: Keep the release artifacts
+        uses: actions/upload-artifact@v7
+        with:
+          name: ${{ steps.version.outputs.slug }}-${{ steps.version.outputs.version }}
+          path: release-artifacts/
+          retention-days: 90
+          if-no-files-found: error
