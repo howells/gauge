@@ -1,5 +1,6 @@
 import assert from "node:assert/strict";
 import { test } from "node:test";
+
 import { runAddCommand } from "../src/commands.js";
 import { CLIError } from "../src/security.js";
 import { addGuide, missingAccountName } from "../src/services/onboarding.js";
@@ -45,7 +46,7 @@ test("runAddCommand without a name guides instead of validating a schema", async
   await assert.rejects(
     () => runAddCommand(undefined, {}),
     (error: unknown) =>
-      error instanceof CLIError && error.code === "ACCOUNT_NAME_REQUIRED",
+      error instanceof CLIError && error.code === "ACCOUNT_NAME_REQUIRED"
   );
 });
 
@@ -54,6 +55,6 @@ test("runAddCommand with a raw payload still defers to wire validation", async (
   await assert.rejects(
     () => runAddCommand(undefined, { json: "{}" }),
     (error: unknown) =>
-      error instanceof CLIError && error.code !== "ACCOUNT_NAME_REQUIRED",
+      error instanceof CLIError && error.code !== "ACCOUNT_NAME_REQUIRED"
   );
 });

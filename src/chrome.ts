@@ -34,7 +34,7 @@ export function assertChromeInstalled(): void {
     throw new Error(
       "Chrome is required but was not found.\n\n" +
         "Install Google Chrome from: https://www.google.com/chrome/\n" +
-        "gauge uses your system Chrome via Playwright — no bundled browser is included.",
+        "gauge uses your system Chrome via Playwright — no bundled browser is included."
     );
   }
 }

@@ -3,10 +3,11 @@ import fs from "node:fs";
 import os from "node:os";
 import path from "node:path";
 import { test } from "node:test";
+
 import { AccountRepository } from "../src/persistence/account-repository.js";
 
 function repository(
-  overrides: Partial<ConstructorParameters<typeof AccountRepository>[0]> = {},
+  overrides: Partial<ConstructorParameters<typeof AccountRepository>[0]> = {}
 ): { dataRoot: string; repository: AccountRepository } {
   const dataRoot = fs.mkdtempSync(path.join(os.tmpdir(), "gauge-accounts-"));
   return {
@@ -26,7 +27,7 @@ test("AccountRepository stores provider-scoped accounts in the exact v3 layout",
   accounts.add({ provider: "claude", name: "codex-work" });
   accounts.add(
     { provider: "codex", name: "work" },
-    { codexHome: "/tmp/codex-work" },
+    { codexHome: "/tmp/codex-work" }
   );
 
   assert.equal(
@@ -37,23 +38,23 @@ test("AccountRepository stores provider-scoped accounts in the exact v3 layout",
         "v3",
         "claude",
         "codex-work",
-        "config.json",
-      ),
+        "config.json"
+      )
     ),
-    true,
+    true
   );
   assert.equal(
     fs.existsSync(
-      path.join(dataRoot, "accounts", "v3", "codex", "work", "config.json"),
+      path.join(dataRoot, "accounts", "v3", "codex", "work", "config.json")
     ),
-    true,
+    true
   );
   assert.deepEqual(
     accounts.list().map((account) => account.id),
     [
       { provider: "claude", name: "codex-work" },
       { provider: "codex", name: "work" },
-    ],
+    ]
   );
 });
 
@@ -63,18 +64,18 @@ test("AccountRepository validates storage state before exposing a staged add", (
   assert.throws(() =>
     accounts.add(
       { provider: "cursor", name: "work" },
-      { storageState: { cookies: [{ name: "broken" }], origins: [] } },
-    ),
+      { storageState: { cookies: [{ name: "broken" }], origins: [] } }
+    )
   );
 
   assert.equal(
     fs.existsSync(path.join(dataRoot, "accounts", "v3", "cursor", "work")),
-    false,
+    false
   );
   const providerDirectory = path.join(dataRoot, "accounts", "v3", "cursor");
   assert.deepEqual(
     fs.existsSync(providerDirectory) ? fs.readdirSync(providerDirectory) : [],
-    [],
+    []
   );
 });
 
@@ -90,7 +91,7 @@ test("AccountRepository refresh preserves the committed file when replacement fa
     "v3",
     "claude",
     "work",
-    "storage-state.json",
+    "storage-state.json"
   );
   const before = fs.readFileSync(storagePath, "utf8");
 
@@ -105,7 +106,7 @@ test("AccountRepository refresh preserves the committed file when replacement fa
 
   assert.throws(
     () => failing.refresh(id, { storageState: { cookies: [], origins: [] } }),
-    /injected replacement failure/,
+    /injected replacement failure/
   );
   assert.equal(fs.readFileSync(storagePath, "utf8"), before);
 });
@@ -150,12 +151,12 @@ test("AccountRepository refresh rolls back an earlier replacement when a later o
           origins: [],
         },
       }),
-    /injected second-write failure/,
+    /injected second-write failure/
   );
   assert.equal(fs.readFileSync(before.paths.config, "utf8"), beforeConfig);
   assert.equal(
     fs.readFileSync(before.paths.storageState, "utf8"),
-    beforeStorage,
+    beforeStorage
   );
 });
 
@@ -179,7 +180,7 @@ test("AccountRepository hides an account before recursive tombstone cleanup", ()
   assert.deepEqual(accounts.list(), []);
   assert.equal(
     fs.existsSync(path.join(dataRoot, "accounts", "v3", "cursor", "work")),
-    false,
+    false
   );
   assert.match(removed[0] ?? "", /\.work\.tombstone-remove$/);
   assert.equal(fs.existsSync(removed[0] ?? ""), true);
@@ -191,7 +192,7 @@ test("AccountRepository creates owner-only directories and files", () => {
     { provider: "claude", name: "work" },
     {
       storageState: { cookies: [], origins: [] },
-    },
+    }
   );
 
   const directory = path.join(dataRoot, "accounts", "v3", "claude", "work");
@@ -215,7 +216,7 @@ test("AccountRepository rejects symlinked data roots", () => {
     (error: unknown) =>
       error instanceof Error &&
       "code" in error &&
-      error.code === "UNSAFE_ACCOUNT_PATH",
+      error.code === "UNSAFE_ACCOUNT_PATH"
   );
   assert.deepEqual(fs.readdirSync(realRoot), []);
 });
@@ -228,7 +229,7 @@ test("AccountRepository rejects duplicate and missing account operations", () =>
   assert.throws(() => accounts.add(id));
   assert.throws(() => accounts.get({ provider: "claude", name: "missing" }));
   assert.throws(() =>
-    accounts.refresh({ provider: "claude", name: "missing" }, {}),
+    accounts.refresh({ provider: "claude", name: "missing" }, {})
   );
   assert.equal(accounts.remove({ provider: "claude", name: "missing" }), false);
 });
@@ -258,7 +259,7 @@ test("AccountRepository rollback removes a newly introduced storage file", () =>
       failing.refresh(id, {
         storageState: { cookies: [], origins: [] },
       }),
-    /config replacement failed/,
+    /config replacement failed/
   );
   assert.equal(fs.existsSync(record.paths.storageState), false);
 });
@@ -267,22 +268,22 @@ test("AccountRepository add() excludes non-file profile entries from the copy", 
   const { repository: accounts } = repository();
   const id = { provider: "claude", name: "work" } as const;
   const profileSource = fs.mkdtempSync(
-    path.join(os.tmpdir(), "gauge-profile-source-"),
+    path.join(os.tmpdir(), "gauge-profile-source-")
   );
   fs.writeFileSync(path.join(profileSource, "cache"), "data");
   fs.symlinkSync(
     "nonexistent-target",
-    path.join(profileSource, "SingletonLock"),
+    path.join(profileSource, "SingletonLock")
   );
 
   const record = accounts.add(id, { profileSource });
 
   assert.equal(
     fs.readFileSync(path.join(record.paths.profile, "cache"), "utf8"),
-    "data",
+    "data"
   );
   assert.equal(
     fs.existsSync(path.join(record.paths.profile, "SingletonLock")),
-    false,
+    false
   );
 });

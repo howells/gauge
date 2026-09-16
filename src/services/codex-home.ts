@@ -47,7 +47,7 @@ export function createCodexHome(home: string): void {
  */
 export function resolveCodexHomeInput(
   raw: string,
-  homeDir: string = os.homedir(),
+  homeDir: string = os.homedir()
 ): string {
   const expanded =
     raw === "~"

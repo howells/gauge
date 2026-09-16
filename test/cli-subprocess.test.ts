@@ -14,7 +14,7 @@ const root = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..");
  * moment a packaging assertion most needs to be trusted.
  */
 const packageVersion = JSON.parse(
-  fs.readFileSync(path.join(root, "package.json"), "utf8"),
+  fs.readFileSync(path.join(root, "package.json"), "utf8")
 ).version as string;
 const tsxCli = path.join(root, "node_modules", "tsx", "dist", "cli.mjs");
 const sourceCli = path.join(root, "src", "cli.ts");
@@ -89,7 +89,7 @@ function accountDir(fixture: Fixture): string {
 
 function writeAccount(
   fixture: Fixture,
-  account: Record<string, unknown>,
+  account: Record<string, unknown>
 ): void {
   const provider = String(account.provider ?? "claude");
   const name = String(account.name);
@@ -98,7 +98,7 @@ function writeAccount(
     "accounts",
     "v3",
     provider,
-    name,
+    name
   );
   fs.mkdirSync(directory, { mode: 0o700, recursive: true });
   fs.writeFileSync(
@@ -108,7 +108,7 @@ function writeAccount(
       addedAt: "2026-01-01T00:00:00.000Z",
       ...account,
     }),
-    { mode: 0o600 },
+    { mode: 0o600 }
   );
 }
 
@@ -204,7 +204,7 @@ test("list emits JSON and paginated NDJSON envelopes", (t) => {
   assert.equal(jsonEnvelope.command, "list");
   assert.equal(
     (jsonEnvelope.data as { accounts: unknown[] }).accounts.length,
-    2,
+    2
   );
 
   const ndjsonResult = runSource(fixture, [
@@ -221,16 +221,16 @@ test("list emits JSON and paginated NDJSON envelopes", (t) => {
   assert.equal(pages.length, 2);
   assert.deepEqual(
     pages.map(
-      (page) => (page.meta as { page_info: { index: number } }).page_info.index,
+      (page) => (page.meta as { page_info: { index: number } }).page_info.index
     ),
-    [1, 2],
+    [1, 2]
   );
   assert.deepEqual(
     pages.map(
       (page) =>
-        (page.data as { accounts: Array<{ name: string }> }).accounts[0]?.name,
+        (page.data as { accounts: Array<{ name: string }> }).accounts[0]?.name
     ),
-    ["alpha", "beta"],
+    ["alpha", "beta"]
   );
 });
 
@@ -242,7 +242,7 @@ test("add dry-run reports writes without creating account artifacts", (t) => {
   fs.writeFileSync(
     path.join(codexHome, "auth.json"),
     JSON.stringify({ tokens: { access_token: "test-token" } }),
-    { mode: 0o600 },
+    { mode: 0o600 }
   );
 
   const result = runSource(fixture, [
@@ -277,7 +277,7 @@ test("add dry-run reports writes without creating account artifacts", (t) => {
       auth_mode: "codex-home",
       name: "work",
       provider: "codex",
-    },
+    }
   );
   assert.equal(
     data.writes[0],
@@ -288,8 +288,8 @@ test("add dry-run reports writes without creating account artifacts", (t) => {
       "v3",
       "codex",
       "work",
-      "config.json",
-    ),
+      "config.json"
+    )
   );
   assert.equal(fs.existsSync(path.join(fixture.home, ".gauge")), false);
   assert.equal((envelope.meta as { dry_run: boolean }).dry_run, true);
@@ -308,7 +308,7 @@ test("refresh and remove dry-runs characterize existing Codex account changes", 
     "accounts",
     "v3",
     "codex",
-    "work",
+    "work"
   );
   const configPath = path.join(accountPath, "config.json");
   const before = fs.readFileSync(configPath, "utf8");
@@ -487,7 +487,7 @@ test("built package bin executes via its shebang", (t) => {
   assert.equal(
     fs.existsSync(builtCli),
     true,
-    `No built CLI at ${builtCli}. This test runs the packaged bin, so run \`pnpm build\` first.`,
+    `No built CLI at ${builtCli}. This test runs the packaged bin, so run \`pnpm build\` first.`
   );
 
   const result = spawnSync(builtCli, ["--version"], {

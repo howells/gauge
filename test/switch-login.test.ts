@@ -3,6 +3,7 @@ import fs from "node:fs";
 import os from "node:os";
 import path from "node:path";
 import { test } from "node:test";
+
 import {
   codexSwitchTargets,
   switchCodexLogin,
@@ -18,7 +19,7 @@ function seed(dataDir: string, name: string, token: string): void {
   fs.mkdirSync(home, { recursive: true });
   fs.writeFileSync(
     path.join(home, "auth.json"),
-    JSON.stringify({ tokens: { access_token: token } }),
+    JSON.stringify({ tokens: { access_token: token } })
   );
 }
 
@@ -31,7 +32,7 @@ test("codexSwitchTargets lists only accounts that actually carry credentials", (
 
   assert.deepEqual(
     codexSwitchTargets(dataDir).map((target) => target.name),
-    ["gmail", "work"],
+    ["gmail", "work"]
   );
 });
 
@@ -42,7 +43,7 @@ test("switchCodexLogin writes the account's credentials into the active home", (
   const result = switchCodexLogin("gmail", dataDir, home);
 
   const written = JSON.parse(
-    fs.readFileSync(path.join(home, ".codex", "auth.json"), "utf8"),
+    fs.readFileSync(path.join(home, ".codex", "auth.json"), "utf8")
   );
   assert.equal(written.tokens.access_token, "gmail-token");
   assert.equal(result.name, "gmail");
@@ -55,7 +56,7 @@ test("switchCodexLogin keeps the credentials it replaces", () => {
   fs.mkdirSync(path.join(home, ".codex"), { recursive: true });
   fs.writeFileSync(
     path.join(home, ".codex", "auth.json"),
-    JSON.stringify({ tokens: { access_token: "previous" } }),
+    JSON.stringify({ tokens: { access_token: "previous" } })
   );
 
   const result = switchCodexLogin("gmail", dataDir, home);
@@ -75,13 +76,13 @@ test("switchCodexLogin refuses unparseable credentials without touching the live
   fs.mkdirSync(path.join(home, ".codex"), { recursive: true });
   fs.writeFileSync(
     path.join(home, ".codex", "auth.json"),
-    JSON.stringify({ tokens: { access_token: "working" } }),
+    JSON.stringify({ tokens: { access_token: "working" } })
   );
 
   assert.throws(() => switchCodexLogin("broken", dataDir, home));
 
   const live = JSON.parse(
-    fs.readFileSync(path.join(home, ".codex", "auth.json"), "utf8"),
+    fs.readFileSync(path.join(home, ".codex", "auth.json"), "utf8")
   );
   // Trading a wrong account for no account is the one outcome worth refusing.
   assert.equal(live.tokens.access_token, "working");
@@ -91,16 +92,15 @@ test("switchCodexLogin refuses an account it holds nothing for", () => {
   const { dataDir, home } = scratch();
   assert.throws(
     () => switchCodexLogin("absent", dataDir, home),
-    /No stored Codex home/u,
+    /No stored Codex home/u
   );
 });
 
 // ─── Claude Code sessions ────────────────────────────────────────────────────
 
 test("capturedClaudeSessions lists only accounts a session was captured for", async () => {
-  const { capturedClaudeSessions, captureClaudeSession } = await import(
-    "../src/services/claude-session.js"
-  );
+  const { capturedClaudeSessions, captureClaudeSession } =
+    await import("../src/services/claude-session.js");
   const { dataDir } = scratch();
   fs.mkdirSync(path.join(dataDir, "accounts", "v3", "claude", "seen"), {
     recursive: true,
@@ -118,20 +118,18 @@ test("capturedClaudeSessions lists only accounts a session was captured for", as
 });
 
 test("switchClaudeSession refuses an account never captured", async () => {
-  const { switchClaudeSession } = await import(
-    "../src/services/claude-session.js"
-  );
+  const { switchClaudeSession } =
+    await import("../src/services/claude-session.js");
   const { dataDir, home } = scratch();
   assert.throws(
     () => switchClaudeSession("absent", dataDir, home),
-    /No captured Claude Code session/u,
+    /No captured Claude Code session/u
   );
 });
 
 test("switchClaudeSession refuses an unparseable stored payload", async () => {
-  const { switchClaudeSession, captureClaudeSession } = await import(
-    "../src/services/claude-session.js"
-  );
+  const { switchClaudeSession, captureClaudeSession } =
+    await import("../src/services/claude-session.js");
   const { dataDir, home } = scratch();
   captureClaudeSession(dataDir, "broken", {
     credentials: "{ truncated",
@@ -143,9 +141,8 @@ test("switchClaudeSession refuses an unparseable stored payload", async () => {
 });
 
 test("switchClaudeSession keeps displaced credentials outside the migration namespace", async (t) => {
-  const { switchClaudeSession, captureClaudeSession } = await import(
-    "../src/services/claude-session.js"
-  );
+  const { switchClaudeSession, captureClaudeSession } =
+    await import("../src/services/claude-session.js");
   const { dataDir, home } = scratch();
   captureClaudeSession(dataDir, "next", {
     credentials: JSON.stringify({ claudeAiOauth: { accessToken: "next" } }),
@@ -156,7 +153,7 @@ test("switchClaudeSession keeps displaced credentials outside the migration name
   fs.writeFileSync(
     path.join(home, ".claude.json"),
     JSON.stringify({ oauthAccount: { emailAddress: "previous@example.com" } }),
-    { mode: 0o600 },
+    { mode: 0o600 }
   );
 
   const bin = fs.mkdtempSync(path.join(os.tmpdir(), "gauge-security-bin-"));
@@ -173,7 +170,7 @@ if (args[0] === "find-generic-password" && args.includes("-w")) {
   process.exitCode = 1;
 }
 `,
-    { mode: 0o700 },
+    { mode: 0o700 }
   );
   const originalPath = process.env.PATH;
   const originalPlatform = process.platform;
@@ -190,16 +187,16 @@ if (args[0] === "find-generic-password" && args.includes("-w")) {
   const expectedBackup = path.join(
     dataDir,
     "backups",
-    "claude-session.previous.json",
+    "claude-session.previous.json"
   );
   assert.equal(result.backedUp, expectedBackup);
   assert.equal(fs.statSync(expectedBackup).mode & 0o777, 0o600);
   assert.equal(
     JSON.parse(fs.readFileSync(expectedBackup, "utf8")).profile.emailAddress,
-    "previous@example.com",
+    "previous@example.com"
   );
   assert.equal(
     fs.existsSync(path.join(dataDir, "claude-session.previous.json")),
-    false,
+    false
   );
 });

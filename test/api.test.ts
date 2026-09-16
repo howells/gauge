@@ -3,6 +3,7 @@ import fs from "node:fs";
 import os from "node:os";
 import path from "node:path";
 import { test } from "node:test";
+
 import {
   type ApiRuntime,
   addAccount,
@@ -31,11 +32,11 @@ test("Claude pure response normalization is bounded and deterministic", () => {
   assert.equal(derivePlan(organization), "max_5x");
   assert.equal(
     derivePlan({ ...organization, rate_limit_tier: "claude_max_20x" }),
-    "max_20x",
+    "max_20x"
   );
   assert.equal(
     derivePlan({ ...organization, rate_limit_tier: "claude_max" }),
-    "max",
+    "max"
   );
   assert.equal(
     derivePlan({
@@ -43,7 +44,7 @@ test("Claude pure response normalization is bounded and deterministic", () => {
       rate_limit_tier: undefined,
       capabilities: ["claude_max"],
     }),
-    "max",
+    "max"
   );
   assert.equal(
     derivePlan({
@@ -51,7 +52,7 @@ test("Claude pure response normalization is bounded and deterministic", () => {
       rate_limit_tier: "",
       capabilities: ["chat"],
     }),
-    "pro",
+    "pro"
   );
   // Free accounts still list "chat" but carry no subscription.
   assert.equal(
@@ -61,22 +62,22 @@ test("Claude pure response normalization is bounded and deterministic", () => {
       billing_type: "none",
       capabilities: ["chat"],
     }),
-    "free",
+    "free"
   );
   assert.equal(
     derivePlan({ ...organization, rate_limit_tier: "", capabilities: [] }),
-    "unknown",
+    "unknown"
   );
   assert.equal(
     extractClaudeRenewal({ next_charge_date: "2026-08-01" }),
-    "2026-08-01T00:00:00.000Z",
+    "2026-08-01T00:00:00.000Z"
   );
   assert.equal(
     extractClaudeRenewal({
       next_charge_at: "2026-08-02T10:00:00Z",
       next_charge_date: "2026-08-01",
     }),
-    "2026-08-02T10:00:00.000Z",
+    "2026-08-02T10:00:00.000Z"
   );
   assert.equal(extractClaudeRenewal({}), null);
   assert.equal(extractClaudeRenewal([]), null);
@@ -103,7 +104,7 @@ test("request acquisition fetches usage and renewal concurrently and returns pen
     },
     () => {
       disposed += 1;
-    },
+    }
   );
 
   const result = await fetchUsageForAccount(
@@ -111,7 +112,7 @@ test("request acquisition fetches usage and renewal concurrently and returns pen
     {
       onStorageStateUpdate: (value) => updates.push(value),
       runtime,
-    },
+    }
   );
 
   assert.equal(result.plan, "max_5x");
@@ -137,10 +138,10 @@ test("request acquisition contains authentication and malformed organization fai
           response(
             status,
             body,
-            status === 403 ? "application/json" : undefined,
-          ),
+            status === 403 ? "application/json" : undefined
+          )
         ),
-      },
+      }
     );
     assert.match(result.error ?? "", expected);
   }
@@ -156,9 +157,9 @@ test("request acquisition contains usage and optional-renewal failures", async (
           ? response(200, [organization])
           : url.endsWith("/usage")
             ? response(403, {}, "application/json")
-            : response(500, {}),
+            : response(500, {})
       ),
-    },
+    }
   );
   assert.match(usageRejected.error ?? "", /Session expired/);
 
@@ -175,7 +176,7 @@ test("request acquisition contains usage and optional-renewal failures", async (
         if (url.endsWith("/usage")) return response(200, usage);
         return response(200, "not-json", "text/plain");
       }),
-    },
+    }
   );
   assert.equal(renewalIgnored.renewsAt, "2026-07-30T00:00:00.000Z");
 });
@@ -196,11 +197,11 @@ test("optional renewal enrichment contains acquisition and disposal failures", a
         : response(200, { next_charge_at: "2026-09-12T10:00:00Z" }),
     () => {
       throw new Error("dispose failed");
-    },
+    }
   ) as ApiRuntime;
   assert.equal(
     await fetchRenewalOnly(storagePath, disposalFailure),
-    "2026-09-12T10:00:00.000Z",
+    "2026-09-12T10:00:00.000Z"
   );
 });
 
@@ -220,9 +221,9 @@ test("missing, aborted, and never-refresh acquisitions fail without browser writ
     () =>
       fetchUsageForAccount(
         { authKey: "work", name: "work", storagePath },
-        { signal: controller.signal },
+        { signal: controller.signal }
       ),
-    /cancelled/,
+    /cancelled/
   );
 
   const rejected = await fetchUsageForAccount(
@@ -230,7 +231,7 @@ test("missing, aborted, and never-refresh acquisitions fail without browser writ
     {
       credentialRefresh: "never",
       runtime: requestRuntime(async () => response(403, {}, "text/html")),
-    },
+    }
   );
   assert.match(rejected.error ?? "", /refresh is disabled/);
 });
@@ -248,9 +249,9 @@ test("in-flight request cancellation settles and disposes the request context on
         () => new Promise<ReturnType<typeof response>>(() => undefined),
         () => {
           disposed += 1;
-        },
+        }
       ),
-    },
+    }
   );
 
   await new Promise<void>((resolve) => setImmediate(resolve));
@@ -275,7 +276,7 @@ test("request context resolving after cancellation is disposed exactly once", as
         newRequestContext: (() =>
           contextPromise) as ApiRuntime["newRequestContext"],
       },
-    },
+    }
   );
 
   await new Promise<void>((resolve) => setImmediate(resolve));
@@ -310,9 +311,9 @@ test("request body cancellation settles and disposes the context once", async ()
         }),
         () => {
           disposed += 1;
-        },
+        }
       ),
-    },
+    }
   );
   await new Promise<void>((resolve) => setImmediate(resolve));
   controller.abort();
@@ -337,9 +338,9 @@ test("chunked request responses without a content length are parsed", async () =
           ? chunked([organization])
           : url.endsWith("/usage")
             ? chunked(usage)
-            : chunked({}),
+            : chunked({})
       ),
-    },
+    }
   );
   assert.equal(result.error, undefined);
   assert.equal(result.plan, "max_5x");
@@ -365,7 +366,7 @@ test("oversized request responses without a content length are still bounded", a
         ok: () => true,
         status: () => 200,
       })),
-    },
+    }
   );
   assert.match(result.error ?? "", /refresh is disabled/);
 });
@@ -383,9 +384,9 @@ test("request promise rejection is contained and disposes the context", async ()
         },
         () => {
           disposed += 1;
-        },
+        }
       ),
-    },
+    }
   );
 
   assert.match(result.error ?? "", /Session expired/);
@@ -418,7 +419,7 @@ test("visible browser fallback returns usage, persists pending state, and closes
       profileDir,
       storagePath: path.join(profileDir, "missing.json"),
     },
-    { onStorageStateUpdate: (value) => updates.push(value), runtime },
+    { onStorageStateUpdate: (value) => updates.push(value), runtime }
   );
 
   assert.equal(result.plan, "max_5x");
@@ -439,7 +440,7 @@ test("visible browser fallback aborts pending navigation and closes once", async
     },
     () => {
       closed += 1;
-    },
+    }
   );
   const acquisition = fetchUsageForAccount(
     {
@@ -448,7 +449,7 @@ test("visible browser fallback aborts pending navigation and closes once", async
       profileDir,
       storagePath: path.join(profileDir, "missing.json"),
     },
-    { runtime, signal: controller.signal },
+    { runtime, signal: controller.signal }
   );
 
   await new Promise<void>((resolve) => setImmediate(resolve));
@@ -480,7 +481,7 @@ test("visible browser fallback closes when new-page creation is aborted", async 
       profileDir,
       storagePath: path.join(profileDir, "missing.json"),
     },
-    { runtime, signal: controller.signal },
+    { runtime, signal: controller.signal }
   );
   await new Promise<void>((resolve) => setImmediate(resolve));
   controller.abort();
@@ -511,7 +512,7 @@ test("browser context resolving after cancellation is closed exactly once", asyn
         launchPersistentContext: (() =>
           contextPromise) as ApiRuntime["launchPersistentContext"],
       },
-    },
+    }
   );
 
   await new Promise<void>((resolve) => setImmediate(resolve));
@@ -544,9 +545,9 @@ test("Claude browser responses are bounded before schema validation", async () =
           ],
           goto: async () => undefined,
         },
-        () => undefined,
+        () => undefined
       ),
-    },
+    }
   );
   assert.match(result.error ?? "", /exceeded the allowed size/);
 });
@@ -589,7 +590,7 @@ test("interactive login timeout and verification failure return null and close",
   timeoutRuntime.now = () => (clockCalls++ === 0 ? 0 : 300_001);
   assert.equal(
     await addCursorAccount("work", { quiet: true, runtime: timeoutRuntime }),
-    null,
+    null
   );
 
   const invalidPage = {
@@ -605,7 +606,7 @@ test("interactive login timeout and verification failure return null and close",
         closed += 1;
       }),
     }),
-    null,
+    null
   );
   assert.equal(closed, 2);
 });
@@ -626,11 +627,11 @@ test("fetchAllUsage preserves input order and reports progress paths", async () 
         storagePath: "/missing-two.json",
       },
     ],
-    { quiet: true },
+    { quiet: true }
   );
   assert.deepEqual(
     results.map((result) => result.name),
-    ["one", "two"],
+    ["one", "two"]
   );
 });
 
@@ -644,7 +645,7 @@ function temporaryFile(name: string, content: string): string {
 function response(
   status: number,
   body: unknown,
-  contentType = "application/json",
+  contentType = "application/json"
 ) {
   const encoded = Buffer.from(JSON.stringify(body));
   return {
@@ -661,7 +662,7 @@ function response(
 
 function requestRuntime(
   get: (url: string) => Promise<unknown>,
-  dispose: () => void = () => undefined,
+  dispose: () => void = () => undefined
 ): Partial<ApiRuntime> {
   return {
     newRequestContext: (async () => ({
@@ -674,7 +675,7 @@ function requestRuntime(
 
 function browserRuntime(
   page: Record<string, unknown>,
-  close: () => void,
+  close: () => void
 ): Partial<ApiRuntime> {
   return {
     assertChromeInstalled: () => undefined,

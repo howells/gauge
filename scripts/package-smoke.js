@@ -19,7 +19,7 @@ const tarball = path.resolve(root, tarballName);
 fs.writeFileSync(
   path.join(smokeRoot, "package.json"),
   `${JSON.stringify({ name: "gauge-package-smoke", private: true })}\n`,
-  { mode: 0o600 },
+  { mode: 0o600 }
 );
 run("npm", ["install", "--ignore-scripts", tarball], smokeRoot);
 
@@ -31,19 +31,19 @@ const version = run(bin, ["--version"], smokeRoot);
 // first bump after it was written, which is the one moment a packaging gate
 // most needs to be trusted.
 const expectedVersion = JSON.parse(
-  fs.readFileSync(path.join(root, "package.json"), "utf8"),
+  fs.readFileSync(path.join(root, "package.json"), "utf8")
 ).version;
 assert.equal(version.stdout.trim(), expectedVersion);
 
 const deepImport = spawnSync(
   process.execPath,
   ["--input-type=module", "--eval", "import('@howells/gauge/dist/cli.js')"],
-  { cwd: smokeRoot, encoding: "utf8" },
+  { cwd: smokeRoot, encoding: "utf8" }
 );
 assert.notEqual(deepImport.status, 0);
 assert.match(
   `${deepImport.stdout}\n${deepImport.stderr}`,
-  /ERR_PACKAGE_PATH_NOT_EXPORTED/,
+  /ERR_PACKAGE_PATH_NOT_EXPORTED/
 );
 
 const entries = run("tar", ["-tf", tarball], smokeRoot).stdout;
@@ -56,7 +56,7 @@ function run(command, args, cwd) {
   assert.equal(
     result.status,
     0,
-    `${command} ${args.join(" ")} failed:\n${result.stdout}\n${result.stderr}`,
+    `${command} ${args.join(" ")} failed:\n${result.stdout}\n${result.stderr}`
   );
   return result;
 }

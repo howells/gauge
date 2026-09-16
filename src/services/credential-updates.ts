@@ -1,4 +1,5 @@
 import { z } from "zod";
+
 import { AccountIdSchema } from "../domain/account.js";
 import type { PendingCredentialUpdate } from "../domain/snapshot.js";
 import { AccountRepository } from "../persistence/account-repository.js";
@@ -24,10 +25,10 @@ export function applyPendingCredentialUpdates(
     allowedCodexHomes: string[];
     dataRoot: string;
     policy: CredentialRefreshPolicy;
-  },
+  }
 ): void {
   const external = updates.filter(
-    (update) => update.kind === "external-credential",
+    (update) => update.kind === "external-credential"
   );
   if (external.length > 0) {
     const writer = new ExternalCredentialWriter({
@@ -44,7 +45,7 @@ export function applyPendingCredentialUpdates(
     }
   }
   const storageUpdates = updates.filter(
-    (update) => update.kind === "storage-state",
+    (update) => update.kind === "storage-state"
   );
   if (storageUpdates.length === 0 || options.policy === "never") return;
   const repository = new AccountRepository({ dataRoot: options.dataRoot });
@@ -57,7 +58,7 @@ export function applyPendingCredentialUpdates(
     }
     repository.replaceStorageState(
       id.data,
-      parseStorageStateObject(pending.value),
+      parseStorageStateObject(pending.value)
     );
   }
 }

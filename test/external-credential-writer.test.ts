@@ -3,6 +3,7 @@ import fs from "node:fs";
 import os from "node:os";
 import path from "node:path";
 import { test } from "node:test";
+
 import { atomicReplace } from "../src/persistence/atomic-replace.js";
 import {
   ExternalCredentialWriter,
@@ -19,7 +20,7 @@ test("writes refreshed Codex tokens while preserving unrelated auth data", () =>
       account: { id: "account-1" },
       tokens: { account_id: "account-1", existing: "preserved" },
     }),
-    { mode: 0o600 },
+    { mode: 0o600 }
   );
   const writer = new ExternalCredentialWriter({
     allowedCodexHomes: [homePath],
@@ -33,7 +34,7 @@ test("writes refreshed Codex tokens while preserving unrelated auth data", () =>
       lastRefresh: "2026-07-11T12:00:00.000Z",
       refreshToken: "new-refresh-token",
     },
-    "refresh-if-stale",
+    "refresh-if-stale"
   );
 
   assert.deepEqual(result, {
@@ -72,7 +73,7 @@ test("never policy returns a typed result without writing credentials", () => {
       homePath,
       lastRefresh: "2026-07-11T12:00:00.000Z",
     },
-    "never",
+    "never"
   );
 
   assert.deepEqual(result, {
@@ -86,7 +87,7 @@ test("never policy returns a typed result without writing credentials", () => {
   assert.equal(writes, 0);
   assert.equal(
     fs.readFileSync(authPath, "utf8"),
-    '{"tokens":{"access_token":"old-token"}}',
+    '{"tokens":{"access_token":"old-token"}}'
   );
 });
 
@@ -115,16 +116,16 @@ test("rejects mismatched and escaping Codex homes", () => {
             homePath,
             lastRefresh: "2026-07-11T12:00:00.000Z",
           },
-          "refresh-if-stale",
+          "refresh-if-stale"
         ),
       (error: unknown) =>
-        error instanceof CLIError && error.code === "CODEX_HOME_NOT_ALLOWED",
+        error instanceof CLIError && error.code === "CODEX_HOME_NOT_ALLOWED"
     );
   }
 
   assert.equal(
     fs.readFileSync(otherAuth, "utf8"),
-    '{"tokens":{"access_token":"old-token"}}',
+    '{"tokens":{"access_token":"old-token"}}'
   );
 });
 
@@ -141,7 +142,7 @@ test("rejects a symlinked allowed Codex home", () => {
         allowedCodexHomes: [linkedHome],
       }),
     (error: unknown) =>
-      error instanceof CLIError && error.code === "CODEX_HOME_SYMLINK",
+      error instanceof CLIError && error.code === "CODEX_HOME_SYMLINK"
   );
 
   fs.writeFileSync(path.join(realHome, "auth.json"), '{"tokens":{}}');
@@ -156,10 +157,10 @@ test("rejects a symlinked allowed Codex home", () => {
           homePath: linkedHome,
           lastRefresh: "2026-07-11T12:00:00.000Z",
         },
-        "refresh-if-stale",
+        "refresh-if-stale"
       ),
     (error: unknown) =>
-      error instanceof CLIError && error.code === "CODEX_HOME_SYMLINK",
+      error instanceof CLIError && error.code === "CODEX_HOME_SYMLINK"
   );
 });
 
@@ -167,7 +168,7 @@ test("rejects a symlinked Codex auth file", () => {
   const homePath = fs.mkdtempSync(path.join(os.tmpdir(), "gauge-codex-"));
   const outsideAuth = path.join(
     fs.mkdtempSync(path.join(os.tmpdir(), "gauge-outside-")),
-    "auth.json",
+    "auth.json"
   );
   fs.writeFileSync(outsideAuth, '{"tokens":{"access_token":"old-token"}}');
   fs.symlinkSync(outsideAuth, path.join(homePath, "auth.json"), "file");
@@ -183,14 +184,14 @@ test("rejects a symlinked Codex auth file", () => {
           homePath,
           lastRefresh: "2026-07-11T12:00:00.000Z",
         },
-        "refresh-if-stale",
+        "refresh-if-stale"
       ),
     (error: unknown) =>
-      error instanceof CLIError && error.code === "CODEX_AUTH_SYMLINK",
+      error instanceof CLIError && error.code === "CODEX_AUTH_SYMLINK"
   );
   assert.equal(
     fs.readFileSync(outsideAuth, "utf8"),
-    '{"tokens":{"access_token":"old-token"}}',
+    '{"tokens":{"access_token":"old-token"}}'
   );
 });
 
@@ -209,10 +210,10 @@ test("rejects a non-regular Codex auth file", () => {
           homePath,
           lastRefresh: "2026-07-11T12:00:00.000Z",
         },
-        "refresh-if-stale",
+        "refresh-if-stale"
       ),
     (error: unknown) =>
-      error instanceof CLIError && error.code === "CODEX_AUTH_NOT_REGULAR",
+      error instanceof CLIError && error.code === "CODEX_AUTH_NOT_REGULAR"
   );
 });
 
@@ -240,7 +241,7 @@ test("preserves old auth when atomic replacement fails without exposing tokens",
           homePath,
           lastRefresh: "2026-07-11T12:00:00.000Z",
         },
-        "refresh-if-stale",
+        "refresh-if-stale"
       ),
     (error: unknown) => {
       assert.doesNotMatch(String(error), /sensitive-new-token/);
@@ -248,7 +249,7 @@ test("preserves old auth when atomic replacement fails without exposing tokens",
         error instanceof Error &&
         /injected replacement failure/.test(error.message)
       );
-    },
+    }
   );
   assert.equal(fs.readFileSync(authPath, "utf8"), oldAuth);
   assert.deepEqual(fs.readdirSync(homePath), ["auth.json"]);
@@ -269,7 +270,7 @@ test("clamps permissive Codex auth mode to 0600", () => {
       homePath,
       lastRefresh: "2026-07-11T12:00:00.000Z",
     },
-    "refresh-if-stale",
+    "refresh-if-stale"
   );
 
   assert.equal(fs.statSync(authPath).mode & 0o777, 0o600);
@@ -281,7 +282,7 @@ test("does not expose stored or pending tokens in validation errors", () => {
   fs.writeFileSync(
     authPath,
     '{"tokens":{"access_token":"stored-sensitive-token"}, trailing',
-    { mode: 0o600 },
+    { mode: 0o600 }
   );
   const writer = new ExternalCredentialWriter({
     allowedCodexHomes: [homePath],
@@ -295,13 +296,13 @@ test("does not expose stored or pending tokens in validation errors", () => {
           homePath,
           lastRefresh: "2026-07-11T12:00:00.000Z",
         },
-        "refresh-if-stale",
+        "refresh-if-stale"
       ),
     (error: unknown) => {
       assert.doesNotMatch(String(error), /stored-sensitive-token/);
       assert.doesNotMatch(String(error), /pending-sensitive-token/);
       return error instanceof CLIError && error.code === "INVALID_CODEX_AUTH";
-    },
+    }
   );
 });
 
@@ -328,23 +329,23 @@ test("Codex credential validation rejects missing and malformed artifacts", () =
   assert.throws(
     () => validateCodexHome(missingHome),
     (error: unknown) =>
-      error instanceof CLIError && error.code === "INVALID_CODEX_HOME",
+      error instanceof CLIError && error.code === "INVALID_CODEX_HOME"
   );
 
   const fileHome = temporaryAuthPath("not a directory");
   assert.throws(
     () => validateCodexHome(fileHome),
     (error: unknown) =>
-      error instanceof CLIError && error.code === "INVALID_CODEX_HOME",
+      error instanceof CLIError && error.code === "INVALID_CODEX_HOME"
   );
 
   const missingAuthHome = fs.mkdtempSync(
-    path.join(os.tmpdir(), "gauge-codex-"),
+    path.join(os.tmpdir(), "gauge-codex-")
   );
   assert.throws(
     () => validateCodexHome(missingAuthHome),
     (error: unknown) =>
-      error instanceof CLIError && error.code === "INVALID_CODEX_AUTH",
+      error instanceof CLIError && error.code === "INVALID_CODEX_AUTH"
   );
 
   const emptyAuthHome = fs.mkdtempSync(path.join(os.tmpdir(), "gauge-codex-"));
@@ -352,17 +353,17 @@ test("Codex credential validation rejects missing and malformed artifacts", () =
   assert.throws(
     () => validateCodexHome(emptyAuthHome),
     (error: unknown) =>
-      error instanceof CLIError && error.code === "INVALID_CODEX_AUTH",
+      error instanceof CLIError && error.code === "INVALID_CODEX_AUTH"
   );
 
   const directoryAuthHome = fs.mkdtempSync(
-    path.join(os.tmpdir(), "gauge-codex-"),
+    path.join(os.tmpdir(), "gauge-codex-")
   );
   fs.mkdirSync(path.join(directoryAuthHome, "auth.json"));
   assert.throws(
     () => validateCodexHome(directoryAuthHome),
     (error: unknown) =>
-      error instanceof CLIError && error.code === "CODEX_AUTH_NOT_REGULAR",
+      error instanceof CLIError && error.code === "CODEX_AUTH_NOT_REGULAR"
   );
 
   const arrayAuthHome = fs.mkdtempSync(path.join(os.tmpdir(), "gauge-codex-"));
@@ -370,7 +371,7 @@ test("Codex credential validation rejects missing and malformed artifacts", () =
   assert.throws(
     () => validateCodexHome(arrayAuthHome),
     (error: unknown) =>
-      error instanceof CLIError && error.code === "INVALID_CODEX_AUTH",
+      error instanceof CLIError && error.code === "INVALID_CODEX_AUTH"
   );
 });
 

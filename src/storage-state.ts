@@ -1,4 +1,5 @@
 import fs from "node:fs";
+
 import {
   type PlaywrightStorageState,
   PlaywrightStorageStateSchema,
@@ -9,7 +10,7 @@ export type { PlaywrightStorageState };
 
 /** Validate a parsed value as a strict Playwright storage state. */
 export function parseStorageStateObject(
-  storageState: unknown,
+  storageState: unknown
 ): PlaywrightStorageState {
   try {
     return PlaywrightStorageStateSchema.parse(storageState);
@@ -20,7 +21,7 @@ export function parseStorageStateObject(
 
 /** Parse JSON text and validate it as a strict Playwright storage state. */
 export function parseStorageStateJsonValue(
-  storageStateJson: string,
+  storageStateJson: string
 ): PlaywrightStorageState {
   try {
     return parseStorageStateObject(JSON.parse(storageStateJson) as unknown);

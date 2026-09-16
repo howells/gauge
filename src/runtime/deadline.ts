@@ -2,7 +2,7 @@
 export async function raceWithTimeout<T>(
   operation: Promise<T>,
   timeoutMs: number,
-  timeoutValue: T,
+  timeoutValue: T
 ): Promise<T> {
   let timer: NodeJS.Timeout | undefined;
   try {

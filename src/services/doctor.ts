@@ -1,6 +1,7 @@
 import fs from "node:fs";
 import os from "node:os";
 import path from "node:path";
+
 import { AccountConfigV3Schema } from "../domain/account.js";
 import { isLegacyConfigFilename } from "../migrate.js";
 import { validateCodexHome } from "../persistence/external-credential-writer.js";
@@ -35,18 +36,18 @@ export function runDoctorChecks(options: DoctorOptions): DoctorReport {
   checks.push(
     major >= 20
       ? pass("runtime/node", `Node ${major} is supported.`)
-      : fail("runtime/node", "Gauge requires Node 20 or newer."),
+      : fail("runtime/node", "Gauge requires Node 20 or newer.")
   );
   checks.push(
     options.chromePath
       ? pass(
           "runtime/chrome",
-          "Chrome is available for interactive authentication.",
+          "Chrome is available for interactive authentication."
         )
       : warning(
           "runtime/chrome",
-          "Chrome is unavailable; headless credential inputs remain usable.",
-        ),
+          "Chrome is unavailable; headless credential inputs remain usable."
+        )
   );
 
   inspectDataRoot(options.dataRoot, checks);
@@ -55,22 +56,22 @@ export function runDoctorChecks(options: DoctorOptions): DoctorReport {
       "readiness/codex-ambient",
       hasSafeCodexAuth(
         options.env.CODEX_HOME ??
-          path.join(options.home ?? os.homedir(), ".codex"),
+          path.join(options.home ?? os.homedir(), ".codex")
       ),
-      "Ambient Codex discovery",
-    ),
+      "Ambient Codex discovery"
+    )
   );
   checks.push(
     readinessCheck(
       "readiness/cursor-ambient",
       Boolean(
         options.env.GAUGE_CURSOR_COOKIE ||
-          options.env.GAUGE_CURSOR_COOKIE_FILE ||
-          options.env.GAUGE_CURSOR_STORAGE_STATE_FILE ||
-          options.env.GAUGE_CURSOR_STORAGE_STATE_JSON,
+        options.env.GAUGE_CURSOR_COOKIE_FILE ||
+        options.env.GAUGE_CURSOR_STORAGE_STATE_FILE ||
+        options.env.GAUGE_CURSOR_STORAGE_STATE_JSON
       ),
-      "Ambient Cursor discovery",
-    ),
+      "Ambient Cursor discovery"
+    )
   );
 
   return {
@@ -83,7 +84,7 @@ export function runDoctorChecks(options: DoctorOptions): DoctorReport {
 function inspectDataRoot(dataRoot: string, checks: DoctorCheck[]): void {
   if (!fs.existsSync(dataRoot)) {
     checks.push(
-      pass("data/root", "Gauge data root will be created on first mutation."),
+      pass("data/root", "Gauge data root will be created on first mutation.")
     );
     checks.push(pass("state/migration", "No legacy migration is required."));
     return;
@@ -92,12 +93,12 @@ function inspectDataRoot(dataRoot: string, checks: DoctorCheck[]): void {
   if (rootStatus.isSymbolicLink() || !rootStatus.isDirectory()) {
     checks.push(fail("data/root", "Gauge data root must be a real directory."));
     checks.push(
-      fail("state/migration", "Migration state cannot be inspected safely."),
+      fail("state/migration", "Migration state cannot be inspected safely.")
     );
     return;
   } else if ((rootStatus.mode & 0o077) !== 0) {
     checks.push(
-      fail("data/permissions", "Gauge data root must be owner-only (0700)."),
+      fail("data/permissions", "Gauge data root must be owner-only (0700).")
     );
   } else {
     checks.push(pass("data/root", "Gauge data root is safe."));
@@ -115,9 +116,9 @@ function inspectDataRoot(dataRoot: string, checks: DoctorCheck[]): void {
           "state/migration",
           journal
             ? "A v3 migration journal requires resumption."
-            : "Legacy account state requires explicit migration.",
+            : "Legacy account state requires explicit migration."
         )
-      : pass("state/migration", "No legacy migration is required."),
+      : pass("state/migration", "No legacy migration is required.")
   );
   inspectV3Accounts(path.join(readableRoot, "accounts", "v3"), checks);
 }
@@ -136,7 +137,7 @@ function inspectV3Accounts(accountsRoot: string, checks: DoctorCheck[]): void {
     const providerStatus = fs.lstatSync(providerPath);
     if (providerStatus.isSymbolicLink() || !providerStatus.isDirectory()) {
       checks.push(
-        fail("accounts/provider", "An account provider directory is unsafe."),
+        fail("accounts/provider", "An account provider directory is unsafe.")
       );
       continue;
     }
@@ -146,8 +147,8 @@ function inspectV3Accounts(accountsRoot: string, checks: DoctorCheck[]): void {
           checks.push(
             warning(
               "accounts/tombstone",
-              "An invisible account tombstone is ready for cleanup.",
-            ),
+              "An invisible account tombstone is ready for cleanup."
+            )
           );
         }
         continue;
@@ -161,7 +162,7 @@ function inspectAccount(
   directory: string,
   provider: string,
   name: string,
-  checks: DoctorCheck[],
+  checks: DoctorCheck[]
 ): void {
   const directoryStatus = fs.lstatSync(directory);
   const configPath = path.join(directory, "config.json");
@@ -171,13 +172,13 @@ function inspectAccount(
   }
   if ((directoryStatus.mode & 0o077) !== 0) {
     checks.push(
-      fail("account/permissions", "An account directory must be owner-only."),
+      fail("account/permissions", "An account directory must be owner-only.")
     );
   }
   try {
     const configStatus = fs.lstatSync(configPath);
     const config = AccountConfigV3Schema.parse(
-      JSON.parse(fs.readFileSync(configPath, "utf8")) as unknown,
+      JSON.parse(fs.readFileSync(configPath, "utf8")) as unknown
     );
     if (
       configStatus.isSymbolicLink() ||
@@ -193,7 +194,7 @@ function inspectAccount(
       directory,
       config.provider,
       config.codexHome,
-      checks,
+      checks
     );
   } catch {
     checks.push(fail("account/config", "A configured account is invalid."));
@@ -204,7 +205,7 @@ function inspectAccountArtifacts(
   directory: string,
   provider: "claude" | "codex" | "cursor",
   codexHome: string | undefined,
-  checks: DoctorCheck[],
+  checks: DoctorCheck[]
 ): void {
   const storageState = path.join(directory, "storage-state.json");
   if (provider !== "codex") {
@@ -213,15 +214,15 @@ function inspectAccountArtifacts(
       "account/storage-state",
       "Account storage state",
       true,
-      checks,
+      checks
     );
   } else {
     checks.push(
       readinessCheck(
         "readiness/codex-configured",
         codexHome !== undefined && hasSafeCodexAuth(codexHome),
-        "Configured Codex credentials",
-      ),
+        "Configured Codex credentials"
+      )
     );
   }
 
@@ -231,7 +232,7 @@ function inspectAccountArtifacts(
     checks.push(
       profileStatus.isDirectory() && !profileStatus.isSymbolicLink()
         ? pass("account/profile", "Browser profile cache is a real directory.")
-        : fail("account/profile", "Browser profile cache is unsafe."),
+        : fail("account/profile", "Browser profile cache is unsafe.")
     );
   }
 }
@@ -241,14 +242,14 @@ function inspectCredentialFile(
   id: string,
   label: string,
   required: boolean,
-  checks: DoctorCheck[],
+  checks: DoctorCheck[]
 ): void {
   const status = lstatIfPresent(filePath);
   if (!status) {
     checks.push(
       required
         ? warning(id, `${label} is missing; refresh is required.`)
-        : pass(id, `${label} is not configured.`),
+        : pass(id, `${label} is not configured.`)
     );
     return;
   }
@@ -297,7 +298,7 @@ function hasSafeCodexAuth(homePath: string): boolean {
 function readinessCheck(
   id: string,
   ready: boolean,
-  label: string,
+  label: string
 ): DoctorCheck {
   return ready
     ? pass(id, `${label} is configured.`)

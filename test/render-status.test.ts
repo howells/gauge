@@ -1,6 +1,7 @@
 import assert from "node:assert/strict";
 import { test } from "node:test";
 import { stripVTControlCharacters } from "node:util";
+
 import type { StatusAccountView } from "../src/services/render-status.js";
 import {
   renderStatusDashboard,
@@ -55,7 +56,7 @@ test("a claude cell shows the renewal date beside the plan and reading", () => {
         { kind: "session", resetsAt: null, usedPercent: 0 },
         { kind: "weekly", resetsAt: null, usedPercent: 0 },
       ],
-    }),
+    })
   );
   assert.match(output, /Max 20x · wk 0% · renews 5 Sep/);
 });
@@ -75,7 +76,7 @@ test("the plan label gives way before the renewal date does", () => {
           usedPercent: 100,
         },
       ],
-    }),
+    })
   );
   assert.match(output, /wk 100% · 2d · renews 12 Sep/);
   assert.equal(output.includes("Max 20x"), false);
@@ -94,7 +95,7 @@ test("a countdown that lands on the renewal instant is not said twice", () => {
         { kind: "included", resetsAt: renewal, usedPercent: 56.7 },
         { kind: "on_demand", resetsAt: renewal, usedPercent: 10.9 },
       ],
-    }),
+    })
   );
   assert.equal(output.includes("renews"), false);
   assert.match(output, /23d/);
@@ -111,7 +112,7 @@ test("an idle window on the renewal instant still names the date", () => {
       plan: "Cursor Pro",
       renewsAt: renewal,
       windows: [{ kind: "included", resetsAt: renewal, usedPercent: 0 }],
-    }),
+    })
   );
   assert.match(output, /Cursor Pro · renews 19 Sep/);
 });
@@ -121,7 +122,7 @@ test("a renewal in a later year carries the year", () => {
     view({
       renewsAt: "2027-03-05T09:00:00Z",
       windows: [{ kind: "session", resetsAt: null, usedPercent: 0 }],
-    }),
+    })
   );
   assert.match(output, /renews 5 Mar 27/);
 });
@@ -135,7 +136,7 @@ test("renewal year formatting follows the supplied rendering clock", () => {
       }),
     ],
     null,
-    new Date("2027-01-10T12:00:00Z"),
+    new Date("2027-01-10T12:00:00Z")
   );
   assert.match(output, /renews 5 Mar/);
   assert.equal(output.includes("5 Mar 27"), false);
@@ -146,7 +147,7 @@ test("an account with no renewal date draws no renewal text", () => {
     view({
       renewsAt: null,
       windows: [{ kind: "session", resetsAt: null, usedPercent: 0 }],
-    }),
+    })
   );
   assert.equal(output.includes("renews"), false);
 });
@@ -167,7 +168,7 @@ test("a blocked codex cell names its applicable resets instead of the wait", () 
           usedPercent: 100,
         },
       ],
-    }),
+    })
   );
   assert.match(output, /full · 1 reset/);
 });
@@ -186,7 +187,7 @@ test("a blocked cell without resets still counts down", () => {
           usedPercent: 100,
         },
       ],
-    }),
+    })
   );
   assert.match(output, /full · 2d/);
 });
@@ -202,7 +203,7 @@ test("the detail line names the resets an account holds", () => {
         { kind: "session", resetsAt: null, usedPercent: 0 },
         { kind: "weekly", resetsAt: null, usedPercent: 40 },
       ],
-    }),
+    })
   );
   assert.match(output, /wk 40% · 3 resets/);
 });
@@ -215,7 +216,7 @@ test("a holding of zero resets draws nothing", () => {
       resetsAvailable: 0,
       resetsApplicable: 0,
       windows: [{ kind: "weekly", resetsAt: null, usedPercent: 40 }],
-    }),
+    })
   );
   assert.equal(output.includes("reset"), false);
 });
@@ -226,7 +227,7 @@ test("a recent switch warns that running sessions still spend the old account", 
       previous: ["gmail"],
       switchedAt: new Date("2026-08-29T12:20:00Z"),
     },
-    NOW,
+    NOW
   );
   assert.ok(line);
   const text = stripVTControlCharacters(line);
@@ -241,7 +242,7 @@ test("several recent switches name every displaced account", () => {
       previous: ["danielhowells", "materialinstruments"],
       switchedAt: new Date("2026-08-29T12:20:00Z"),
     },
-    NOW,
+    NOW
   );
   assert.ok(line);
   const text = stripVTControlCharacters(line);
@@ -255,7 +256,7 @@ test("a switch older than a day stops warning", () => {
       previous: ["gmail"],
       switchedAt: new Date("2026-08-28T12:00:00Z"),
     },
-    NOW,
+    NOW
   );
   assert.equal(line, null);
 });

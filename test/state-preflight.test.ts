@@ -3,6 +3,7 @@ import fs from "node:fs";
 import os from "node:os";
 import path from "node:path";
 import { test } from "node:test";
+
 import { CLIError } from "../src/security.js";
 import { assertStateCommandAllowed } from "../src/services/state-preflight.js";
 
@@ -13,7 +14,7 @@ test("migration preflight permits only describe, doctor, and migrate with legacy
     JSON.stringify({
       name: "work",
       addedAt: "2026-01-01T00:00:00.000Z",
-    }),
+    })
   );
 
   for (const command of ["describe", "doctor", "migrate"] as const) {
@@ -38,7 +39,7 @@ test("migration preflight permits only describe, doctor, and migrate with legacy
           ],
         });
         return true;
-      },
+      }
     );
   }
 });

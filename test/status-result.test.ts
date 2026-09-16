@@ -1,5 +1,6 @@
 import assert from "node:assert/strict";
 import { test } from "node:test";
+
 import type { UsageSnapshot } from "../src/domain/snapshot.js";
 import { buildStatusResult } from "../src/services/status-result.js";
 
@@ -41,7 +42,7 @@ test("complete status snapshots are ok and recommend with one shared policy", ()
       ],
       summary: { total: 1, succeeded: 1, failed: 0, timed_out: 0 },
     }),
-    { now, quick: false },
+    { now, quick: false }
   );
 
   assert.equal(result.ok, true);
@@ -57,7 +58,7 @@ test("complete status snapshots are ok and recommend with one shared policy", ()
   assert.deepEqual(
     (result.data as { recommendation: { account: unknown } }).recommendation
       .account,
-    { provider: "codex", name: "work" },
+    { provider: "codex", name: "work" }
   );
 });
 
@@ -89,7 +90,7 @@ test("a blocked account with an applicable reset is recommended as usable via re
       ],
       summary: { total: 1, succeeded: 1, failed: 0, timed_out: 0 },
     }),
-    { now, quick: false },
+    { now, quick: false }
   );
 
   const recommendation = (
@@ -131,7 +132,7 @@ test("partial snapshots stay ok and account failures use typed errors", () => {
       ],
       summary: { total: 2, succeeded: 1, failed: 1, timed_out: 1 },
     }),
-    { now, quick: false },
+    { now, quick: false }
   );
 
   assert.equal(result.ok, true);
@@ -143,7 +144,7 @@ test("partial snapshots stay ok and account failures use typed errors", () => {
       code: "provider/timeout",
       message: "Provider request timed out.",
       retryable: true,
-    },
+    }
   );
 });
 
@@ -168,7 +169,7 @@ test("all-failed snapshots emit data with ok false and exit one", () => {
       ],
       summary: { total: 1, succeeded: 0, failed: 1, timed_out: 1 },
     }),
-    { now, quick: false },
+    { now, quick: false }
   );
 
   assert.equal(result.ok, false);
@@ -203,7 +204,7 @@ test("quick mode contains only recommendation and summary with one human line", 
       ],
       summary: { total: 1, succeeded: 1, failed: 0, timed_out: 0 },
     }),
-    { now, quick: true },
+    { now, quick: true }
   );
 
   assert.deepEqual(Object.keys(result.data as object).sort(), [
@@ -248,7 +249,7 @@ test("an idle session keeps its slot instead of letting the week be drawn as it"
       ],
       summary: { total: 1, succeeded: 1, failed: 0, timed_out: 0 },
     }),
-    { now, quick: false },
+    { now, quick: false }
   );
 
   const plain = result.human.replace(/\x1b\[[0-9;]*m/g, "");
@@ -265,7 +266,7 @@ test("an idle session keeps its slot instead of letting the week be drawn as it"
   assert.equal(
     (result.data as { recommendation: { status: string } }).recommendation
       .status,
-    "use_now",
+    "use_now"
   );
 });
 
@@ -299,7 +300,7 @@ test("a full account says which of its limits filled", () => {
       ],
       summary: { total: 1, succeeded: 1, failed: 0, timed_out: 0 },
     }),
-    { now, quick: false },
+    { now, quick: false }
   );
 
   const plain = result.human.replace(/\x1b\[[0-9;]*m/g, "");
@@ -341,7 +342,7 @@ test("a narrow cell drops the plan label before it drops a usage reading", () =>
       ],
       summary: { total: 1, succeeded: 1, failed: 0, timed_out: 0 },
     }),
-    { now, quick: false },
+    { now, quick: false }
   );
 
   const plain = result.human.replace(/\x1b\[[0-9;]*m/g, "");
@@ -395,7 +396,7 @@ test("an account idle on every window is still recommendable", () => {
       ],
       summary: { total: 2, succeeded: 2, failed: 0, timed_out: 0 },
     }),
-    { now, quick: false },
+    { now, quick: false }
   );
 
   const recommendation = (
@@ -442,7 +443,7 @@ test("a model-scoped Codex session is shown without blocking the whole account",
       ],
       summary: { total: 1, succeeded: 1, failed: 0, timed_out: 0 },
     }),
-    { now, quick: false },
+    { now, quick: false }
   );
 
   const plain = result.human.replace(/\x1b\[[0-9;]*m/g, "");
@@ -452,6 +453,6 @@ test("a model-scoped Codex session is shown without blocking the whole account",
   assert.equal(
     (result.data as { recommendation: { status: string } }).recommendation
       .status,
-    "use_now",
+    "use_now"
   );
 });

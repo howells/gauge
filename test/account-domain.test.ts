@@ -1,5 +1,6 @@
 import assert from "node:assert/strict";
 import { test } from "node:test";
+
 import {
   AccountConfigV3Schema,
   type AccountId,
@@ -19,7 +20,7 @@ test("account keys remain unique across the provider and prefixed-name matrix", 
   const providers = ["claude", "codex", "cursor"] as const;
   const names = ["work", "codex-work", "cursor-work"];
   const keys = providers.flatMap((provider) =>
-    names.map((name) => encodeAccountId({ provider, name })),
+    names.map((name) => encodeAccountId({ provider, name }))
   );
 
   assert.equal(new Set(keys).size, keys.length);
@@ -46,6 +47,6 @@ test("v3 account configs accept the documented shape and reject unknown fields",
   assert.deepEqual(AccountConfigV3Schema.parse(config), config);
   assert.equal(
     AccountConfigV3Schema.safeParse({ ...config, unexpected: true }).success,
-    false,
+    false
   );
 });

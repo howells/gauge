@@ -3,6 +3,7 @@ import fs from "node:fs";
 import os from "node:os";
 import path from "node:path";
 import { test } from "node:test";
+
 import {
   inspectLegacyState,
   migrateLegacyAccounts,
@@ -18,11 +19,11 @@ function dataRoot(): string {
 function writeLegacy(
   root: string,
   filename: string,
-  config: Record<string, unknown>,
+  config: Record<string, unknown>
 ): void {
   fs.writeFileSync(
     path.join(root, `${filename}.json`),
-    `${JSON.stringify(config, null, 2)}\n`,
+    `${JSON.stringify(config, null, 2)}\n`
   );
 }
 
@@ -68,7 +69,7 @@ test("v3 root metadata does not masquerade as a legacy account", () => {
   assert.throws(
     () => planLegacyMigration(root),
     (error: unknown) =>
-      error instanceof CLIError && error.code === "MIGRATION_CONFLICT",
+      error instanceof CLIError && error.code === "MIGRATION_CONFLICT"
   );
 });
 
@@ -83,7 +84,7 @@ test("migration rejects provider and name conflicts before writing", () => {
   assert.throws(
     () => planLegacyMigration(root),
     (error: unknown) =>
-      error instanceof CLIError && error.code === "MIGRATION_CONFLICT",
+      error instanceof CLIError && error.code === "MIGRATION_CONFLICT"
   );
   assert.equal(fs.existsSync(path.join(root, "accounts")), false);
   assert.equal(fs.existsSync(path.join(root, "migration-v3.json")), false);
@@ -114,7 +115,7 @@ test("migration commits v3 directories, copies profiles, and cleans legacy sourc
   });
   fs.writeFileSync(
     path.join(root, "cursor-work-storage.json"),
-    JSON.stringify({ cookies: [], origins: [] }),
+    JSON.stringify({ cookies: [], origins: [] })
   );
   fs.mkdirSync(path.join(root, "profile-cursor-work"));
   fs.writeFileSync(path.join(root, "profile-cursor-work", "cache"), "data");
@@ -128,16 +129,16 @@ test("migration commits v3 directories, copies profiles, and cleans legacy sourc
   assert.equal(fs.existsSync(path.join(destination, "config.json")), true);
   assert.equal(
     fs.existsSync(path.join(destination, "storage-state.json")),
-    true,
+    true
   );
   assert.equal(
     fs.readFileSync(path.join(destination, "profile", "cache"), "utf8"),
-    "data",
+    "data"
   );
   assert.equal(fs.existsSync(path.join(root, "cursor-work.json")), false);
   assert.equal(
     fs.existsSync(path.join(root, "cursor-work-storage.json")),
-    false,
+    false
   );
   assert.equal(fs.existsSync(path.join(root, "profile-cursor-work")), false);
   assert.equal(fs.existsSync(path.join(root, "migration-v3.json")), false);
@@ -152,7 +153,7 @@ test("migration skips transient Chrome singleton artifacts inside profiles", () 
   });
   fs.writeFileSync(
     path.join(root, "cursor-work-storage.json"),
-    JSON.stringify({ cookies: [], origins: [] }),
+    JSON.stringify({ cookies: [], origins: [] })
   );
   const profileDir = path.join(root, "profile-cursor-work");
   fs.mkdirSync(profileDir);
@@ -162,11 +163,11 @@ test("migration skips transient Chrome singleton artifacts inside profiles", () 
   fs.writeFileSync(path.join(nestedDir, "inner"), "nested-data");
   fs.symlinkSync(
     "150.0.7871.47:1",
-    path.join(profileDir, "RunningChromeVersion"),
+    path.join(profileDir, "RunningChromeVersion")
   );
   fs.symlinkSync(
     "nonexistent-target",
-    path.join(profileDir, "SingletonCookie"),
+    path.join(profileDir, "SingletonCookie")
   );
 
   const result = migrateLegacyAccounts(root, {
@@ -178,24 +179,24 @@ test("migration skips transient Chrome singleton artifacts inside profiles", () 
   const destinationProfile = path.join(destination, "profile");
   assert.equal(
     fs.readFileSync(path.join(destinationProfile, "cache"), "utf8"),
-    "data",
+    "data"
   );
   assert.equal(
     fs.readFileSync(path.join(destinationProfile, "nested", "inner"), "utf8"),
-    "nested-data",
+    "nested-data"
   );
   assert.equal(
     fs.existsSync(path.join(destinationProfile, "RunningChromeVersion")),
-    false,
+    false
   );
   assert.equal(
     fs.existsSync(path.join(destinationProfile, "SingletonCookie")),
-    false,
+    false
   );
   assert.equal(fs.existsSync(path.join(root, "cursor-work.json")), false);
   assert.equal(
     fs.existsSync(path.join(root, "cursor-work-storage.json")),
-    false,
+    false
   );
   assert.equal(fs.existsSync(profileDir), false);
   assert.equal(fs.existsSync(path.join(root, "migration-v3.json")), false);
@@ -220,13 +221,13 @@ test("migration resumes idempotently after interruption without deleting sources
         },
         randomId: () => "migration",
       }),
-    /injected interruption/,
+    /injected interruption/
   );
   assert.equal(fs.existsSync(path.join(root, "one.json")), true);
   assert.equal(fs.existsSync(path.join(root, "two.json")), true);
   assert.equal(
     fs.statSync(path.join(root, "migration-v3.json")).mode & 0o777,
-    0o600,
+    0o600
   );
 
   const result = migrateLegacyAccounts(root, {
@@ -238,10 +239,10 @@ test("migration resumes idempotently after interruption without deleting sources
   assert.deepEqual(
     ["one", "two"].map((name) =>
       fs.existsSync(
-        path.join(root, "accounts", "v3", "claude", name, "config.json"),
-      ),
+        path.join(root, "accounts", "v3", "claude", name, "config.json")
+      )
     ),
-    [true, true],
+    [true, true]
   );
 });
 
@@ -254,7 +255,7 @@ test("migration resumes cleanup after the legacy config was already removed", ()
   });
   fs.writeFileSync(
     path.join(root, "cursor-work-storage.json"),
-    JSON.stringify({ cookies: [], origins: [] }),
+    JSON.stringify({ cookies: [], origins: [] })
   );
   let interrupted = false;
 
@@ -269,19 +270,19 @@ test("migration resumes cleanup after the legacy config was already removed", ()
         },
         randomId: () => "migration",
       }),
-    /injected cleanup interruption/,
+    /injected cleanup interruption/
   );
   assert.equal(fs.existsSync(path.join(root, "cursor-work.json")), false);
   assert.equal(
     fs.existsSync(path.join(root, "cursor-work-storage.json")),
-    true,
+    true
   );
   assert.equal(fs.existsSync(path.join(root, "migration-v3.json")), true);
 
   assert.deepEqual(migrateLegacyAccounts(root), { migrated: 1 });
   assert.equal(
     fs.existsSync(path.join(root, "cursor-work-storage.json")),
-    false,
+    false
   );
   assert.equal(fs.existsSync(path.join(root, "migration-v3.json")), false);
 });
@@ -295,7 +296,7 @@ test("migration recovery fingerprints committed artifacts after source removal",
   });
   fs.writeFileSync(
     path.join(root, "cursor-work-storage.json"),
-    JSON.stringify({ cookies: [], origins: [] }),
+    JSON.stringify({ cookies: [], origins: [] })
   );
   assert.throws(
     () =>
@@ -306,7 +307,7 @@ test("migration recovery fingerprints committed artifacts after source removal",
           }
         },
       }),
-    /injected cleanup interruption/,
+    /injected cleanup interruption/
   );
   fs.writeFileSync(
     path.join(root, "accounts", "v3", "cursor", "work", "storage-state.json"),
@@ -324,18 +325,18 @@ test("migration recovery fingerprints committed artifacts after source removal",
         },
       ],
       origins: [],
-    }),
+    })
   );
 
   assert.throws(
     () => migrateLegacyAccounts(root),
     (error: unknown) =>
-      error instanceof CLIError && error.code === "MIGRATION_CONFLICT",
+      error instanceof CLIError && error.code === "MIGRATION_CONFLICT"
   );
   assert.equal(fs.existsSync(path.join(root, "migration-v3.json")), true);
   assert.equal(
     fs.existsSync(path.join(root, "cursor-work-storage.json")),
-    true,
+    true
   );
 });
 
@@ -356,19 +357,19 @@ test("migration rejects a differing existing v3 destination before cleanup", () 
       name: "work",
       addedAt: "2026-01-01T00:00:00.000Z",
       renewsAt: "2026-03-01T00:00:00.000Z",
-    }),
+    })
   );
 
   assert.throws(
     () => migrateLegacyAccounts(root),
     (error: unknown) =>
-      error instanceof CLIError && error.code === "MIGRATION_CONFLICT",
+      error instanceof CLIError && error.code === "MIGRATION_CONFLICT"
   );
   assert.equal(fs.existsSync(path.join(root, "work.json")), true);
   assert.equal(
     JSON.parse(fs.readFileSync(path.join(destination, "config.json"), "utf8"))
       .renewsAt,
-    "2026-03-01T00:00:00.000Z",
+    "2026-03-01T00:00:00.000Z"
   );
 });
 
@@ -385,17 +386,17 @@ test("migration preflights every destination before committing any account", () 
   const repository = new AccountRepository({ dataRoot: root });
   repository.add(
     { provider: "claude", name: "zulu" },
-    { addedAt: "2024-01-01T00:00:00.000Z" },
+    { addedAt: "2024-01-01T00:00:00.000Z" }
   );
 
   assert.throws(
     () => migrateLegacyAccounts(root),
     (error: unknown) =>
-      error instanceof CLIError && error.code === "MIGRATION_CONFLICT",
+      error instanceof CLIError && error.code === "MIGRATION_CONFLICT"
   );
   assert.equal(
     fs.existsSync(path.join(root, "accounts", "v3", "claude", "alpha")),
-    false,
+    false
   );
   assert.equal(fs.existsSync(path.join(root, "migration-v3.json")), false);
   assert.equal(fs.existsSync(path.join(root, "alpha.json")), true);
@@ -414,7 +415,7 @@ test("migration accepts only a byte-equivalent existing destination", () => {
   const storageState = { cookies: [], origins: [] };
   fs.writeFileSync(
     path.join(root, "work-storage.json"),
-    JSON.stringify(storageState),
+    JSON.stringify(storageState)
   );
   new AccountRepository({ dataRoot: root }).add(
     { provider: "claude", name: "work" },
@@ -422,7 +423,7 @@ test("migration accepts only a byte-equivalent existing destination", () => {
       addedAt: "2026-01-01T00:00:00.000Z",
       profileSource: profile,
       storageState,
-    },
+    }
   );
 
   assert.deepEqual(migrateLegacyAccounts(root), { migrated: 1 });
@@ -437,11 +438,11 @@ test("migration accepts only a byte-equivalent existing destination", () => {
         "work",
         "profile",
         "nested",
-        "cache",
+        "cache"
       ),
-      "utf8",
+      "utf8"
     ),
-    "same-profile",
+    "same-profile"
   );
 });
 
@@ -465,12 +466,12 @@ test("migration recovery rejects unsafe journal sources and missing committed de
     fs.writeFileSync(
       path.join(root, "migration-v3.json"),
       JSON.stringify({ schema_version: 1, entries: [entry] }),
-      { mode: 0o600 },
+      { mode: 0o600 }
     );
     assert.throws(
       () => migrateLegacyAccounts(root),
       (error: unknown) =>
-        error instanceof CLIError && error.code === "MIGRATION_CONFLICT",
+        error instanceof CLIError && error.code === "MIGRATION_CONFLICT"
     );
   }
 });
@@ -483,11 +484,11 @@ test("migration rejects symlinked configs, storage state, profiles, and roots", 
     if (artifact === "config") {
       fs.writeFileSync(
         path.join(outside, "config.json"),
-        JSON.stringify({ name: "work", addedAt: "2026-01-01T00:00:00.000Z" }),
+        JSON.stringify({ name: "work", addedAt: "2026-01-01T00:00:00.000Z" })
       );
       fs.symlinkSync(
         path.join(outside, "config.json"),
-        path.join(root, "work.json"),
+        path.join(root, "work.json")
       );
     } else {
       writeLegacy(root, "work", {
@@ -502,13 +503,13 @@ test("migration rejects symlinked configs, storage state, profiles, and roots", 
       fs.symlinkSync(
         target,
         path.join(root, suffix),
-        artifact === "profile" ? "dir" : "file",
+        artifact === "profile" ? "dir" : "file"
       );
     }
     assert.throws(
       () => planLegacyMigration(root),
       (error: unknown) =>
-        error instanceof CLIError && error.code === "MIGRATION_CONFLICT",
+        error instanceof CLIError && error.code === "MIGRATION_CONFLICT"
     );
   }
 
@@ -536,13 +537,13 @@ test("migration rejects a journal that does not match the legacy sources", () =>
         },
       ],
     }),
-    { mode: 0o600 },
+    { mode: 0o600 }
   );
 
   assert.throws(
     () => migrateLegacyAccounts(root),
     (error: unknown) =>
-      error instanceof CLIError && error.code === "MIGRATION_CONFLICT",
+      error instanceof CLIError && error.code === "MIGRATION_CONFLICT"
   );
   assert.equal(fs.existsSync(path.join(root, "work.json")), true);
 });
@@ -560,7 +561,7 @@ test("migration rejects a journal fingerprint that differs from its source", () 
           throw new Error("injected interruption");
         },
       }),
-    /injected interruption/,
+    /injected interruption/
   );
   const journalPath = path.join(root, "migration-v3.json");
   const journal = JSON.parse(fs.readFileSync(journalPath, "utf8")) as {
@@ -574,7 +575,7 @@ test("migration rejects a journal fingerprint that differs from its source", () 
   assert.throws(
     () => migrateLegacyAccounts(root),
     (error: unknown) =>
-      error instanceof CLIError && error.code === "MIGRATION_CONFLICT",
+      error instanceof CLIError && error.code === "MIGRATION_CONFLICT"
   );
   assert.equal(fs.existsSync(path.join(root, "work.json")), true);
 });

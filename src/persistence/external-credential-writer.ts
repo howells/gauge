@@ -1,5 +1,6 @@
 import fs from "node:fs";
 import path from "node:path";
+
 import { CLIError } from "../security.js";
 import { type AtomicReplaceOptions, atomicReplace } from "./atomic-replace.js";
 
@@ -27,7 +28,7 @@ export type ExternalCredentialWriteResult =
 type ReplaceFile = (
   destinationPath: string,
   content: string,
-  options?: AtomicReplaceOptions,
+  options?: AtomicReplaceOptions
 ) => void;
 
 interface ExternalCredentialWriterOptions {
@@ -45,14 +46,14 @@ export class ExternalCredentialWriter {
       options.allowedCodexHomes.map((homePath) => {
         const resolvedPath = path.resolve(homePath);
         return [resolvedPath, canonicalAllowedHome(resolvedPath)];
-      }),
+      })
     );
     this.#replaceFile = options.replaceFile ?? atomicReplace;
   }
 
   apply(
     update: CodexCredentialUpdate,
-    policy: CredentialRefreshPolicy,
+    policy: CredentialRefreshPolicy
   ): ExternalCredentialWriteResult {
     if (policy === "never") {
       return {

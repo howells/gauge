@@ -1,4 +1,5 @@
 import { z } from "zod";
+
 import { USAGE_WINDOW_KINDS } from "../domain/snapshot.js";
 
 const NormalizedDateSchema = z

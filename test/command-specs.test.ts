@@ -5,7 +5,9 @@ import os from "node:os";
 import path from "node:path";
 import { test } from "node:test";
 import { fileURLToPath } from "node:url";
+
 import { z } from "zod";
+
 import {
   COMMAND_SPECS,
   COMMAND_SPECS_BY_NAME,
@@ -31,7 +33,7 @@ test("registry contains every v3 command with unique names and aliases", () => {
       "remove",
       "doctor",
       "migrate",
-    ],
+    ]
   );
 
   const identifiers = COMMAND_SPECS.flatMap((spec) => [
@@ -41,11 +43,11 @@ test("registry contains every v3 command with unique names and aliases", () => {
   assert.equal(new Set(identifiers).size, identifiers.length);
   assert.deepEqual(
     COMMAND_SPECS.filter((spec) => spec.rootAlias).map((spec) => spec.name),
-    ["status"],
+    ["status"]
   );
   assert.equal(COMMAND_SPECS_BY_NAME.status.name, "status");
   assert.ok(
-    COMMAND_SPECS_BY_NAME.status.sideEffects.includes("writes_credentials"),
+    COMMAND_SPECS_BY_NAME.status.sideEffects.includes("writes_credentials")
   );
 });
 
@@ -94,19 +96,19 @@ test("add and refresh accept string and object storage-state JSON", () => {
       name: "work",
       storage_state_json: JSON.stringify(storageState),
     }).success,
-    true,
+    true
   );
   assert.equal(
     AddWireSchema.safeParse({ name: "work", storage_state_json: storageState })
       .success,
-    true,
+    true
   );
   assert.equal(
     RefreshWireSchema.safeParse({
       name: "work",
       storage_state_json: storageState,
     }).success,
-    true,
+    true
   );
 });
 
@@ -125,14 +127,14 @@ test("every command spec is complete metadata with examples", () => {
     assert.ok(spec.wireSchema instanceof z.ZodType);
     if (spec.safety.dryRun) {
       const realRuns = new Set(
-        spec.examples.filter((example) => !example.includes(" --dry-run")),
+        spec.examples.filter((example) => !example.includes(" --dry-run"))
       );
       for (const example of spec.examples.filter((candidate) =>
-        candidate.includes(" --dry-run"),
+        candidate.includes(" --dry-run")
       )) {
         assert.ok(
           realRuns.has(example.replace(" --dry-run", "")),
-          `${spec.name} dry-run example needs an exact real pair: ${example}`,
+          `${spec.name} dry-run example needs an exact real pair: ${example}`
         );
       }
     }
@@ -142,7 +144,7 @@ test("every command spec is complete metadata with examples", () => {
 test("generated command example reference exactly matches canonical specs", () => {
   assert.equal(
     fs.readFileSync(path.join(root, "docs", "command-examples.md"), "utf8"),
-    renderCommandExamplesMarkdown(),
+    renderCommandExamplesMarkdown()
   );
 });
 
@@ -162,7 +164,7 @@ test("canonical command examples are published in README, AGENTS, or bundled ski
     for (const example of spec.examples) {
       assert.ok(
         documentation.includes(example),
-        `Canonical ${spec.name} example is missing from docs: ${example}`,
+        `Canonical ${spec.name} example is missing from docs: ${example}`
       );
     }
   }
@@ -200,7 +202,7 @@ test("metadata module imports without operational initialization", () => {
     "node_modules",
     "tsx",
     "dist",
-    "loader.mjs",
+    "loader.mjs"
   );
   const specsPath = path.join(root, "src", "commands", "specs.ts");
   const result = spawnSync(
@@ -215,7 +217,7 @@ test("metadata module imports without operational initialization", () => {
       cwd: fixture,
       encoding: "utf8",
       env: { ...process.env, HOME: home },
-    },
+    }
   );
 
   try {
@@ -231,7 +233,7 @@ test("metadata module imports without operational initialization", () => {
 
 function validateExample(
   spec: (typeof COMMAND_SPECS)[number],
-  example: string,
+  example: string
 ): void {
   const tokens = tokenizeShell(example);
   assert.equal(tokens.shift(), "gauge");
@@ -245,7 +247,7 @@ function validateExample(
     spec.options.flatMap((option) => [
       [option.long, option] as const,
       ...(option.short ? ([[option.short, option]] as const) : []),
-    ]),
+    ])
   );
   let positionalCount = 0;
   for (let index = 0; index < tokens.length; index += 1) {
@@ -266,7 +268,7 @@ function validateExample(
       if (option.choices) {
         assert.ok(
           option.choices.includes(value),
-          `${token} has invalid ${value}`,
+          `${token} has invalid ${value}`
         );
       }
     }
@@ -274,7 +276,7 @@ function validateExample(
   const variadic = spec.arguments.some((argument) => argument.variadic);
   assert.ok(
     variadic || positionalCount <= spec.arguments.length,
-    `${example} has too many positional arguments`,
+    `${example} has too many positional arguments`
   );
 }
 

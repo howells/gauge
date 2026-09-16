@@ -2,6 +2,7 @@ import fs from "node:fs";
 import os from "node:os";
 import path from "node:path";
 import process from "node:process";
+
 import { codexHomesRoot } from "./codex-home.js";
 
 /**
@@ -64,10 +65,10 @@ export interface CodexSwitchResult {
 export function switchCodexLogin(
   name: string,
   dataDir: string,
-  homeDir: string = os.homedir(),
+  homeDir: string = os.homedir()
 ): CodexSwitchResult {
   const target = codexSwitchTargets(dataDir).find(
-    (candidate) => candidate.name === name,
+    (candidate) => candidate.name === name
   );
   if (!target) {
     throw new Error(`No stored Codex home for account "${name}".`);

@@ -149,4 +149,3 @@ The existing `src/commands.ts`, `src/provider-usage.ts`, and `src/api.ts` are to
   <done>Code, docs, bundled skills, and machine discovery describe the same v3 product.</done>
   <commit>docs(v3): publish canonical agent operations guide</commit>
 </task>
-

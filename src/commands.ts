@@ -1,7 +1,9 @@
 import fs from "node:fs";
 import os from "node:os";
 import path from "node:path";
+
 import chalk from "chalk";
+
 import {
   type AccountDetails,
   accountExists,
@@ -64,7 +66,7 @@ interface MutationPayload {
 
 /** Fetch usage for all accounts and build a status/recommendation result. */
 export async function runStatusCommand(
-  options: CommandOptions,
+  options: CommandOptions
 ): Promise<CommandResult> {
   const allConfigs = listAccountDetails();
   const provider =
@@ -81,7 +83,7 @@ export async function runStatusCommand(
     provider,
   }).map((selection) => selection.account);
   const providers = new Set<string>(
-    provider ? [provider] : ["claude", "codex", "cursor"],
+    provider ? [provider] : ["claude", "codex", "cursor"]
   );
   const sources = buildLocalSources(selected, {
     accountFiltered: options.account !== undefined,
@@ -101,10 +103,10 @@ export async function runStatusCommand(
       ...selected.flatMap((account) =>
         account.provider === "codex" && account.codexHome
           ? [account.codexHome]
-          : [],
+          : []
       ),
       ...(sources.some(
-        (source) => source.provider === "codex" && source.source === "ambient",
+        (source) => source.provider === "codex" && source.source === "ambient"
       )
         ? [process.env.CODEX_HOME ?? path.join(os.homedir(), ".codex")]
         : []),
@@ -151,7 +153,7 @@ function renderAccountList(accounts: AccountDetails[]): string {
       ].filter((value): value is string => typeof value === "string");
       const detail = artifacts.length > 0 ? artifacts.join(" · ") : "no auth";
       lines.push(
-        `     ${account.name.padEnd(nameWidth + 2)}${chalk.dim(detail)}`,
+        `     ${account.name.padEnd(nameWidth + 2)}${chalk.dim(detail)}`
       );
     }
     lines.push("");
@@ -169,7 +171,7 @@ function renderAccountList(accounts: AccountDetails[]): string {
  */
 export function codexLoginRemedy(name: string): { home: string } | null {
   const home = listAccountDetails("codex").find(
-    (account) => account.name === name,
+    (account) => account.name === name
   )?.codexHome;
   return home ? { home } : null;
 }
@@ -216,7 +218,7 @@ export function runDescribeCommand(commandName?: string): CommandResult {
 /** Add a new account via browser login or headless storage-state import. */
 export async function runAddCommand(
   name: string | undefined,
-  options: CommandOptions,
+  options: CommandOptions
 ): Promise<CommandResult> {
   ensureAccountNamed("add", name, options);
   const payload = resolveMutationPayload(name, options, "add");
@@ -263,7 +265,7 @@ export async function runAddCommand(
       dryRun: true,
       human: `Dry run: would add "${payload.name}" via ${resolveAuthMode(
         provider,
-        storageStateMode,
+        storageStateMode
       )}.\n`,
     };
   }
@@ -316,7 +318,7 @@ export async function runAddCommand(
         provider,
         renewsAt: payload.renews_at,
         storageState,
-      }),
+      })
   );
   if (!success) {
     throw new CLIError(`Failed to add ${provider} account "${payload.name}".`, {
@@ -340,7 +342,7 @@ export async function runAddCommand(
 /** Re-authenticate an existing account via browser or storage-state import. */
 export async function runRefreshCommand(
   name: string | undefined,
-  options: CommandOptions,
+  options: CommandOptions
 ): Promise<CommandResult> {
   ensureAccountNamed("refresh", name, options);
   const payload = resolveMutationPayload(name, options, "refresh");
@@ -378,7 +380,7 @@ export async function runRefreshCommand(
       dryRun: true,
       human: `Dry run: would refresh "${payload.name}" via ${resolveAuthMode(
         provider,
-        storageStateMode,
+        storageStateMode
       )}.\n`,
     };
   }
@@ -437,7 +439,7 @@ export async function runRefreshCommand(
         provider,
         renewsAt: payload.renews_at,
         storageState: nextStorageState,
-      }),
+      })
   );
   if (!success) {
     throw new CLIError(
@@ -445,7 +447,7 @@ export async function runRefreshCommand(
       {
         code: "REFRESH_FAILED",
         exitCode: 1,
-      },
+      }
     );
   }
 
@@ -465,7 +467,7 @@ export async function runRefreshCommand(
 /** Remove an account and all its local auth artifacts. */
 export function runRemoveCommand(
   name: string | undefined,
-  options: CommandOptions,
+  options: CommandOptions
 ): CommandResult {
   ensureAccountNamed("remove", name, options);
   const payload = resolveMutationPayload(name, options, "remove");
@@ -522,7 +524,7 @@ export function runRemoveCommand(
 function ensureAccountNamed(
   command: "add" | "refresh" | "remove",
   name: string | undefined,
-  options: CommandOptions,
+  options: CommandOptions
 ): void {
   if (name || options.json !== undefined || options.inputFile !== undefined) {
     return;
@@ -537,7 +539,7 @@ function ensureAccountNamed(
 function resolveMutationPayload(
   name: string | undefined,
   options: CommandOptions,
-  command: "add" | "refresh" | "remove",
+  command: "add" | "refresh" | "remove"
 ): MutationPayload {
   const rawPayload = loadRawPayload(options);
   const common = {
@@ -560,7 +562,7 @@ function resolveMutationPayload(
             rawPayload?.storage_state_file ?? options.storageStateFile,
           storage_state_json:
             rawPayload?.storage_state_json ?? options.storageStateJson,
-        },
+        }
   );
   return {
     codex_home: wire.codex_home,
@@ -578,10 +580,10 @@ async function authenticateWithTemporaryProfile(
   provider: Provider,
   name: string,
   quiet: boolean | undefined,
-  commit: (storageState: PlaywrightStorageState, profileSource: string) => void,
+  commit: (storageState: PlaywrightStorageState, profileSource: string) => void
 ): Promise<boolean> {
   const profileSource = fs.mkdtempSync(
-    path.join(os.tmpdir(), `gauge-${provider}-auth-`),
+    path.join(os.tmpdir(), `gauge-${provider}-auth-`)
   );
   try {
     const storageState =
@@ -597,7 +599,7 @@ async function authenticateWithTemporaryProfile(
 }
 
 export function normalizeRenewalInput(
-  value: unknown,
+  value: unknown
 ): string | null | undefined {
   if (value === undefined) return undefined;
   if (value === null) return null;
@@ -634,7 +636,7 @@ function resolveProvider(raw: string | undefined): Provider {
 
 function resolveAuthMode(
   provider: Provider,
-  storageStateMode: { filePath?: string; json?: string } | null,
+  storageStateMode: { filePath?: string; json?: string } | null
 ): string {
   if (provider === "codex") return "codex-home";
   if (storageStateMode) return "headless-storage-state";
@@ -642,7 +644,7 @@ function resolveAuthMode(
 }
 
 function loadRawPayload(
-  options: CommandOptions,
+  options: CommandOptions
 ): Record<string, unknown> | null {
   let rawJson = options.json ?? null;
   if (!rawJson && options.inputFile) {
@@ -676,7 +678,7 @@ function loadRawPayload(
 
 function validateMutationWire(
   command: "add" | "refresh" | "remove",
-  value: Record<string, unknown>,
+  value: Record<string, unknown>
 ): MutationPayload {
   const parsed =
     command === "add"
@@ -697,7 +699,7 @@ function validateMutationWire(
             path: issue.path,
           })),
         },
-      },
+      }
     );
   }
   if (command === "remove") {
@@ -720,7 +722,7 @@ function validateMutationWire(
 
 function resolveStorageStateMode(
   payload: MutationPayload,
-  options: CommandOptions,
+  options: CommandOptions
 ): { filePath?: string; json?: string } | null {
   const filePath =
     payload.storage_state_file ??
@@ -739,14 +741,14 @@ function resolveStorageStateMode(
 }
 
 function validateStorageStateMode(
-  mode: { filePath?: string; json?: string } | null,
+  mode: { filePath?: string; json?: string } | null
 ): PlaywrightStorageState | undefined {
   if (!mode) return undefined;
   if (mode.json !== undefined) {
     return parseStorageStateJsonValue(mode.json);
   }
   return JSON.parse(
-    readStorageStateFile(mode.filePath ?? ""),
+    readStorageStateFile(mode.filePath ?? "")
   ) as PlaywrightStorageState;
 }
 
@@ -754,7 +756,7 @@ export function refreshWrites(
   provider: Provider,
   payload: MutationPayload,
   options: CommandOptions,
-  artifacts: ReturnType<typeof getAccountArtifacts>,
+  artifacts: ReturnType<typeof getAccountArtifacts>
 ): string[] {
   if (provider === "codex") {
     const changesConfig =

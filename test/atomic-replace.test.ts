@@ -3,6 +3,7 @@ import fs from "node:fs";
 import os from "node:os";
 import path from "node:path";
 import { test } from "node:test";
+
 import { atomicReplace } from "../src/persistence/atomic-replace.js";
 
 test("atomicReplace flushes and replaces a file through a sibling temporary", () => {
@@ -20,10 +21,10 @@ test("atomicReplace flushes and replaces a file through a sibling temporary", ()
 test("atomicReplace cleans up after a write path failure", () => {
   const missingParent = path.join(
     fs.mkdtempSync(path.join(os.tmpdir(), "gauge-atomic-")),
-    "missing",
+    "missing"
   );
   assert.throws(() =>
-    atomicReplace(path.join(missingParent, "result.json"), "content"),
+    atomicReplace(path.join(missingParent, "result.json"), "content")
   );
   assert.equal(fs.existsSync(missingParent), false);
 });
@@ -40,7 +41,7 @@ test("atomicReplace preserves the old file when replacement fails", () => {
           throw new Error("injected rename failure");
         },
       }),
-    /injected rename failure/,
+    /injected rename failure/
   );
 
   assert.equal(fs.readFileSync(destination, "utf8"), "old-content");
@@ -63,7 +64,7 @@ test("atomicReplace closes an open descriptor and removes its temporary after wr
           throw new Error("injected write failure");
         },
       }),
-    /injected write failure/,
+    /injected write failure/
   );
   assert.equal(closes, 1);
   assert.deepEqual(fs.readdirSync(directory), []);
@@ -86,6 +87,6 @@ test("atomicReplace reports replacement and cleanup failures together", () => {
     (error: unknown) =>
       error instanceof AggregateError &&
       error.errors.length === 2 &&
-      /cleanup both failed/.test(error.message),
+      /cleanup both failed/.test(error.message)
   );
 });

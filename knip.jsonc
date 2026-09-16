@@ -12,5 +12,5 @@
   // A missing one is a runtime condition the code already handles — gauge
   // reports the tool as unavailable — so listing them as dependencies would
   // claim an ownership gauge deliberately does not have.
-  "ignoreBinaries": ["security", "claude", "codex"]
+  "ignoreBinaries": ["security", "claude", "codex"],
 }

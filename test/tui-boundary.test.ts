@@ -19,28 +19,28 @@ test("domain and service layers preserve the declared dependency direction", () 
   for (const file of fs.readdirSync(path.join(root, "src", "domain"))) {
     const source = fs.readFileSync(
       path.join(root, "src", "domain", file),
-      "utf8",
+      "utf8"
     );
     assert.doesNotMatch(
       source,
       /from\s+["'][^"']*(?:providers|persistence|services|commands|cli|tui|accounts|api)/,
-      `domain/${file} imports an operational layer`,
+      `domain/${file} imports an operational layer`
     );
   }
   for (const file of fs.readdirSync(path.join(root, "src", "services"))) {
     const source = fs.readFileSync(
       path.join(root, "src", "services", file),
-      "utf8",
+      "utf8"
     );
     assert.doesNotMatch(
       source,
       /(?:\.\.\/commands|\.\.\/cli|\.\.\/tui)/,
-      `services/${file} imports a presentation layer`,
+      `services/${file} imports a presentation layer`
     );
   }
   const adapters = fs.readFileSync(
     path.join(root, "src", "providers", "local-adapters.ts"),
-    "utf8",
+    "utf8"
   );
   assert.doesNotMatch(adapters, /\.\.\/(?:display|types)\.js/);
 
@@ -48,7 +48,7 @@ test("domain and service layers preserve the declared dependency direction", () 
     assert.doesNotMatch(
       fs.readFileSync(file, "utf8"),
       /(?:export\s+)?(?:const|function)\s+__test/,
-      `${path.relative(root, file)} exposes a production __test hook`,
+      `${path.relative(root, file)} exposes a production __test hook`
     );
   }
 });

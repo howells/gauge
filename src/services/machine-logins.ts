@@ -59,10 +59,10 @@ function emailFromJwt(token: string | null): string | null {
     const [, payload] = token.split(".");
     const padded = (payload ?? "").padEnd(
       Math.ceil((payload ?? "").length / 4) * 4,
-      "=",
+      "="
     );
     const claims = record(
-      JSON.parse(Buffer.from(padded, "base64url").toString("utf8")),
+      JSON.parse(Buffer.from(padded, "base64url").toString("utf8"))
     );
     if (!claims) return null;
     const profile = record(claims["https://api.openai.com/profile"]);
@@ -102,7 +102,7 @@ function claudeDesktopLogin(home: string): MachineLogin | null {
     "Library",
     "Application Support",
     "Claude",
-    "cowork-enabled-cli-ops.json",
+    "cowork-enabled-cli-ops.json"
   );
   const owner = text(record(readJson(file))?.ownerAccountId);
   if (!owner) return null;
@@ -159,18 +159,18 @@ export function claudeAccountNamesByUuid(dataDir: string): Map<string, string> {
   // `value` beside it, so no adjacency pattern can see the pair at once.
   const adjacent = new RegExp(
     `account_?[Uu]uid\\\\?"?\\s*:\\s*\\\\?"?(${UUID})`,
-    "gu",
+    "gu"
   );
   const entry = new RegExp(
     `"name"\\s*:\\s*"[^"]*(?:account|owner)[^"]*"\\s*,\\s*"value"\\s*:\\s*"(${UUID})"`,
-    "giu",
+    "giu"
   );
   for (const account of accounts) {
     let raw: string;
     try {
       raw = fs.readFileSync(
         path.join(root, account, "storage-state.json"),
-        "utf8",
+        "utf8"
       );
     } catch {
       continue;
@@ -188,7 +188,7 @@ export function claudeAccountNamesByUuid(dataDir: string): Map<string, string> {
 
 /** Every tool on this machine whose signed-in account can be read locally. */
 export function readMachineLogins(
-  homeDir: string = os.homedir(),
+  homeDir: string = os.homedir()
 ): MachineLogin[] {
   return [
     claudeCodeLogin(homeDir),

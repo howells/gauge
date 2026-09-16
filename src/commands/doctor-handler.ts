@@ -16,7 +16,7 @@ export function runDoctorCommand(dataRoot: string): {
     "",
     "Gauge doctor",
     ...report.checks.map(
-      (check) => `  ${check.status.toUpperCase()}  ${check.message}`,
+      (check) => `  ${check.status.toUpperCase()}  ${check.message}`
     ),
     "",
   ].join("\n");

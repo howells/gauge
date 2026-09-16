@@ -1,6 +1,7 @@
 import fs from "node:fs";
 import os from "node:os";
 import path from "node:path";
+
 import type { AccountDetails } from "../accounts.js";
 import { type AccountUsage, fetchAllUsage } from "../api.js";
 import type {
@@ -55,7 +56,7 @@ function namedWindows(
     session: { resetsAt: string | null; usedPercent: number } | null;
     weekly: { resetsAt: string | null; usedPercent: number } | null;
   },
-  [first, second]: readonly [UsageWindowKind, UsageWindowKind],
+  [first, second]: readonly [UsageWindowKind, UsageWindowKind]
 ): NamedWindow[] {
   return [
     account.session ? { ...account.session, kind: first } : null,
@@ -82,7 +83,7 @@ export function buildLocalSources(
     env?: NodeJS.ProcessEnv;
     home?: string;
     providers: ReadonlySet<string>;
-  },
+  }
 ): AccountSource[] {
   const env = options.env ?? process.env;
   const home = options.home ?? os.homedir();
@@ -101,7 +102,7 @@ export function buildLocalSources(
         .filter((account) => account.provider === "codex")
         .map((account) => account.codexHome)
         .filter((value): value is string => value !== undefined)
-        .map((value) => path.resolve(value)),
+        .map((value) => path.resolve(value))
     );
     if (
       fs.existsSync(path.join(codexHome, "auth.json")) &&
@@ -119,9 +120,9 @@ export function buildLocalSources(
     options.providers.has("cursor") &&
     Boolean(
       env.GAUGE_CURSOR_COOKIE ||
-        env.GAUGE_CURSOR_COOKIE_FILE ||
-        env.GAUGE_CURSOR_STORAGE_STATE_FILE ||
-        env.GAUGE_CURSOR_STORAGE_STATE_JSON,
+      env.GAUGE_CURSOR_COOKIE_FILE ||
+      env.GAUGE_CURSOR_STORAGE_STATE_FILE ||
+      env.GAUGE_CURSOR_STORAGE_STATE_JSON
     )
   ) {
     sources.push({
@@ -135,14 +136,14 @@ export function buildLocalSources(
 }
 
 export function createLocalAdapters(
-  configured: AccountDetails[],
+  configured: AccountDetails[]
 ): UsageProviderAdapter[] {
   const acquireClaudeBrowser = createSerialAcquirer();
   const details = new Map(
     configured.map((account) => [
       `${account.provider}:${account.name}`,
       account,
-    ]),
+    ])
   );
   return [
     adapter(
@@ -152,7 +153,7 @@ export function createLocalAdapters(
         credentialRefresh,
         _onCredentialUpdate,
         onStorageStateUpdate,
-        signal,
+        signal
       ) => {
         const account = configuredDetail(source, details);
         const result = await fetchAllUsage(
@@ -173,11 +174,11 @@ export function createLocalAdapters(
             onStorageStateUpdate: (_account, value) => {
               onStorageStateUpdate(value);
             },
-          },
+          }
         );
         const usage = result[0];
         return usage ? normalizeClaudeUsage(usage) : null;
-      },
+      }
     ),
     adapter(
       "codex",
@@ -186,7 +187,7 @@ export function createLocalAdapters(
         credentialRefresh,
         onCredentialUpdate,
         _onStorageStateUpdate,
-        signal,
+        signal
       ) => {
         const account =
           source.source === "configured"
@@ -203,7 +204,7 @@ export function createLocalAdapters(
           ...result,
           windows: namedCodexWindows(result),
         };
-      },
+      }
     ),
     adapter(
       "cursor",
@@ -212,7 +213,7 @@ export function createLocalAdapters(
         _credentialRefresh,
         _onCredentialUpdate,
         _onStorageStateUpdate,
-        signal,
+        signal
       ) => {
         const account =
           source.source === "configured"
@@ -229,7 +230,7 @@ export function createLocalAdapters(
           ...result,
           windows: namedWindows(result, ["included", "on_demand"]),
         };
-      },
+      }
     ),
   ];
 }
@@ -244,7 +245,7 @@ function normalizeClaudeUsage(account: AccountUsage): ProviderReading {
     unknown: "",
   } as const;
   const window = (
-    limit: { resets_at: string | null; utilization: number } | null,
+    limit: { resets_at: string | null; utilization: number } | null
   ): { resetsAt: string | null; usedPercent: number } | null =>
     limit
       ? { resetsAt: limit.resets_at, usedPercent: limit.utilization }
@@ -257,21 +258,21 @@ function normalizeClaudeUsage(account: AccountUsage): ProviderReading {
         session: window(account.usage.five_hour),
         weekly: window(account.usage.seven_day),
       },
-      ["session", "weekly"],
+      ["session", "weekly"]
     ),
     ...(account.error !== undefined && { error: account.error }),
   };
 }
 
 function createSerialAcquirer(): <T>(
-  operation: () => Promise<T>,
+  operation: () => Promise<T>
 ) => Promise<T> {
   let tail: Promise<unknown> = Promise.resolve();
   return async <T>(operation: () => Promise<T>): Promise<T> => {
     const current = tail.then(operation, operation);
     tail = current.then(
       () => undefined,
-      () => undefined,
+      () => undefined
     );
     return current;
   };
@@ -284,8 +285,8 @@ function adapter(
     credentialRefresh: "refresh-if-stale" | "never",
     onCredentialUpdate: (update: PendingCodexCredentialUpdate) => void,
     onStorageStateUpdate: (value: unknown) => void,
-    signal: AbortSignal,
-  ) => Promise<ProviderReading | null>,
+    signal: AbortSignal
+  ) => Promise<ProviderReading | null>
 ): UsageProviderAdapter {
   return {
     provider,
@@ -314,7 +315,7 @@ function adapter(
                     value,
                   });
                 },
-                context.signal,
+                context.signal
               );
               if (!account) {
                 return failure(source, "Provider returned no account result.");
@@ -322,7 +323,7 @@ function adapter(
               if (account.error) {
                 return failure(
                   source,
-                  `Provider usage acquisition failed: ${reason(account.error)}`,
+                  `Provider usage acquisition failed: ${reason(account.error)}`
                 );
               }
               return {
@@ -332,11 +333,11 @@ function adapter(
             } catch (error) {
               return failure(
                 source,
-                `Provider usage acquisition failed: ${reason(error)}`,
+                `Provider usage acquisition failed: ${reason(error)}`
               );
             }
-          }),
-        ),
+          })
+        )
       );
       return { pendingCredentialUpdates, results };
     },
@@ -345,7 +346,7 @@ function adapter(
 
 function configuredDetail(
   source: AccountSource,
-  details: Map<string, AccountDetails>,
+  details: Map<string, AccountDetails>
 ): AccountDetails {
   if (!("name" in source.id)) {
     throw new Error("Ambient source has no configured account details.");

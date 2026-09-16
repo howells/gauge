@@ -36,7 +36,7 @@ export interface ProviderAcquisitionResult {
 export interface UsageProviderAdapter {
   acquire(
     sources: readonly AccountSource[],
-    context: ProviderAcquisitionContext,
+    context: ProviderAcquisitionContext
   ): Promise<ProviderAcquisitionResult>;
   provider: Provider;
 }

@@ -1,5 +1,6 @@
 import assert from "node:assert/strict";
 import { test } from "node:test";
+
 import { CLIError } from "../src/security.js";
 import { selectConfiguredAccounts } from "../src/services/account-selection.js";
 
@@ -18,14 +19,14 @@ test("provider filtering selects configured accounts before acquisition", () => 
       provider: "cursor",
       account: "personal",
     }),
-    [accounts[2]],
+    [accounts[2]]
   );
 });
 
 test("account-only filtering succeeds for exactly one configured match", () => {
   assert.deepEqual(
     selectConfiguredAccounts(accounts, { account: "personal" }),
-    [accounts[2]],
+    [accounts[2]]
   );
 });
 
@@ -39,7 +40,7 @@ test("account-only filtering reports provider-qualified ambiguity", () => {
         candidates: ["claude:work", "codex:work"],
       });
       return true;
-    },
+    }
   );
 });
 
@@ -47,6 +48,6 @@ test("missing configured account filters fail without selecting ambient sources"
   assert.throws(
     () => selectConfiguredAccounts(accounts, { account: "ambient-codex" }),
     (error: unknown) =>
-      error instanceof CLIError && error.code === "ACCOUNT_NOT_FOUND",
+      error instanceof CLIError && error.code === "ACCOUNT_NOT_FOUND"
   );
 });

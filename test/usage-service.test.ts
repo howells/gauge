@@ -1,5 +1,6 @@
 import assert from "node:assert/strict";
 import { test } from "node:test";
+
 import type { AccountSource } from "../src/domain/snapshot.js";
 import type {
   ProviderAcquisitionContext,
@@ -95,7 +96,7 @@ test("starts provider groups concurrently", async () => {
         order: 0,
       },
     ],
-    { credentialRefresh: "refresh-if-stale" },
+    { credentialRefresh: "refresh-if-stale" }
   );
 
   await new Promise<void>((resolve) => setImmediate(resolve));
@@ -117,7 +118,7 @@ test("orders providers and places configured sources before ambient sources", as
         })),
         pendingCredentialUpdates: [],
       }),
-    }),
+    })
   );
   const service = new UsageService({ adapters });
 
@@ -154,7 +155,7 @@ test("orders providers and places configured sources before ambient sources", as
         order: 0,
       },
     ],
-    { credentialRefresh: "refresh-if-stale" },
+    { credentialRefresh: "refresh-if-stale" }
   );
 
   assert.deepEqual(
@@ -165,7 +166,7 @@ test("orders providers and places configured sources before ambient sources", as
       { provider: "codex", name: "first" },
       { provider: "codex", name: "second" },
       { provider: "cursor", ambient: "env" },
-    ],
+    ]
   );
 });
 
@@ -209,7 +210,7 @@ test("turns adapter count or order violations into typed internal failures", asy
 
   assert.deepEqual(
     snapshot.accounts.map((account) => account.error?.code),
-    ["provider/contract-violation", "provider/contract-violation"],
+    ["provider/contract-violation", "provider/contract-violation"]
   );
   assert.equal(snapshot.pendingCredentialUpdates.length, 0);
   assert.deepEqual(snapshot.summary, {
@@ -246,12 +247,12 @@ test("returns typed timeouts when an adapter never settles", async () => {
           order: 0,
         },
       ],
-      { credentialRefresh: "refresh-if-stale" },
+      { credentialRefresh: "refresh-if-stale" }
     ),
     new Promise<never>((_resolve, reject) => {
       guard = setTimeout(
         () => reject(new Error("usage service remained pending")),
-        250,
+        250
       );
     }),
   ]);
@@ -312,7 +313,7 @@ test("a timed-out source does not discard a completed peer from the same provide
         order: 1,
       },
     ],
-    { credentialRefresh: "refresh-if-stale" },
+    { credentialRefresh: "refresh-if-stale" }
   );
 
   assert.equal(snapshot.accounts[0]?.error?.code, "provider/timeout");
@@ -361,7 +362,7 @@ test("timeout waits for cooperative provider cleanup before returning", async ()
         order: 0,
       },
     ],
-    { credentialRefresh: "refresh-if-stale" },
+    { credentialRefresh: "refresh-if-stale" }
   );
 
   assert.equal(cleaned, true);
@@ -382,8 +383,8 @@ test("caps direct acquisitions at four globally across provider groups", async (
               maximum = Math.max(maximum, active);
               await new Promise<void>((resolve) => setTimeout(resolve, 5));
               active -= 1;
-            }),
-          ),
+            })
+          )
         );
         return {
           results: sources.map((source) => ({
@@ -393,7 +394,7 @@ test("caps direct acquisitions at four globally across provider groups", async (
           pendingCredentialUpdates: [],
         };
       },
-    }),
+    })
   );
   const sources: AccountSource[] = adapters.flatMap((adapter) =>
     [0, 1, 2].map((order) => ({
@@ -401,7 +402,7 @@ test("caps direct acquisitions at four globally across provider groups", async (
       source: "configured" as const,
       provider: adapter.provider,
       order,
-    })),
+    }))
   );
   const service = new UsageService({ adapters });
 
@@ -424,7 +425,7 @@ test("represents sources with no registered adapter as typed failures", async ()
         order: 0,
       },
     ],
-    { credentialRefresh: "never" },
+    { credentialRefresh: "never" }
   );
 
   assert.equal(snapshot.accounts[0]?.error?.code, "provider/adapter-missing");
@@ -470,12 +471,12 @@ test("contains adapter exceptions as typed failures without losing other provide
         order: 0,
       },
     ],
-    { credentialRefresh: "refresh-if-stale" },
+    { credentialRefresh: "refresh-if-stale" }
   );
 
   assert.equal(
     snapshot.accounts[0]?.error?.code,
-    "provider/acquisition-failed",
+    "provider/acquisition-failed"
   );
   assert.equal(snapshot.accounts[0]?.error?.retryable, true);
   assert.equal(snapshot.accounts[1]?.usage?.plan, "Pro");

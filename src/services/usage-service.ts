@@ -37,7 +37,7 @@ export class UsageService {
 
   constructor(options: UsageServiceOptions) {
     this.#adapters = new Map(
-      options.adapters.map((adapter) => [adapter.provider, adapter]),
+      options.adapters.map((adapter) => [adapter.provider, adapter])
     );
     this.#cleanupGraceMs = options.cleanupGraceMs ?? 250;
     this.#deadlineMs = options.deadlineMs ?? 15_000;
@@ -47,7 +47,7 @@ export class UsageService {
 
   async collect(
     sources: readonly AccountSource[],
-    options: CollectOptions,
+    options: CollectOptions
   ): Promise<UsageSnapshot> {
     const orderedSources = [...sources].sort(compareSources);
     const directAcquisitions = new DirectAcquisitionLimiter(4);
@@ -60,7 +60,7 @@ export class UsageService {
               source,
               "provider/adapter-missing",
               "Provider adapter is not available.",
-              false,
+              false
             ),
             pendingCredentialUpdates: [] as PendingCredentialUpdate[],
           };
@@ -76,7 +76,7 @@ export class UsageService {
         let cancelTimeout = (): void => undefined;
         const acquisition = adapter.acquire([source], context).then(
           (result) => ({ kind: "result" as const, result }),
-          () => ({ kind: "error" as const }),
+          () => ({ kind: "error" as const })
         );
         const timeout = new Promise<{ kind: "timeout" }>((resolve) => {
           cancelTimeout = this.#schedule(() => {
@@ -90,7 +90,7 @@ export class UsageService {
           await Promise.race([
             acquisition.then(() => undefined),
             new Promise<void>((resolve) =>
-              setTimeout(resolve, this.#cleanupGraceMs),
+              setTimeout(resolve, this.#cleanupGraceMs)
             ),
           ]);
           return {
@@ -98,7 +98,7 @@ export class UsageService {
               source,
               "provider/timeout",
               "Provider request timed out.",
-              true,
+              true
             ),
             pendingCredentialUpdates: [] as PendingCredentialUpdate[],
           };
@@ -109,7 +109,7 @@ export class UsageService {
               source,
               "provider/acquisition-failed",
               "Provider request failed.",
-              true,
+              true
             ),
             pendingCredentialUpdates: [] as PendingCredentialUpdate[],
           };
@@ -121,7 +121,7 @@ export class UsageService {
               source,
               "provider/contract-violation",
               "Provider adapter violated the ordered result contract.",
-              false,
+              false
             ),
             pendingCredentialUpdates: [] as PendingCredentialUpdate[],
           };
@@ -134,16 +134,16 @@ export class UsageService {
             : { source, usage: entry.usage, error: null },
           pendingCredentialUpdates: result.pendingCredentialUpdates,
         };
-      }),
+      })
     );
     const accounts = outcomes.map((outcome) => outcome.account);
     const pendingCredentialUpdates = outcomes.flatMap(
-      (outcome) => outcome.pendingCredentialUpdates,
+      (outcome) => outcome.pendingCredentialUpdates
     );
 
     const failed = accounts.filter((account) => account.error !== null).length;
     const timedOut = accounts.filter(
-      (account) => account.error?.code === "provider/timeout",
+      (account) => account.error?.code === "provider/timeout"
     ).length;
     return {
       accounts,
@@ -163,7 +163,7 @@ function failureSnapshot(
   source: AccountSource,
   code: string,
   message: string,
-  retryable: boolean,
+  retryable: boolean
 ): AccountSnapshot {
   return {
     source,
@@ -251,7 +251,7 @@ function compareSources(left: AccountSource, right: AccountSource): number {
 
 function isValidAdapterResult(
   sources: readonly AccountSource[],
-  result: ProviderAcquisitionResult,
+  result: ProviderAcquisitionResult
 ): boolean {
   return (
     result.results.length === sources.length &&

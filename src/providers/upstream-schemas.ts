@@ -40,10 +40,10 @@ export const ClaudeOrganizationListSchema = z
       id: z.number().finite().default(0),
       name: ShortString,
       rate_limit_tier: ShortString.nullish().transform(
-        (value) => value ?? null,
+        (value) => value ?? null
       ),
       uuid: ShortString,
-    }),
+    })
   )
   .max(100);
 
@@ -75,7 +75,7 @@ export type ClaudeLimit = z.infer<typeof ClaudeLimitSchema>;
  */
 export function windowFromLimits(
   limits: ClaudeLimit[] | undefined,
-  kind: "session" | "weekly_all",
+  kind: "session" | "weekly_all"
 ): { resets_at: string | null; utilization: number } | null {
   const limit = limits?.find((entry) => entry.kind === kind);
   if (!limit) return null;

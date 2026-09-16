@@ -1,7 +1,9 @@
 import { createHash } from "node:crypto";
 import fs from "node:fs";
 import path from "node:path";
+
 import { z } from "zod";
+
 import {
   type AccountId,
   AccountIdSchema,
@@ -96,7 +98,7 @@ export function planLegacyMigration(dataRoot: string): LegacyMigrationPlan {
 /** Migrate all legacy accounts through staged account-directory commits. */
 export function migrateLegacyAccounts(
   dataRoot: string,
-  options: MigrationOptions = {},
+  options: MigrationOptions = {}
 ): { migrated: number } {
   const root = path.resolve(dataRoot);
   const journalPath = path.join(root, "migration-v3.json");
@@ -169,7 +171,7 @@ export function migrateLegacyAccounts(
 
 function buildJournalEntries(
   root: string,
-  journal: MigrationJournal,
+  journal: MigrationJournal
 ): LegacyMigrationEntry[] {
   return journal.entries.map((journalEntry) => {
     const source = path.resolve(journalEntry.source);
@@ -195,12 +197,12 @@ function buildJournalEntries(
       "accounts",
       "v3",
       journalEntry.id.provider,
-      journalEntry.id.name,
+      journalEntry.id.name
     );
     const configPath = path.join(destination, "config.json");
     if (!fs.existsSync(configPath)) throw migrationConflict(source);
     const committedConfig = JSON.parse(
-      fs.readFileSync(configPath, "utf8"),
+      fs.readFileSync(configPath, "utf8")
     ) as Record<string, unknown>;
     const config = LegacyConfigSchema.parse({
       addedAt: committedConfig.addedAt,
@@ -241,7 +243,7 @@ function buildEntries(dataRoot: string): LegacyMigrationEntry[] {
 
 function assertDestinationMatches(
   repository: AccountRepository,
-  entry: LegacyMigrationEntry,
+  entry: LegacyMigrationEntry
 ): void {
   const existing = repository.get(entry.id);
   const expectedConfig = {
@@ -264,7 +266,7 @@ function assertDestinationMatches(
   } else {
     if (!existing.hasStorageState) throw migrationConflict(entry.source);
     const actualStorage = parseStorageStateJsonValue(
-      fs.readFileSync(existing.paths.storageState, "utf8"),
+      fs.readFileSync(existing.paths.storageState, "utf8")
     );
     if (JSON.stringify(actualStorage) !== JSON.stringify(entry.storageState)) {
       throw migrationConflict(entry.source);
@@ -283,7 +285,7 @@ function assertDestinationMatches(
 function assertCommittedDestination(
   repository: AccountRepository,
   entry: LegacyMigrationEntry,
-  fingerprint?: string,
+  fingerprint?: string
 ): void {
   if (fs.existsSync(entry.source)) {
     assertDestinationMatches(repository, entry);
@@ -307,7 +309,7 @@ function entryFingerprint(entry: LegacyMigrationEntry): string {
 
 function destinationFingerprint(
   repository: AccountRepository,
-  id: AccountId,
+  id: AccountId
 ): string {
   const account = repository.get(id);
   return hashValue({
@@ -317,7 +319,7 @@ function destinationFingerprint(
       : null,
     storage: account.hasStorageState
       ? parseStorageStateJsonValue(
-          fs.readFileSync(account.paths.storageState, "utf8"),
+          fs.readFileSync(account.paths.storageState, "utf8")
         )
       : null,
   });
@@ -366,7 +368,7 @@ function migratableNames(directory: string): string[] {
   return fs
     .readdirSync(directory)
     .filter((name) =>
-      isMigratableProfileEntry(fs.lstatSync(path.join(directory, name))),
+      isMigratableProfileEntry(fs.lstatSync(path.join(directory, name)))
     )
     .sort();
 }
@@ -402,7 +404,7 @@ function buildEntry(root: string, filename: string): LegacyMigrationEntry {
   let config: z.infer<typeof LegacyConfigSchema>;
   try {
     config = LegacyConfigSchema.parse(
-      JSON.parse(fs.readFileSync(source, "utf8")) as unknown,
+      JSON.parse(fs.readFileSync(source, "utf8")) as unknown
     );
   } catch (error) {
     throw migrationConflict(source, error);
@@ -422,7 +424,7 @@ function buildEntry(root: string, filename: string): LegacyMigrationEntry {
       throw migrationConflict(storageSource);
     }
     storageState = parseStorageStateJsonValue(
-      fs.readFileSync(storageSource, "utf8"),
+      fs.readFileSync(storageSource, "utf8")
     );
   }
   if (fs.existsSync(profileSource)) {
@@ -493,7 +495,7 @@ function readJournal(journalPath: string): MigrationJournal | null {
         id: AccountIdSchema,
         source: z.string(),
         status: z.enum(["pending", "committed", "cleaned"]),
-      }),
+      })
     ),
   });
   return schema.parse(value);
@@ -501,7 +503,7 @@ function readJournal(journalPath: string): MigrationJournal | null {
 
 function assertJournalMatches(
   journal: MigrationJournal,
-  entries: LegacyMigrationEntry[],
+  entries: LegacyMigrationEntry[]
 ): void {
   const expected = entries.map((entry) => identityKey(entry.id)).sort();
   const actual = journal.entries.map((entry) => identityKey(entry.id)).sort();
@@ -522,10 +524,10 @@ function assertJournalMatches(
 
 function findJournalEntry(
   journal: MigrationJournal,
-  id: AccountId,
+  id: AccountId
 ): MigrationJournalEntry {
   const entry = journal.entries.find(
-    (candidate) => identityKey(candidate.id) === identityKey(id),
+    (candidate) => identityKey(candidate.id) === identityKey(id)
   );
   if (!entry) throw migrationConflict("migration-v3.json");
   return entry;
@@ -564,7 +566,7 @@ function migrationConflict(source: string, cause?: unknown): CLIError {
         source,
         ...(cause instanceof Error && { reason: cause.message }),
       },
-    },
+    }
   );
 }
 

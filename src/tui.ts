@@ -1,7 +1,9 @@
 import { spawnSync } from "node:child_process";
 import process from "node:process";
 import readline from "node:readline";
+
 import chalk from "chalk";
+
 import {
   codexLoginRemedy,
   runAddCommand,
@@ -106,7 +108,7 @@ function brokenAccounts(data: unknown): BrokenAccount[] {
 function footer(
   broken: BrokenAccount[],
   selected: { label: string; provider: string } | undefined,
-  targets: SwitchTarget[],
+  targets: SwitchTarget[]
 ): string {
   const surface =
     selected?.provider === "codex"
@@ -118,7 +120,7 @@ function footer(
     selected !== undefined &&
     targets.some(
       (target) =>
-        target.name === selected.label && target.provider === selected.provider,
+        target.name === selected.label && target.provider === selected.provider
     );
   // Three states, and the middle one used to be a dead end: a cell with nothing
   // stored said so and offered nothing, while the only way to store a session
@@ -131,7 +133,7 @@ function footer(
         : `${chalk.bold("enter")} ${chalk.dim(
             selected?.provider === "codex"
               ? `log in to Codex as ${selected?.label}`
-              : "log in to Claude Code",
+              : "log in to Claude Code"
           )}`;
   // Two lines, split by what the key depends on. Everything above moves the
   // cursor or acts on the whole view; everything below acts on the one cell the
@@ -151,9 +153,9 @@ function footer(
       broken
         .map(
           (account, index) =>
-            `${chalk.bold(String(index + 1))} ${chalk.dim(`re-auth ${account.provider}:${account.name}`)}`,
+            `${chalk.bold(String(index + 1))} ${chalk.dim(`re-auth ${account.provider}:${account.name}`)}`
         )
-        .join(chalk.dim("  ·  ")),
+        .join(chalk.dim("  ·  "))
     );
   }
   return `${lines.map((line) => `   ${line}`).join("\n")}\n`;
@@ -208,7 +210,7 @@ export async function runTUI(): Promise<void> {
             snapshot.views,
             snapshot.recommendation,
             new Date(),
-            selected,
+            selected
           )
         : snapshot.dashboard;
     writeView(`${dashboard}\n${footer(broken, selected, targets)}`);
@@ -246,12 +248,14 @@ export async function runTUI(): Promise<void> {
   const refreshTargets = (): void => {
     const dataDir = getDataDir();
     targets = [
-      ...codexSwitchTargets(dataDir).map(
-        (target): SwitchTarget => ({ name: target.name, provider: "codex" }),
-      ),
-      ...capturedClaudeSessions(dataDir).map(
-        (name): SwitchTarget => ({ name, provider: "claude" }),
-      ),
+      ...codexSwitchTargets(dataDir).map((target): SwitchTarget => ({
+        name: target.name,
+        provider: "codex",
+      })),
+      ...capturedClaudeSessions(dataDir).map((name): SwitchTarget => ({
+        name,
+        provider: "claude",
+      })),
     ];
   };
 
@@ -303,7 +307,7 @@ export async function runTUI(): Promise<void> {
   const reauthenticate = async (account: BrokenAccount): Promise<void> => {
     process.stdin.setRawMode(false);
     process.stdout.write(
-      `\n   ${chalk.yellow("→")} ${chalk.bold(`${account.provider}:${account.name}`)} ${chalk.dim("· re-authenticating")}\n\n`,
+      `\n   ${chalk.yellow("→")} ${chalk.bold(`${account.provider}:${account.name}`)} ${chalk.dim("· re-authenticating")}\n\n`
     );
     previousLineCount = 0;
     try {
@@ -333,7 +337,7 @@ export async function runTUI(): Promise<void> {
 
       if (remedy) {
         process.stdout.write(
-          `   ${chalk.dim(`codex login · CODEX_HOME=${remedy.home}`)}\n\n`,
+          `   ${chalk.dim(`codex login · CODEX_HOME=${remedy.home}`)}\n\n`
         );
         const login = spawnSync("codex", ["login"], {
           env: { ...process.env, CODEX_HOME: remedy.home },
@@ -350,7 +354,7 @@ export async function runTUI(): Promise<void> {
                 .split("\n")
                 .map((line) => `   ${line}`)
                 .join("\n")}\n`
-            : `\n   ${chalk.green("✓")} ${chalk.dim("codex login finished")}\n`,
+            : `\n   ${chalk.green("✓")} ${chalk.dim("codex login finished")}\n`
         );
       } else {
         const guidance = result.human?.trim();
@@ -359,13 +363,13 @@ export async function runTUI(): Promise<void> {
             `${guidance
               .split("\n")
               .map((line) => `   ${line}`)
-              .join("\n")}\n`,
+              .join("\n")}\n`
           );
         }
         process.stdout.write(
           result.ok
             ? `   ${chalk.green("✓")} ${chalk.dim("refresh completed")}\n`
-            : `   ${chalk.red("✗")} ${chalk.dim("refresh reported a failure")}\n`,
+            : `   ${chalk.red("✗")} ${chalk.dim("refresh reported a failure")}\n`
         );
       }
     } catch (error) {
@@ -376,7 +380,7 @@ export async function runTUI(): Promise<void> {
     }
     process.stdout.write(`\n   ${chalk.dim("any key to continue")}`);
     await new Promise<void>((resolve) =>
-      process.stdin.once("keypress", () => resolve()),
+      process.stdin.once("keypress", () => resolve())
     );
     previousLineCount = 0;
     await reload();
@@ -392,7 +396,7 @@ export async function runTUI(): Promise<void> {
    */
   const runLogin = async (
     name: string,
-    provider: "claude" | "codex" | "cursor",
+    provider: "claude" | "codex" | "cursor"
   ): Promise<void> => {
     if (provider === "codex") {
       const remedy = codexLoginRemedy(name);
@@ -447,7 +451,7 @@ export async function runTUI(): Promise<void> {
           meta?: boolean;
           name?: string;
           sequence?: string;
-        },
+        }
       ): void => {
         const done = (answer: string | null): void => {
           process.stdin.off("keypress", onKey);
@@ -491,12 +495,12 @@ export async function runTUI(): Promise<void> {
    * one keystroke.
    */
   const askProvider = async (
-    fallback: "claude" | "codex" | "cursor" | undefined,
+    fallback: "claude" | "codex" | "cursor" | undefined
   ): Promise<"claude" | "codex" | "cursor" | null> => {
     const preset = fallback ?? "claude";
     for (;;) {
       const answer = await ask(
-        `   ${chalk.dim(`app claude/codex/cursor [${preset}]:`)} `,
+        `   ${chalk.dim(`app claude/codex/cursor [${preset}]:`)} `
       );
       if (answer === null) return null;
       if (answer === "") return preset;
@@ -509,7 +513,7 @@ export async function runTUI(): Promise<void> {
         return provider;
       }
       process.stdout.write(
-        `   ${chalk.dim(`"${answer}" is not one of them.`)}\n`,
+        `   ${chalk.dim(`"${answer}" is not one of them.`)}\n`
       );
     }
   };
@@ -520,7 +524,7 @@ export async function runTUI(): Promise<void> {
       (view) =>
         view.source === "configured" &&
         view.provider === provider &&
-        view.name === name,
+        view.name === name
     );
 
   /**
@@ -542,7 +546,7 @@ export async function runTUI(): Promise<void> {
 
     createCodexHome(home);
     process.stdout.write(
-      `\n   ${chalk.dim(`no login there yet · codex login · CODEX_HOME=${home}`)}\n\n`,
+      `\n   ${chalk.dim(`no login there yet · codex login · CODEX_HOME=${home}`)}\n\n`
     );
     const login = spawnSync("codex", ["login"], {
       env: { ...process.env, CODEX_HOME: home },
@@ -573,7 +577,7 @@ export async function runTUI(): Promise<void> {
    * cancelled add and the grid stopped responding to any key at all.
    */
   const askForNewAccount = async (
-    column: "claude" | "codex" | "cursor" | undefined,
+    column: "claude" | "codex" | "cursor" | undefined
   ): Promise<string> => {
     const provider = await askProvider(column);
     if (provider === null) return chalk.dim("cancelled");
@@ -595,7 +599,7 @@ export async function runTUI(): Promise<void> {
       codexHome = home;
     } else {
       process.stdout.write(
-        `\n   ${chalk.dim(`opening a browser to log in to ${surface}`)}\n`,
+        `\n   ${chalk.dim(`opening a browser to log in to ${surface}`)}\n`
       );
     }
 
@@ -605,13 +609,13 @@ export async function runTUI(): Promise<void> {
   };
 
   const addAccount = async (
-    column: "claude" | "codex" | "cursor" | undefined,
+    column: "claude" | "codex" | "cursor" | undefined
   ): Promise<void> => {
     prompting = true;
     process.stdin.setRawMode(false);
     previousLineCount = 0;
     process.stdout.write(
-      `\n   ${chalk.cyan("+")} ${chalk.bold("add an account")}\n\n`,
+      `\n   ${chalk.cyan("+")} ${chalk.bold("add an account")}\n\n`
     );
     let outcome: string;
     try {
@@ -624,10 +628,10 @@ export async function runTUI(): Promise<void> {
     // the key handler expects to find when this returns.
     process.stdin.setRawMode(true);
     process.stdout.write(
-      `\n   ${outcome}\n\n   ${chalk.dim("any key to continue")}`,
+      `\n   ${outcome}\n\n   ${chalk.dim("any key to continue")}`
     );
     await new Promise<void>((resolve) =>
-      process.stdin.once("keypress", () => resolve()),
+      process.stdin.once("keypress", () => resolve())
     );
     prompting = false;
     previousLineCount = 0;
@@ -636,11 +640,11 @@ export async function runTUI(): Promise<void> {
 
   const signInAs = async (
     name: string,
-    provider: "claude" | "codex" | "cursor",
+    provider: "claude" | "codex" | "cursor"
   ): Promise<void> => {
     const surface = provider === "codex" ? "Codex" : "Claude Code";
     const stored = targets.some(
-      (target) => target.name === name && target.provider === provider,
+      (target) => target.name === name && target.provider === provider
     );
     process.stdin.setRawMode(false);
     previousLineCount = 0;
@@ -658,12 +662,12 @@ export async function runTUI(): Promise<void> {
         switchClaudeSession(name, getDataDir());
       }
       process.stdout.write(
-        `   ${chalk.green("✓")} ${chalk.dim(stored ? `${surface} signed in as ${name}` : `${surface} login finished`)}\n`,
+        `   ${chalk.green("✓")} ${chalk.dim(stored ? `${surface} signed in as ${name}` : `${surface} login finished`)}\n`
       );
     } catch (error) {
       const message = error instanceof Error ? error.message : String(error);
       process.stdout.write(
-        `   ${chalk.red("✗")} ${chalk.dim(`${surface}: ${message}`)}\n`,
+        `   ${chalk.red("✗")} ${chalk.dim(`${surface}: ${message}`)}\n`
       );
     }
     process.stdin.setRawMode(true);
@@ -679,7 +683,7 @@ export async function runTUI(): Promise<void> {
     await new Promise<void>((resolve, reject) => {
       const onKeypress = (
         _value: string,
-        key: { ctrl?: boolean; name?: string },
+        key: { ctrl?: boolean; name?: string }
       ): void => {
         // Checked before the quit keys, not after: while a prompt is open these
         // keystrokes are letters in an answer, and the prompt has its own ctrl-C.

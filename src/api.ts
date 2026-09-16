@@ -1,10 +1,12 @@
 import fs from "node:fs";
+
 import {
   type APIResponse,
   chromium,
   type Page,
   request,
 } from "playwright-core";
+
 import { assertChromeInstalled } from "./chrome.js";
 import { getDataDir, getProfileDir, getStorageStatePath } from "./paths.js";
 import { fetchOAuthUsage } from "./providers/oauth-usage.js";
@@ -133,7 +135,7 @@ export async function addAccount(
     profileDir?: string;
     quiet?: boolean;
     runtime?: Partial<ApiRuntime>;
-  } = {},
+  } = {}
 ): Promise<PlaywrightStorageState | null> {
   const runtime = resolveRuntime(options.runtime);
   runtime.assertChromeInstalled();
@@ -145,10 +147,10 @@ export async function addAccount(
   if (!quiet) {
     console.log(`\nOpening browser for account "${name}"...`);
     console.log(
-      "Please log in to Claude. The browser will close automatically when done.",
+      "Please log in to Claude. The browser will close automatically when done."
     );
     console.log(
-      "(If Cloudflare blocks you, try logging in first in your regular Chrome)\n",
+      "(If Cloudflare blocks you, try logging in first in your regular Chrome)\n"
     );
   }
 
@@ -172,7 +174,7 @@ export async function addAccount(
     const loginDetected = await waitForLoginSignal(
       page,
       LOGIN_TIMEOUT_MS,
-      runtime.now,
+      runtime.now
     );
     if (!loginDetected) {
       if (!quiet) console.error("Login timed out. Please try again.");
@@ -185,7 +187,7 @@ export async function addAccount(
   } catch {
     if (!quiet) {
       console.error(
-        "Login verification failed. Please make sure you're logged in.",
+        "Login verification failed. Please make sure you're logged in."
       );
     }
     return null;
@@ -201,7 +203,7 @@ export async function addCursorAccount(
     profileDir?: string;
     quiet?: boolean;
     runtime?: Partial<ApiRuntime>;
-  } = {},
+  } = {}
 ): Promise<PlaywrightStorageState | null> {
   const runtime = resolveRuntime(options.runtime);
   runtime.assertChromeInstalled();
@@ -211,7 +213,7 @@ export async function addCursorAccount(
   if (!quiet) {
     console.log(`\nOpening browser for Cursor account "${name}"...`);
     console.log(
-      "Please log in to Cursor. The browser will close automatically when done.\n",
+      "Please log in to Cursor. The browser will close automatically when done.\n"
     );
   }
 
@@ -235,7 +237,7 @@ export async function addCursorAccount(
     const loginDetected = await waitForCursorLoginSignal(
       page,
       LOGIN_TIMEOUT_MS,
-      runtime.now,
+      runtime.now
     );
     if (!loginDetected) {
       if (!quiet) console.error("Cursor login timed out. Please try again.");
@@ -257,7 +259,7 @@ export async function fetchUsageForAccount(
     onStorageStateUpdate?: (value: unknown) => void;
     signal?: AbortSignal;
     runtime?: Partial<ApiRuntime>;
-  } = {},
+  } = {}
 ): Promise<AccountUsage> {
   const runtime = resolveRuntime(options.runtime);
   const {
@@ -299,7 +301,7 @@ export async function fetchUsageForAccount(
       viaToken.renewsAt = await fetchRenewalOnly(
         storagePath,
         runtime,
-        options.signal,
+        options.signal
       );
     }
     return viaToken;
@@ -312,7 +314,7 @@ export async function fetchUsageForAccount(
     options.credentialRefresh,
     options.onStorageStateUpdate,
     runtime,
-    options.signal,
+    options.signal
   );
   if (requestResult) {
     return requestResult;
@@ -342,8 +344,8 @@ export async function fetchUsageForAccount(
       renewsAt,
       options,
       runtime,
-      options.signal,
-    ),
+      options.signal
+    )
   );
 }
 
@@ -355,7 +357,7 @@ async function fetchUsageViaBrowser(
     onStorageStateUpdate?: (value: unknown) => void;
   },
   runtime: ApiRuntime,
-  signal?: AbortSignal,
+  signal?: AbortSignal
 ): Promise<AccountUsage> {
   runtime.assertChromeInstalled();
   const context = await acquireAbortableResource(
@@ -371,7 +373,7 @@ async function fetchUsageViaBrowser(
       viewport: { width: 800, height: 600 },
     }),
     signal,
-    (lateContext) => lateContext.close(),
+    (lateContext) => lateContext.close()
   );
 
   try {
@@ -382,7 +384,7 @@ async function fetchUsageViaBrowser(
       page.goto(`${CLAUDE_URL}/settings/usage`, {
         waitUntil: "domcontentloaded",
       }),
-      signal,
+      signal
     );
 
     // Check if we hit Cloudflare
@@ -405,15 +407,15 @@ async function fetchUsageViaBrowser(
 
     const usageResponse = await abortable(
       fetchUsageFromPage(page, org.uuid),
-      signal,
+      signal
     );
     const fetchedRenewsAt = await abortable(
       fetchRenewalFromPage(page, org.uuid),
-      signal,
+      signal
     );
 
     options.onStorageStateUpdate?.(
-      await abortable(context.storageState(), signal),
+      await abortable(context.storageState(), signal)
     );
 
     return {
@@ -453,7 +455,7 @@ async function fetchUsageViaBrowser(
  */
 async function fetchUsageViaOAuth(
   name: string,
-  renewsAt: string | null | undefined,
+  renewsAt: string | null | undefined
 ): Promise<AccountUsage | null> {
   try {
     const dataDir = getDataDir();
@@ -468,7 +470,7 @@ async function fetchUsageViaOAuth(
     const reading = await fetchOAuthUsage(token);
     if (!reading) return null;
     const limit = (
-      window: { resetsAt: string | null; usedPercent: number } | null,
+      window: { resetsAt: string | null; usedPercent: number } | null
     ): UsageLimit | null =>
       window
         ? { resets_at: window.resetsAt, utilization: window.usedPercent }
@@ -505,7 +507,7 @@ async function fetchUsageViaOAuth(
 export async function fetchRenewalOnly(
   storagePath: string,
   runtime: ApiRuntime = defaultRuntime,
-  signal?: AbortSignal,
+  signal?: AbortSignal
 ): Promise<string | null> {
   if (!fs.existsSync(storagePath)) return null;
   let api: Awaited<ReturnType<ApiRuntime["newRequestContext"]>> | null = null;
@@ -520,12 +522,12 @@ export async function fetchRenewalOnly(
         },
       }),
       signal,
-      (lateApi) => lateApi.dispose(),
+      (lateApi) => lateApi.dispose()
     );
     const orgsRes = await abortable(api.get("/api/organizations"), signal);
     if (!orgsRes.ok()) return null;
     const orgs = ClaudeOrganizationListSchema.safeParse(
-      await parseBoundedApiResponse(orgsRes, signal),
+      await parseBoundedApiResponse(orgsRes, signal)
     );
     const org = orgs.success ? orgs.data[0] : undefined;
     if (!org) return null;
@@ -547,7 +549,7 @@ export async function fetchAllUsage(
     quiet?: boolean;
     signal?: AbortSignal;
     runtime?: Partial<ApiRuntime>;
-  } = {},
+  } = {}
 ): Promise<AccountUsage[]> {
   // Fetch sequentially - parallel would open too many browser windows
   const results: AccountUsage[] = [];
@@ -580,7 +582,7 @@ export async function fetchAllUsage(
 async function waitForLoginSignal(
   page: Page,
   timeoutMs: number,
-  now: () => number = Date.now,
+  now: () => number = Date.now
 ): Promise<boolean> {
   const start = now();
   while (now() - start < timeoutMs) {
@@ -600,7 +602,7 @@ async function waitForLoginSignal(
           }
         }),
         LOGIN_PROBE_TIMEOUT_MS,
-        false,
+        false
       );
       if (ok) {
         return true;
@@ -617,7 +619,7 @@ async function waitForLoginSignal(
 async function waitForCursorLoginSignal(
   page: Page,
   timeoutMs: number,
-  now: () => number = Date.now,
+  now: () => number = Date.now
 ): Promise<boolean> {
   const start = now();
   while (now() - start < timeoutMs) {
@@ -637,7 +639,7 @@ async function waitForCursorLoginSignal(
             }
           }),
           LOGIN_PROBE_TIMEOUT_MS,
-          false,
+          false
         );
         if (ok) return true;
       } catch {
@@ -660,7 +662,7 @@ async function assertLoggedIn(page: Page): Promise<void> {
 async function fetchOrganizationsFromPage(page: Page): Promise<Organization[]> {
   const orgsResponse = await fetchBoundedJsonFromPage(
     page,
-    "https://claude.ai/api/organizations",
+    "https://claude.ai/api/organizations"
   );
   assertBoundedValue(orgsResponse);
   return ClaudeOrganizationListSchema.parse(orgsResponse);
@@ -668,11 +670,11 @@ async function fetchOrganizationsFromPage(page: Page): Promise<Organization[]> {
 
 async function fetchUsageFromPage(
   page: Page,
-  uuid: string,
+  uuid: string
 ): Promise<UsageResponse> {
   const usageResponse = await fetchBoundedJsonFromPage(
     page,
-    `https://claude.ai/api/organizations/${encodeURIComponent(uuid)}/usage`,
+    `https://claude.ai/api/organizations/${encodeURIComponent(uuid)}/usage`
   );
   assertBoundedValue(usageResponse);
   return ClaudeUsageResponseSchema.parse(usageResponse);
@@ -680,13 +682,13 @@ async function fetchUsageFromPage(
 
 async function fetchRenewalFromPage(
   page: Page,
-  uuid: string,
+  uuid: string
 ): Promise<string | null> {
   try {
     const subscriptionDetails = await fetchBoundedJsonFromPage(
       page,
       `https://claude.ai/api/organizations/${encodeURIComponent(uuid)}/subscription_details?cached=false`,
-      true,
+      true
     );
     assertBoundedValue(subscriptionDetails);
     return extractClaudeRenewal(subscriptionDetails);
@@ -698,7 +700,7 @@ async function fetchRenewalFromPage(
 async function fetchBoundedJsonFromPage(
   page: Page,
   url: string,
-  nullOnHttpError = false,
+  nullOnHttpError = false
 ): Promise<unknown> {
   return page.evaluate(
     async ({ requestUrl, returnNullOnHttpError }) => {
@@ -733,7 +735,7 @@ async function fetchBoundedJsonFromPage(
       }
       return JSON.parse(new TextDecoder().decode(body)) as unknown;
     },
-    { requestUrl: url, returnNullOnHttpError: nullOnHttpError },
+    { requestUrl: url, returnNullOnHttpError: nullOnHttpError }
   );
 }
 
@@ -766,7 +768,7 @@ function expiredError(name: string, renewsAt?: string | null): AccountUsage {
 function checkResponse(
   name: string,
   res: APIResponse,
-  renewsAt?: string | null,
+  renewsAt?: string | null
 ): AccountUsage | null | "ok" {
   if (res.status() === 401) {
     return expiredError(name, renewsAt);
@@ -787,7 +789,7 @@ async function fetchUsageViaRequest(
   credentialRefresh: "refresh-if-stale" | "never" = "refresh-if-stale",
   onStorageStateUpdate?: (value: unknown) => void,
   runtime: ApiRuntime = defaultRuntime,
-  signal?: AbortSignal,
+  signal?: AbortSignal
 ): Promise<AccountUsage | null> {
   if (!fs.existsSync(storagePath)) {
     return null;
@@ -803,7 +805,7 @@ async function fetchUsageViaRequest(
       },
     }),
     signal,
-    (lateApi) => lateApi.dispose(),
+    (lateApi) => lateApi.dispose()
   );
 
   try {
@@ -814,7 +816,7 @@ async function fetchUsageViaRequest(
     }
 
     const orgs = ClaudeOrganizationListSchema.parse(
-      await parseBoundedApiResponse(orgsRes, signal),
+      await parseBoundedApiResponse(orgsRes, signal)
     );
     const org = orgs?.[0];
     if (!org) {
@@ -833,7 +835,7 @@ async function fetchUsageViaRequest(
     const [usageRes, fetchedRenewsAt] = await Promise.all([
       abortable(
         api.get(`/api/organizations/${encodeURIComponent(org.uuid)}/usage`),
-        signal,
+        signal
       ),
       fetchRenewalViaRequest(api, org.uuid, signal),
     ]);
@@ -843,7 +845,7 @@ async function fetchUsageViaRequest(
     }
 
     const usage = ClaudeUsageResponseSchema.parse(
-      await parseBoundedApiResponse(usageRes, signal),
+      await parseBoundedApiResponse(usageRes, signal)
     );
 
     if (credentialRefresh === "refresh-if-stale") {
@@ -871,14 +873,14 @@ async function fetchUsageViaRequest(
 async function fetchRenewalViaRequest(
   api: Awaited<ReturnType<typeof request.newContext>>,
   uuid: string,
-  signal?: AbortSignal,
+  signal?: AbortSignal
 ): Promise<string | null> {
   try {
     const res = await abortable(
       api.get(
-        `/api/organizations/${encodeURIComponent(uuid)}/subscription_details?cached=false`,
+        `/api/organizations/${encodeURIComponent(uuid)}/subscription_details?cached=false`
       ),
-      signal,
+      signal
     );
     if (!res.ok()) return null;
     const contentType = res.headers()["content-type"] ?? "";
@@ -903,7 +905,7 @@ function abortable<T>(promise: Promise<T>, signal?: AbortSignal): Promise<T> {
       (error: unknown) => {
         signal.removeEventListener("abort", abort);
         reject(error);
-      },
+      }
     );
   });
 }
@@ -911,7 +913,7 @@ function abortable<T>(promise: Promise<T>, signal?: AbortSignal): Promise<T> {
 function acquireAbortableResource<T>(
   promise: Promise<T>,
   signal: AbortSignal | undefined,
-  dispose: (resource: T) => Promise<unknown>,
+  dispose: (resource: T) => Promise<unknown>
 ): Promise<T> {
   if (!signal) return promise;
   if (signal.aborted) {
@@ -937,14 +939,14 @@ function acquireAbortableResource<T>(
       (error: unknown) => {
         signal.removeEventListener("abort", abort);
         if (!aborted) reject(error);
-      },
+      }
     );
   });
 }
 
 async function parseBoundedApiResponse(
   response: APIResponse,
-  signal?: AbortSignal,
+  signal?: AbortSignal
 ): Promise<unknown> {
   // Providers commonly respond chunked (no content-length) — claude.ai does.
   // A declared length is advisory for early abort; the byteLength check below

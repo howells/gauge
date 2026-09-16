@@ -4,6 +4,7 @@ import {
   Option,
   type OptionValues,
 } from "commander";
+
 import {
   COMMAND_SPECS,
   type CommandSpec,
@@ -29,7 +30,7 @@ export function createProgram(options: ProgramOptions): Command {
   const program = new Command()
     .name("gauge")
     .description(
-      "At-a-glance usage dashboard for Claude, Codex, and Cursor accounts",
+      "At-a-glance usage dashboard for Claude, Codex, and Cursor accounts"
     )
     .version(options.version)
     .showHelpAfterError(false)
@@ -39,7 +40,7 @@ export function createProgram(options: ProgramOptions): Command {
   if (rootSpec) {
     addOptions(program, rootSpec.options);
     program.action((...args: unknown[]) =>
-      options.handlers[rootSpec.name](invocation(rootSpec, args)),
+      options.handlers[rootSpec.name](invocation(rootSpec, args))
     );
   }
 
@@ -50,7 +51,7 @@ export function createProgram(options: ProgramOptions): Command {
     for (const alias of spec.aliases) command.alias(alias);
     addOptions(command, spec.options);
     command.action((...args: unknown[]) =>
-      options.handlers[spec.name](invocation(spec, args)),
+      options.handlers[spec.name](invocation(spec, args))
     );
   }
 
@@ -81,7 +82,7 @@ function parsePositiveInteger(value: string): number {
   const parsed = Number.parseInt(value, 10);
   if (!Number.isInteger(parsed) || parsed < 1) {
     throw new InvalidArgumentError(
-      `Expected a positive integer, received "${value}".`,
+      `Expected a positive integer, received "${value}".`
     );
   }
   return parsed;
@@ -89,7 +90,7 @@ function parsePositiveInteger(value: string): number {
 
 function invocation(
   spec: CommandSpec,
-  actionArguments: unknown[],
+  actionArguments: unknown[]
 ): CommandInvocation {
   const command = actionArguments.at(-1);
   const positional = actionArguments.slice(0, spec.arguments.length);
@@ -98,7 +99,7 @@ function invocation(
       spec.arguments.map((argument, index) => [
         argument.name,
         typeof positional[index] === "string" ? positional[index] : undefined,
-      ]),
+      ])
     ),
     options: command instanceof Command ? command.optsWithGlobals() : {},
   };

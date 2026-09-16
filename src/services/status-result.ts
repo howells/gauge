@@ -17,12 +17,12 @@ export interface StatusResultOptions {
 /** Render one usage snapshot consistently for every CLI presentation mode. */
 export function buildStatusResult(
   snapshot: UsageSnapshot,
-  options: StatusResultOptions,
+  options: StatusResultOptions
 ): CommandResult {
   const presented = presentAccounts(snapshot.accounts);
   const recommendation = recommendUsage(
     presented.map(toRecommendationCandidate),
-    options.now,
+    options.now
   );
   const result = classifySnapshot(snapshot);
   const accounts = presented.map(({ account, name }) => ({
@@ -74,8 +74,8 @@ function presentAccounts(accounts: AccountSnapshot[]): PresentedAccount[] {
     accounts.flatMap((account) =>
       account.source.source === "configured" && account.usage?.email
         ? [`${account.source.provider}\0${account.usage.email}`]
-        : [],
-    ),
+        : []
+    )
   );
   return accounts
     .filter(
@@ -83,8 +83,8 @@ function presentAccounts(accounts: AccountSnapshot[]): PresentedAccount[] {
         account.source.source !== "ambient" ||
         !account.usage?.email ||
         !configuredIdentities.has(
-          `${account.source.provider}\0${account.usage.email}`,
-        ),
+          `${account.source.provider}\0${account.usage.email}`
+        )
     )
     .map((account) => ({ account, name: displayName(account) }));
 }
@@ -101,7 +101,7 @@ function displayName(account: AccountSnapshot): string {
 
 function toRecommendationCandidate(
   { account, name }: PresentedAccount,
-  index: number,
+  index: number
 ): RecommendationCandidate {
   return {
     id: {
@@ -124,7 +124,7 @@ function toRecommendationCandidate(
 }
 
 function classifySnapshot(
-  snapshot: UsageSnapshot,
+  snapshot: UsageSnapshot
 ): "complete" | "failed" | "partial" {
   if (snapshot.summary.total > 0 && snapshot.summary.succeeded === 0) {
     return "failed";

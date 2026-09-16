@@ -1,5 +1,6 @@
 import fs from "node:fs";
 import path from "node:path";
+
 import { atomicReplace } from "./atomic-replace.js";
 
 export class OutputPathViolation extends Error {
@@ -12,7 +13,7 @@ export class OutputPathViolation extends Error {
 /** Resolve an output path against the canonical cwd without following child symlinks. */
 export function resolveConfinedOutputPath(
   cwd: string,
-  requestedPath: string,
+  requestedPath: string
 ): string {
   if (containsControlCharacters(requestedPath)) {
     throw new OutputPathViolation("Output path contains control characters.");
@@ -45,19 +46,19 @@ export function writeConfinedOutput(
   runtime: {
     lstat?: typeof fs.lstatSync;
     mkdir?: typeof fs.mkdirSync;
-  } = {},
+  } = {}
 ): string {
   const canonicalCwd = canonicalDirectory(path.resolve(cwd));
   const destinationPath = resolveConfinedOutputPath(cwd, requestedPath);
   ensureSafeParentDirectories(
     canonicalCwd,
     path.dirname(destinationPath),
-    runtime,
+    runtime
   );
   const destination = readPathStatus(destinationPath, runtime.lstat);
   if (destination?.isSymbolicLink()) {
     throw new OutputPathViolation(
-      "Output path has a symlinked output destination.",
+      "Output path has a symlinked output destination."
     );
   }
   if (destination && !destination.isFile()) {
@@ -76,12 +77,12 @@ function canonicalDirectory(directoryPath: string): string {
     canonicalPath = fs.realpathSync(directoryPath);
   } catch {
     throw new OutputPathViolation(
-      "Output working directory must be an existing directory.",
+      "Output working directory must be an existing directory."
     );
   }
   if (!fs.statSync(canonicalPath).isDirectory()) {
     throw new OutputPathViolation(
-      "Output working directory must be an existing directory.",
+      "Output working directory must be an existing directory."
     );
   }
   return canonicalPath;
@@ -93,7 +94,7 @@ function ensureSafeParentDirectories(
   runtime: {
     lstat?: typeof fs.lstatSync;
     mkdir?: typeof fs.mkdirSync;
-  },
+  }
 ): void {
   const relativeParent = path.relative(canonicalCwd, destinationParent);
   if (!isConfinedRelativePath(relativeParent)) {
@@ -116,12 +117,12 @@ function ensureSafeParentDirectories(
     }
     if (status?.isSymbolicLink()) {
       throw new OutputPathViolation(
-        "Output path has a symlinked output path component.",
+        "Output path has a symlinked output path component."
       );
     }
     if (!status?.isDirectory()) {
       throw new OutputPathViolation(
-        "Every output path ancestor must be a directory.",
+        "Every output path ancestor must be a directory."
       );
     }
   }
@@ -129,7 +130,7 @@ function ensureSafeParentDirectories(
 
 function readPathStatus(
   filePath: string,
-  lstat: typeof fs.lstatSync = fs.lstatSync,
+  lstat: typeof fs.lstatSync = fs.lstatSync
 ): fs.Stats | null {
   try {
     return lstat(filePath);
@@ -151,7 +152,7 @@ function isConfinedRelativePath(relativePath: string): boolean {
 
 function escapedCwdError(): OutputPathViolation {
   return new OutputPathViolation(
-    "Output path must stay inside the current working directory. The agent is not a trusted operator.",
+    "Output path must stay inside the current working directory. The agent is not a trusted operator."
   );
 }
 

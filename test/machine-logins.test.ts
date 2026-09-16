@@ -4,11 +4,12 @@ import os from "node:os";
 import path from "node:path";
 import process from "node:process";
 import { test } from "node:test";
+
 import { readMachineLogins } from "../src/services/machine-logins.js";
 
 function jwt(claims: Record<string, unknown>): string {
   const body = Buffer.from(JSON.stringify(claims), "utf8").toString(
-    "base64url",
+    "base64url"
   );
   return `header.${body}.signature`;
 }
@@ -32,7 +33,7 @@ test("readMachineLogins reports nothing when no tool is signed in", () => {
   const home = fakeHome();
   assert.deepEqual(
     withoutCodexHome(() => readMachineLogins(home)),
-    [],
+    []
   );
 });
 
@@ -45,7 +46,7 @@ test("readMachineLogins reads the Claude Code account from its state file", () =
         accountUuid: "account-uuid",
         emailAddress: "person@example.com",
       },
-    }),
+    })
   );
 
   const logins = withoutCodexHome(() => readMachineLogins(home));
@@ -65,7 +66,7 @@ test("readMachineLogins takes the Codex address out of its id token", () => {
         account_id: "codex-account",
         id_token: jwt({ email: "person@gmail.com" }),
       },
-    }),
+    })
   );
 
   const logins = withoutCodexHome(() => readMachineLogins(home));
@@ -86,11 +87,11 @@ test("readMachineLogins falls back to the OpenAI profile claim for an address", 
           "https://api.openai.com/profile": { email: "profile@example.com" },
         }),
       },
-    }),
+    })
   );
 
   const codex = withoutCodexHome(() => readMachineLogins(home)).find(
-    (login) => login.surface === "Codex",
+    (login) => login.surface === "Codex"
   );
   assert.equal(codex?.email, "profile@example.com");
 });
@@ -102,7 +103,7 @@ test("readMachineLogins survives unreadable and malformed state", () => {
   fs.mkdirSync(codexHome, { recursive: true });
   fs.writeFileSync(
     path.join(codexHome, "auth.json"),
-    JSON.stringify({ tokens: { id_token: "not-a-jwt" } }),
+    JSON.stringify({ tokens: { id_token: "not-a-jwt" } })
   );
 
   const logins = withoutCodexHome(() => readMachineLogins(home));
@@ -110,7 +111,7 @@ test("readMachineLogins survives unreadable and malformed state", () => {
   // decoded still yields the surface, with no address rather than a crash.
   assert.equal(
     logins.some((login) => login.surface === "Claude Code"),
-    false,
+    false
   );
   assert.equal(logins.find((login) => login.surface === "Codex")?.email, null);
 });

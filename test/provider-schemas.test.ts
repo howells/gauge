@@ -1,5 +1,6 @@
 import assert from "node:assert/strict";
 import { test } from "node:test";
+
 import { ProviderUsageReadingSchema } from "../src/providers/schemas.js";
 import {
   ClaudeOrganizationListSchema,
@@ -43,7 +44,7 @@ test("provider usage DTO carries an idle window and demands a named kind", () =>
       plan: "Max 20x",
       windows: [{ usedPercent: 12, resetsAt: null }],
     }).success,
-    false,
+    false
   );
 });
 
@@ -54,14 +55,14 @@ test("provider usage DTO rejects unknown fields and oversized strings", () => {
       windows: [],
       upstreamBody: "secret",
     }).success,
-    false,
+    false
   );
   assert.equal(
     ProviderUsageReadingSchema.safeParse({
       plan: "x".repeat(101),
       windows: [],
     }).success,
-    false,
+    false
   );
 });
 
@@ -246,7 +247,7 @@ test("provider ingress schemas strip unknown fields and bound normalized values"
   assert.equal(
     currentCodex.additional_rate_limits,
     undefined,
-    "model pools reported beside the frontier limit are not carried",
+    "model pools reported beside the frontier limit are not carried"
   );
 
   const cursor = CursorUsageResponseSchema.parse({
@@ -269,6 +270,6 @@ test("provider ingress schemas strip unknown fields and bound normalized values"
   assert.equal(
     CodexRefreshResponseSchema.safeParse({ access_token: "x".repeat(4_097) })
       .success,
-    false,
+    false
   );
 });

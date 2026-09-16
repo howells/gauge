@@ -1,5 +1,6 @@
 import assert from "node:assert/strict";
 import { test } from "node:test";
+
 import { findChrome } from "../src/chrome.js";
 
 test("findChrome returns string or null", () => {

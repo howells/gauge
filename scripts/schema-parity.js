@@ -4,7 +4,7 @@ import { spawnSync } from "node:child_process";
 const result = spawnSync(
   process.execPath,
   ["dist/cli.js", "describe", "--format", "json"],
-  { encoding: "utf8" },
+  { encoding: "utf8" }
 );
 assert.equal(result.status, 0, result.stderr);
 const envelope = JSON.parse(result.stdout);

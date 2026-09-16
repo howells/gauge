@@ -19,7 +19,7 @@ interface Fixture {
 
 function fixture(): Fixture {
   const fixtureRoot = fs.mkdtempSync(
-    path.join(os.tmpdir(), "gauge-migration-cli-"),
+    path.join(os.tmpdir(), "gauge-migration-cli-")
   );
   const cwd = path.join(fixtureRoot, "cwd");
   const home = path.join(fixtureRoot, "home");
@@ -33,7 +33,7 @@ function fixture(): Fixture {
       name: "personal",
       provider: "claude",
     }),
-    { mode: 0o600 },
+    { mode: 0o600 }
   );
   return { cwd, dataRoot, home, root: fixtureRoot };
 }
@@ -153,9 +153,9 @@ test("migrate dry-run plans without writes and real migrate commits", (t) => {
   assert.equal((dryEnvelope.meta as { dry_run: boolean }).dry_run, true);
   assert.deepEqual(
     (dryEnvelope.data as { accounts: Array<{ id: unknown }> }).accounts.map(
-      (account) => account.id,
+      (account) => account.id
     ),
-    [{ name: "personal", provider: "claude" }],
+    [{ name: "personal", provider: "claude" }]
   );
   assert.equal(fs.existsSync(legacyPath), true);
 
@@ -174,10 +174,10 @@ test("migrate dry-run plans without writes and real migrate commits", (t) => {
         "v3",
         "claude",
         "personal",
-        "config.json",
-      ),
+        "config.json"
+      )
     ),
-    true,
+    true
   );
 });
 
@@ -187,7 +187,7 @@ test("doctor exits one for failed checks and does not mutate state", (t) => {
   fs.chmodSync(state.dataRoot, 0o755);
   const before = fs.readFileSync(
     path.join(state.dataRoot, "personal.json"),
-    "utf8",
+    "utf8"
   );
 
   const result = run(state, ["doctor", "--format", "json"]);
@@ -196,6 +196,6 @@ test("doctor exits one for failed checks and does not mutate state", (t) => {
   assert.ok((envelope.data as { failed: number }).failed > 0);
   assert.equal(
     fs.readFileSync(path.join(state.dataRoot, "personal.json"), "utf8"),
-    before,
+    before
   );
 });

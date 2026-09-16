@@ -1,4 +1,5 @@
 import fs from "node:fs";
+
 import {
   type AccountConfigV3,
   type AccountId,
@@ -43,7 +44,7 @@ export function listAccounts(): AccountConfigV3[] {
 /** Check whether a provider-qualified account exists. */
 export function accountExists(name: string, provider?: Provider): boolean {
   return fs.existsSync(
-    accountRepository().pathsFor(accountId(name, provider)).directory,
+    accountRepository().pathsFor(accountId(name, provider)).directory
   );
 }
 
@@ -54,7 +55,7 @@ export function saveAccount(
     codexHome?: string;
     provider?: Provider;
     renewsAt?: string | null;
-  } = {},
+  } = {}
 ): void {
   const repository = accountRepository();
   const id = accountId(name, options.provider);
@@ -78,7 +79,7 @@ export function createAccount(
     profileSource?: string;
     renewsAt?: string | null;
     storageState?: PlaywrightStorageState;
-  } = {},
+  } = {}
 ): void {
   accountRepository().add(accountId(name, options.provider), {
     codexHome: options.codexHome,
@@ -96,7 +97,7 @@ export function refreshAccount(
     provider?: Provider;
     renewsAt?: string | null;
     storageState?: PlaywrightStorageState;
-  },
+  }
 ): void {
   accountRepository().refresh(accountId(name, options.provider), {
     codexHome: options.codexHome,
@@ -109,7 +110,7 @@ export function refreshAccount(
 export function importStorageState(
   name: string,
   options: { json?: string; filePath?: string },
-  provider?: Provider,
+  provider?: Provider
 ): string {
   const repository = accountRepository();
   const id = accountId(name, provider);
@@ -126,7 +127,7 @@ export function importStorageState(
 /** Return all paths owned by a provider-qualified account. */
 export function getAccountArtifacts(
   name: string,
-  provider?: Provider,
+  provider?: Provider
 ): {
   accountPath: string;
   authKey: string;
@@ -143,7 +144,7 @@ export function listAccountDetails(provider?: Provider): AccountDetails[] {
   return accountRepository()
     .list()
     .filter(
-      (record) => provider === undefined || record.id.provider === provider,
+      (record) => provider === undefined || record.id.provider === provider
     )
     .map((record) => ({
       ...record.config,
@@ -160,7 +161,7 @@ export function removeAccount(name: string, provider?: Provider): boolean {
 
 function mapPaths(
   id: AccountId,
-  paths: AccountPaths,
+  paths: AccountPaths
 ): {
   accountPath: string;
   authKey: string;

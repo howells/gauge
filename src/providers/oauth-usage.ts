@@ -1,4 +1,5 @@
 import { z } from "zod";
+
 import { ClaudeLimitSchema, windowFromLimits } from "./upstream-schemas.js";
 
 /**
@@ -106,7 +107,7 @@ function toWindow(
         utilization?: number | null;
       }
     | null
-    | undefined,
+    | undefined
 ): OAuthUsageWindow | null {
   if (!value || typeof value.utilization !== "number") return null;
   return { resetsAt: value.resets_at ?? null, usedPercent: value.utilization };
@@ -114,7 +115,7 @@ function toWindow(
 
 export type OAuthFetch = (
   url: string,
-  init: { headers: Record<string, string> },
+  init: { headers: Record<string, string> }
 ) => Promise<{
   json: () => Promise<unknown>;
   ok: boolean;
@@ -130,7 +131,7 @@ export type OAuthFetch = (
  */
 export async function fetchOAuthUsage(
   accessToken: string,
-  fetchImpl: OAuthFetch = globalThis.fetch as unknown as OAuthFetch,
+  fetchImpl: OAuthFetch = globalThis.fetch as unknown as OAuthFetch
 ): Promise<OAuthUsageReading | null> {
   const headers = {
     "anthropic-beta": OAUTH_BETA,
@@ -147,7 +148,7 @@ export async function fetchOAuthUsage(
     // `limits` entry for the same horizon takes over when the legacy field is
     // no longer populated.
     const fromLimits = (
-      kind: "session" | "weekly_all",
+      kind: "session" | "weekly_all"
     ): OAuthUsageWindow | null => {
       const window = windowFromLimits(usage.limits, kind);
       return window
@@ -170,7 +171,7 @@ export async function fetchOAuthUsage(
         const profile = ProfileResponse.parse(await profileRes.json());
         email = profile.account?.email ?? null;
         plan = planFromRateLimitTier(
-          profile.organization?.rate_limit_tier ?? null,
+          profile.organization?.rate_limit_tier ?? null
         );
       }
     } catch {

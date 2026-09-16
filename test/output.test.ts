@@ -1,5 +1,6 @@
 import assert from "node:assert/strict";
 import { test } from "node:test";
+
 import {
   applyFieldMask,
   paginateItems,
@@ -24,7 +25,7 @@ test("applyFieldMask keeps only requested nested fields", () => {
       ],
       recommendation: { account: { name: "personal" }, status: "use_now" },
     },
-    "accounts.name,recommendation.account.name",
+    "accounts.name,recommendation.account.name"
   );
 
   assert.deepEqual(masked, {
@@ -46,7 +47,7 @@ test("applyFieldMask keeps multiple fields from array items", () => {
         },
       ],
     },
-    "accounts.label,accounts.provider,accounts.plan,accounts.renewsAt",
+    "accounts.label,accounts.provider,accounts.plan,accounts.renewsAt"
   );
 
   assert.deepEqual(masked, {
@@ -65,7 +66,7 @@ test("paginateItems returns all pages for page-all reads", () => {
   const pages = paginateItems(
     [{ name: "a" }, { name: "b" }, { name: "c" }],
     { pageAll: true, pageSize: 2 },
-    "accounts",
+    "accounts"
   );
 
   assert.equal(pages.length, 2);
@@ -85,7 +86,7 @@ test("renderCommandResult emits ndjson pages", () => {
       },
     },
     { format: "ndjson", pageAll: true, pageSize: 1 },
-    { cwd: process.cwd(), isTTY: false },
+    { cwd: process.cwd(), isTTY: false }
   );
 
   const lines = rendered.content.trim().split("\n");
@@ -110,7 +111,7 @@ test("multi-page failed snapshots preserve failed envelope semantics", () => {
       result: "failed",
     },
     { format: "json", pageAll: true, pageSize: 1 },
-    { cwd: process.cwd(), isTTY: false },
+    { cwd: process.cwd(), isTTY: false }
   );
 
   const envelope = JSON.parse(rendered.content);

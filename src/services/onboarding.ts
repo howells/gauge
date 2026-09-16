@@ -33,7 +33,7 @@ const PROVIDER_LABEL: Record<Provider, string> = {
 export function addGuide(indent = ""): string {
   const width = Math.max(...ADD_STEPS.map((step) => step.label.length));
   return ADD_STEPS.map(
-    (step) => `${indent}${step.label.padEnd(width)}   ${step.command}`,
+    (step) => `${indent}${step.label.padEnd(width)}   ${step.command}`
   ).join("\n");
 }
 
@@ -72,7 +72,7 @@ function providerDetail(provider: Provider): ProviderDetail {
  */
 export function missingAccountName(
   command: "add" | "refresh" | "remove",
-  provider?: Provider,
+  provider?: Provider
 ): CLIError {
   return new CLIError(missingNameMessage(command, provider), {
     code: "ACCOUNT_NAME_REQUIRED",
@@ -85,7 +85,7 @@ export function missingAccountName(
 
 function missingNameMessage(
   command: "add" | "refresh" | "remove",
-  provider?: Provider,
+  provider?: Provider
 ): string {
   if (command !== "add") {
     const verb = command === "refresh" ? "refresh" : "remove";

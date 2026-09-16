@@ -3,6 +3,7 @@ import fs from "node:fs";
 import os from "node:os";
 import path from "node:path";
 import test from "node:test";
+
 import {
   cursorSecondaryPercent,
   cursorUsagePercent,
@@ -25,7 +26,7 @@ function jwt(payload: Record<string, unknown>): string {
 
 test("decodes Codex identity claims from JWT payloads", () => {
   const payload = decodeJwtPayload(
-    jwt({ email: "person@example.com", plan: "pro" }),
+    jwt({ email: "person@example.com", plan: "pro" })
   );
 
   assert.equal(payload.email, "person@example.com");
@@ -58,7 +59,7 @@ test("Codex reads only the frontier rate limit and ignores model pools", async (
   fs.writeFileSync(
     path.join(homePath, "auth.json"),
     JSON.stringify({ tokens: { access_token: "existing-access" } }),
-    { mode: 0o600 },
+    { mode: 0o600 }
   );
   const originalFetch = globalThis.fetch;
   const originalHome = process.env.CODEX_HOME;
@@ -93,7 +94,7 @@ test("Codex reads only the frontier rate limit and ignores model pools", async (
           },
         ],
       }),
-      { status: 200 },
+      { status: 200 }
     );
 
   try {
@@ -120,7 +121,7 @@ test("Codex carries usage-limit reset credits through to the account reading", a
   fs.writeFileSync(
     path.join(homePath, "auth.json"),
     JSON.stringify({ tokens: { access_token: "existing-access" } }),
-    { mode: 0o600 },
+    { mode: 0o600 }
   );
   const originalFetch = globalThis.fetch;
   const originalHome = process.env.CODEX_HOME;
@@ -141,7 +142,7 @@ test("Codex carries usage-limit reset credits through to the account reading", a
           available_count: 3,
         },
       }),
-      { status: 200 },
+      { status: 200 }
     );
 
   try {
@@ -162,7 +163,7 @@ test("Codex accounts without a reset-credits block read as holding none", async 
   fs.writeFileSync(
     path.join(homePath, "auth.json"),
     JSON.stringify({ tokens: { access_token: "existing-access" } }),
-    { mode: 0o600 },
+    { mode: 0o600 }
   );
   const originalFetch = globalThis.fetch;
   const originalHome = process.env.CODEX_HOME;
@@ -173,7 +174,7 @@ test("Codex accounts without a reset-credits block read as holding none", async 
         plan_type: "pro",
         rate_limit: {},
       }),
-      { status: 200 },
+      { status: 200 }
     );
 
   try {
@@ -208,7 +209,7 @@ test("extracts only Cursor cookies from Playwright storage state", () => {
 
   assert.equal(
     header,
-    "WorkosCursorSessionToken=cursor-token; authjs.session-token=cursor-sh",
+    "WorkosCursorSessionToken=cursor-token; authjs.session-token=cursor-sh"
   );
 });
 
@@ -243,7 +244,7 @@ test("storage-state cookies reject header injection", () => {
         },
       ],
     }),
-    null,
+    null
   );
 });
 
@@ -300,7 +301,7 @@ test("Cursor draws no on-demand window when nothing meters one", () => {
       },
       teamUsage: {},
     }),
-    undefined,
+    undefined
   );
 });
 
@@ -329,7 +330,7 @@ test("Codex never-refresh policy tries the existing token once without writes", 
           primary_window: { used_percent: 20, reset_at: 1_800_000_000 },
         },
       }),
-      { status: 200 },
+      { status: 200 }
     );
   };
 
@@ -341,7 +342,7 @@ test("Codex never-refresh policy tries the existing token once without writes", 
     assert.equal(urls.length, 1);
     assert.equal(
       urls.some((url) => url.includes("auth.openai.com")),
-      false,
+      false
     );
     assert.equal(fs.readFileSync(authPath, "utf8"), auth);
   } finally {
@@ -374,7 +375,7 @@ test("Codex refresh returns a pending update without provider-side writes", asyn
             access_token: "new-access",
             refresh_token: "new-refresh",
           }),
-          { status: 200 },
+          { status: 200 }
         )
       : new Response(JSON.stringify({ plan_type: "pro", rate_limit: {} }), {
           status: 200,
@@ -389,7 +390,7 @@ test("Codex refresh returns a pending update without provider-side writes", asyn
     assert.equal(fs.readFileSync(authPath, "utf8"), auth);
     assert.deepEqual(
       Object.keys(updates[0] as object).sort(),
-      ["accessToken", "homePath", "lastRefresh", "refreshToken"].sort(),
+      ["accessToken", "homePath", "lastRefresh", "refreshToken"].sort()
     );
   } finally {
     globalThis.fetch = originalFetch;
@@ -412,7 +413,7 @@ function freshLookingCodexHome(): { authPath: string; homePath: string } {
         refresh_token: "good-refresh",
       },
     }),
-    { mode: 0o600 },
+    { mode: 0o600 }
   );
   return { authPath, homePath };
 }
@@ -446,7 +447,7 @@ test("a refused Codex token is refreshed and retried rather than reported", asyn
         plan_type: "pro",
         rate_limit: { primary_window: { used_percent: 12, reset_at: 1 } },
       }),
-      { status: 200 },
+      { status: 200 }
     );
   };
 
@@ -522,7 +523,7 @@ test("never-refresh forbids the retry rotation too", async () => {
     assert.equal(urls.length, 1);
     assert.equal(
       urls.some((url) => url.includes("auth.openai.com")),
-      false,
+      false
     );
   } finally {
     globalThis.fetch = originalFetch;
@@ -536,7 +537,7 @@ test("Codex rejects oversized provider responses without exposing their body", a
   fs.writeFileSync(
     path.join(homePath, "auth.json"),
     JSON.stringify({ tokens: { access_token: "existing-access" } }),
-    { mode: 0o600 },
+    { mode: 0o600 }
   );
   const originalFetch = globalThis.fetch;
   const originalHome = process.env.CODEX_HOME;
@@ -565,7 +566,7 @@ test("Codex cancels a streaming response as soon as the byte limit is crossed", 
   fs.writeFileSync(
     path.join(homePath, "auth.json"),
     JSON.stringify({ tokens: { access_token: "existing-access" } }),
-    { mode: 0o600 },
+    { mode: 0o600 }
   );
   const originalFetch = globalThis.fetch;
   const originalHome = process.env.CODEX_HOME;
@@ -584,9 +585,9 @@ test("Codex cancels a streaming response as soon as the byte limit is crossed", 
             controller.enqueue(new Uint8Array(600_000));
           },
         },
-        { highWaterMark: 0 },
+        { highWaterMark: 0 }
       ),
-      { status: 200 },
+      { status: 200 }
     );
 
   try {

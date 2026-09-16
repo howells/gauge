@@ -3,6 +3,7 @@ import fs from "node:fs";
 import os from "node:os";
 import path from "node:path";
 import { test } from "node:test";
+
 import { claudeSwitchesWithin } from "../src/services/claude-session.js";
 
 function fakeDataDir(): string {
@@ -11,7 +12,7 @@ function fakeDataDir(): string {
 
 function writeSwitchLog(
   dataDir: string,
-  entries: Array<Record<string, unknown>>,
+  entries: Array<Record<string, unknown>>
 ): void {
   const file = path.join(dataDir, "backups", "claude-switch-log.json");
   fs.mkdirSync(path.dirname(file), { recursive: true });
@@ -43,7 +44,7 @@ test("claudeSwitchesWithin reads every recent displaced account", () => {
   assert.equal(switches[1]?.previousUuid, "work-uuid");
   assert.equal(
     switches[1]?.switchedAt.getTime(),
-    Date.parse("2026-09-02T13:30:00.000Z"),
+    Date.parse("2026-09-02T13:30:00.000Z")
   );
 });
 
@@ -86,7 +87,7 @@ test("claudeSwitchesWithin deduplicates a repeated account", () => {
   assert.equal(switches.length, 1);
   assert.equal(
     switches[0]?.switchedAt.getTime(),
-    Date.parse("2026-09-02T13:00:00.000Z"),
+    Date.parse("2026-09-02T13:00:00.000Z")
   );
 });
 

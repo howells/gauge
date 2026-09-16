@@ -1,6 +1,7 @@
 import fs from "node:fs";
 import os from "node:os";
 import path from "node:path";
+
 import type { AccountDetails } from "./accounts.js";
 import type { Provider } from "./domain/account.js";
 import {
@@ -128,7 +129,7 @@ function normalizeReset(value: unknown): string | null {
 export function toRateWindow(value: unknown): RateWindow | null {
   if (!isRecord(value)) return null;
   const usedPercent = numberValue(
-    value.used_percent ?? value.usedPercent ?? value.totalPercentUsed,
+    value.used_percent ?? value.usedPercent ?? value.totalPercentUsed
   );
   if (usedPercent === undefined) return null;
   return {
@@ -156,7 +157,7 @@ interface ClassifiedCodexWindow {
  */
 function classifyCodexWindow(
   value: unknown,
-  fallback: "session" | "weekly",
+  fallback: "session" | "weekly"
 ): ClassifiedCodexWindow | null {
   const window = toRateWindow(value);
   if (!window) return null;
@@ -186,14 +187,14 @@ function classifiedCodexWindows(rateLimit: unknown): ClassifiedCodexWindow[] {
 }
 
 export function decodeJwtPayload(
-  token: string | undefined,
+  token: string | undefined
 ): Record<string, unknown> {
   if (!token) return {};
   const part = token.split(".")[1];
   if (!part) return {};
   try {
     return JSON.parse(
-      Buffer.from(part, "base64url").toString("utf8"),
+      Buffer.from(part, "base64url").toString("utf8")
     ) as Record<string, unknown>;
   } catch {
     return {};
@@ -221,7 +222,7 @@ function errorAccount(
   provider: "codex" | "cursor",
   label: string,
   message: string,
-  email = "",
+  email = ""
 ): UnifiedAccount {
   return {
     provider,
@@ -301,7 +302,7 @@ async function refreshCodexCredentials(
   source: CodexSource,
   credentials: CodexCredentials,
   onCredentialUpdate?: (update: PendingCodexCredentialUpdate) => void,
-  signal?: AbortSignal,
+  signal?: AbortSignal
 ): Promise<CodexCredentials> {
   if (!credentials.refreshToken) return credentials;
 
@@ -324,7 +325,7 @@ async function refreshCodexCredentials(
   }
 
   const body = CodexRefreshResponseSchema.parse(
-    await parseBoundedResponse(response),
+    await parseBoundedResponse(response)
   );
   const accessToken = body.access_token;
 
@@ -399,7 +400,7 @@ function isUnauthorized(error: unknown): boolean {
 async function fetchJson(
   url: string,
   headers: Record<string, string>,
-  signal?: AbortSignal,
+  signal?: AbortSignal
 ): Promise<unknown> {
   const response = await fetch(url, {
     headers: {
@@ -472,7 +473,7 @@ async function fetchCodexAccount(
   source: CodexSource,
   credentialRefresh: "refresh-if-stale" | "never" = "refresh-if-stale",
   onCredentialUpdate?: (update: PendingCodexCredentialUpdate) => void,
-  signal?: AbortSignal,
+  signal?: AbortSignal
 ): Promise<UnifiedAccount> {
   const initialCredentials = loadCodexCredentials(source.homePath);
   const mayRefresh = credentialRefresh === "refresh-if-stale";
@@ -482,7 +483,7 @@ async function fetchCodexAccount(
           source,
           initialCredentials,
           onCredentialUpdate,
-          signal,
+          signal
         )
       : initialCredentials;
 
@@ -513,7 +514,7 @@ async function fetchCodexAccount(
       source,
       credentials,
       onCredentialUpdate,
-      signal,
+      signal
     );
     body = await fetchJson(usageUrl, codexHeaders(credentials), signal);
   }
@@ -559,7 +560,7 @@ export async function fetchCodexAccounts(
     credentialRefresh?: "refresh-if-stale" | "never";
     onCredentialUpdate?: (update: PendingCodexCredentialUpdate) => void;
     signal?: AbortSignal;
-  } = {},
+  } = {}
 ): Promise<UnifiedAccount[]> {
   const configuredSources = codexSourcesFromAccounts(configuredAccounts);
   const sources =
@@ -571,7 +572,7 @@ export async function fetchCodexAccounts(
           source,
           options.credentialRefresh,
           options.onCredentialUpdate,
-          options.signal,
+          options.signal
         );
       } catch (error) {
         const message = error instanceof Error ? error.message : String(error);
@@ -580,7 +581,7 @@ export async function fetchCodexAccounts(
           (source.email ? labelFromEmail(source.email) : "codex");
         return errorAccount("codex", label, message, source.email);
       }
-    }),
+    })
   );
   return uniquifyAccountLabels(accounts);
 }
@@ -598,7 +599,7 @@ export function parseStorageStateCookies(value: unknown): string | null {
     if (
       !["cursor.com", "cursor.sh"].some(
         (root) =>
-          normalizedDomain === root || normalizedDomain.endsWith(`.${root}`),
+          normalizedDomain === root || normalizedDomain.endsWith(`.${root}`)
       )
     ) {
       continue;
@@ -624,7 +625,7 @@ export function parseRawCookieFile(filePath: string): string | null {
 }
 
 function cursorSessionsFromAccounts(
-  accounts: AccountDetails[],
+  accounts: AccountDetails[]
 ): CursorSession[] {
   const sessions: CursorSession[] = [];
   for (const account of accounts) {
@@ -642,7 +643,7 @@ function discoverCursorSessions(): CursorSession[] {
   const sessions: CursorSession[] = [];
   const add = (
     cookieHeader: string | null | undefined,
-    label: string,
+    label: string
   ): void => {
     if (!cookieHeader) return;
     const trimmed = cookieHeader.trim();
@@ -656,21 +657,21 @@ function discoverCursorSessions(): CursorSession[] {
     process.env.GAUGE_CURSOR_COOKIE_FILE
       ? parseRawCookieFile(process.env.GAUGE_CURSOR_COOKIE_FILE)
       : null,
-    "cursor",
+    "cursor"
   );
   add(
     process.env.GAUGE_CURSOR_STORAGE_STATE_FILE
       ? parseStorageStateCookieFile(process.env.GAUGE_CURSOR_STORAGE_STATE_FILE)
       : null,
-    "cursor",
+    "cursor"
   );
   add(
     process.env.GAUGE_CURSOR_STORAGE_STATE_JSON
       ? parseStorageStateCookies(
-          parseJsonString(process.env.GAUGE_CURSOR_STORAGE_STATE_JSON),
+          parseJsonString(process.env.GAUGE_CURSOR_STORAGE_STATE_JSON)
         )
       : null,
-    "cursor",
+    "cursor"
   );
 
   return sessions;
@@ -702,7 +703,7 @@ function normalizeRawCookieHeader(value: string | undefined): string | null {
       if (separator <= 0) return true;
       return !isSafeCookiePair(
         pair.slice(0, separator),
-        pair.slice(separator + 1),
+        pair.slice(separator + 1)
       );
     })
   ) {
@@ -772,7 +773,7 @@ export function cursorUsagePercent(usage: Record<string, unknown>): number {
  * way there is no proportion to report, and no second window is drawn.
  */
 export function cursorSecondaryPercent(
-  usage: Record<string, unknown>,
+  usage: Record<string, unknown>
 ): number | undefined {
   const individual = isRecord(usage.individualUsage)
     ? usage.individualUsage
@@ -793,7 +794,7 @@ export function cursorSecondaryPercent(
 
 function averagePercent(left: unknown, right: unknown): number | undefined {
   const values = [numberValue(left), numberValue(right)].filter(
-    (value): value is number => value !== undefined,
+    (value): value is number => value !== undefined
   );
   if (values.length === 0) return undefined;
   return values.reduce((sum, value) => sum + value, 0) / values.length;
@@ -812,24 +813,24 @@ function formatCursorPlan(raw: unknown): string {
 
 async function fetchCursorAccount(
   session: CursorSession,
-  signal?: AbortSignal,
+  signal?: AbortSignal
 ): Promise<UnifiedAccount> {
   const cookieHeader = session.cookieHeader;
   if (!cookieHeader) {
     throw new Error(
-      `No Cursor storage state. Run: gauge refresh cursor ${session.label}`,
+      `No Cursor storage state. Run: gauge refresh cursor ${session.label}`
     );
   }
   const [usage, user] = await Promise.all([
     fetchJson(
       `${CURSOR_BASE_URL}/api/usage-summary`,
       { Cookie: cookieHeader },
-      signal,
+      signal
     ),
     fetchJson(
       `${CURSOR_BASE_URL}/api/auth/me`,
       { Cookie: cookieHeader },
-      signal,
+      signal
     ).catch(() => null),
   ]);
   const validatedUsage = CursorUsageResponseSchema.parse(usage);
@@ -863,7 +864,7 @@ async function fetchCursorAccount(
 
 export async function fetchCursorAccounts(
   configuredAccounts: AccountDetails[] = [],
-  options: { signal?: AbortSignal } = {},
+  options: { signal?: AbortSignal } = {}
 ): Promise<UnifiedAccount[]> {
   const configuredSessions = cursorSessionsFromAccounts(configuredAccounts);
   const sessions =
@@ -878,7 +879,7 @@ export async function fetchCursorAccounts(
         const message = error instanceof Error ? error.message : String(error);
         return errorAccount("cursor", session.label, message);
       }
-    }),
+    })
   );
   return uniquifyAccountLabels(accounts);
 }

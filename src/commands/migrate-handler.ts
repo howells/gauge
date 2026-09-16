@@ -3,7 +3,7 @@ import type { CommandResult } from "../output.js";
 
 export function runMigrateCommand(
   dataRoot: string,
-  dryRun: boolean,
+  dryRun: boolean
 ): CommandResult {
   if (dryRun) {
     const plan = planLegacyMigration(dataRoot);

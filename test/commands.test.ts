@@ -3,6 +3,7 @@ import fs from "node:fs";
 import os from "node:os";
 import path from "node:path";
 import { test } from "node:test";
+
 import {
   normalizeRenewalInput,
   refreshWrites,
@@ -21,7 +22,7 @@ test("runAddCommand dry-runs provider-scoped Cursor accounts", async () => {
   assert.equal(result.data.auth_mode, "headless-storage-state");
   assert.match(
     JSON.stringify(result.data.writes),
-    /accounts\/v3\/cursor\/work/,
+    /accounts\/v3\/cursor\/work/
   );
 });
 
@@ -30,7 +31,7 @@ test("runAddCommand dry-runs provider-scoped Codex accounts", async () => {
   fs.writeFileSync(
     path.join(codexHome, "auth.json"),
     JSON.stringify({ tokens: { access_token: "test-token" } }),
-    { mode: 0o600 },
+    { mode: 0o600 }
   );
   const result = await runAddCommand("work", {
     codexHome,
@@ -60,7 +61,7 @@ test("Codex dry-run validates referenced credentials without creating Gauge stat
     (error: unknown) =>
       error instanceof Error &&
       "code" in error &&
-      error.code === "INVALID_CODEX_AUTH",
+      error.code === "INVALID_CODEX_AUTH"
   );
 });
 
@@ -74,7 +75,7 @@ test("refresh dry-run reports Codex renewal config writes", () => {
       authKey: "codex-work",
       profileDir: "/tmp/profile-codex-work",
       storagePath: "/tmp/codex-work-storage.json",
-    },
+    }
   );
 
   assert.deepEqual(writes, ["/tmp/codex-work.json"]);
@@ -88,9 +89,9 @@ test("refresh dry-run reports Codex renewal config writes", () => {
         authKey: "codex-work",
         profileDir: "/tmp/profile-codex-work",
         storagePath: "/tmp/codex-work-storage.json",
-      },
+      }
     ),
-    [],
+    []
   );
   assert.deepEqual(
     refreshWrites(
@@ -102,9 +103,9 @@ test("refresh dry-run reports Codex renewal config writes", () => {
         authKey: "work",
         profileDir: "/tmp/profile-work",
         storagePath: "/tmp/work-storage.json",
-      },
+      }
     ),
-    ["/tmp/work-storage.json", "/tmp/work.json"],
+    ["/tmp/work-storage.json", "/tmp/work.json"]
   );
 });
 
@@ -133,6 +134,6 @@ test("runAddCommand rejects unsupported providers at the wire boundary", async (
     (error: unknown) =>
       error instanceof Error &&
       "code" in error &&
-      error.code === "INVALID_WIRE_INPUT",
+      error.code === "INVALID_WIRE_INPUT"
   );
 });

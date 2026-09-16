@@ -1,5 +1,6 @@
 import os from "node:os";
 import path from "node:path";
+
 import { assertSafeIdentifier } from "./security.js";
 
 /** Return the ~/.gauge data directory path. */

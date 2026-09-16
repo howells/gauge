@@ -78,7 +78,7 @@ function resetTime(window: RecommendationWindow): number | null {
 /** Select an account using the public v3 recommendation policy. */
 export function recommendUsage(
   candidates: RecommendationCandidate[],
-  now: Date,
+  now: Date
 ): UsageRecommendation | null {
   const current = candidates.flatMap((candidate) => {
     if (candidate.error) {
@@ -135,7 +135,7 @@ export function recommendUsage(
   const usable = current.filter((entry) => entry.resetAt === 0);
   const ranked = usable.length > 0 ? usable : current;
   ranked.sort((left, right) =>
-    compareCandidates(left, right, usable.length > 0),
+    compareCandidates(left, right, usable.length > 0)
   );
 
   const best = ranked[0];
@@ -211,7 +211,7 @@ function utilizationAfter(entry: RankedCandidate): number {
   });
   return survivors.reduce(
     (highest, window) => Math.max(highest, window.usedPercent),
-    0,
+    0
   );
 }
 
@@ -228,20 +228,20 @@ function utilizationAfter(entry: RankedCandidate): number {
 function findWaitFor(
   best: RankedCandidate,
   current: RankedCandidate[],
-  now: number,
+  now: number
 ): RecommendationAlternative | undefined {
   const bestHeadroom = 100 - best.maximumUtilization;
   const bestRank = planRank(best.candidate.plan);
 
   const contenders = current
     .filter(
-      (entry) => entry.resetAt > 0 && entry.resetAt - now <= WAIT_HORIZON_MS,
+      (entry) => entry.resetAt > 0 && entry.resetAt - now <= WAIT_HORIZON_MS
     )
     .map((entry) => ({ entry, utilization: utilizationAfter(entry) }))
     .filter(
       ({ entry, utilization }) =>
         100 - utilization >= bestHeadroom + MATERIAL_HEADROOM_GAIN ||
-        planRank(entry.candidate.plan) > bestRank,
+        planRank(entry.candidate.plan) > bestRank
     );
 
   const winner = contenders.sort(
@@ -249,7 +249,7 @@ function findWaitFor(
       planRank(right.entry.candidate.plan) -
         planRank(left.entry.candidate.plan) ||
       left.utilization - right.utilization ||
-      left.entry.resetAt - right.entry.resetAt,
+      left.entry.resetAt - right.entry.resetAt
   )[0];
 
   if (!winner) return undefined;
@@ -264,7 +264,7 @@ function findWaitFor(
 function compareCandidates(
   left: RankedCandidate,
   right: RankedCandidate,
-  usable: boolean,
+  usable: boolean
 ): number {
   if (!usable && left.resetAt !== right.resetAt) {
     return left.resetAt - right.resetAt;

@@ -51,7 +51,7 @@ function keychainAccount(): string | null {
     ["find-generic-password", "-s", SERVICE],
     {
       encoding: "utf8",
-    },
+    }
   );
   if (found.status !== 0) return null;
   return /"acct"<blob>="([^"]*)"/u.exec(found.stdout)?.[1] ?? null;
@@ -59,7 +59,7 @@ function keychainAccount(): string | null {
 
 /** The session currently signed in on this machine, if there is one. */
 export function readClaudeSession(
-  homeDir: string = os.homedir(),
+  homeDir: string = os.homedir()
 ): ClaudeSession | null {
   if (process.platform !== "darwin") return null;
   const account = keychainAccount();
@@ -67,13 +67,13 @@ export function readClaudeSession(
   const secret = spawnSync(
     "security",
     ["find-generic-password", "-s", SERVICE, "-w"],
-    { encoding: "utf8" },
+    { encoding: "utf8" }
   );
   if (secret.status !== 0) return null;
   const credentials = secret.stdout.trim();
   if (credentials === "") return null;
   const profile = record(
-    record(readJson(path.join(homeDir, ".claude.json")))?.oauthAccount,
+    record(readJson(path.join(homeDir, ".claude.json")))?.oauthAccount
   );
   if (!profile) return null;
   return { credentials, keychainAccount: account, profile };
@@ -86,7 +86,7 @@ function sessionFile(dataDir: string, name: string): string {
     "v3",
     "claude",
     name,
-    "cli-session.json",
+    "cli-session.json"
   );
 }
 
@@ -114,7 +114,7 @@ export function capturedClaudeSessions(dataDir: string): string[] {
 export function captureClaudeSession(
   dataDir: string,
   name: string,
-  session: ClaudeSession,
+  session: ClaudeSession
 ): void {
   const file = sessionFile(dataDir, name);
   fs.mkdirSync(path.dirname(file), { recursive: true });
@@ -181,7 +181,7 @@ function appendSwitchLog(dataDir: string, entry: LastClaudeSwitch): void {
 export function claudeSwitchesWithin(
   dataDir: string,
   now: Date,
-  maxAgeMs: number,
+  maxAgeMs: number
 ): LastClaudeSwitch[] {
   const raw = readJson(switchLog(dataDir));
   if (!Array.isArray(raw)) return [];
@@ -207,7 +207,7 @@ export function claudeSwitchesWithin(
     });
   }
   return [...byIdentity.values()].sort(
-    (left, right) => left.switchedAt.getTime() - right.switchedAt.getTime(),
+    (left, right) => left.switchedAt.getTime() - right.switchedAt.getTime()
   );
 }
 
@@ -222,7 +222,7 @@ export function claudeSwitchesWithin(
 export function switchClaudeSession(
   name: string,
   dataDir: string,
-  homeDir: string = os.homedir(),
+  homeDir: string = os.homedir()
 ): ClaudeSwitchResult {
   const stored = record(readJson(sessionFile(dataDir, name)));
   const credentials = stored?.credentials;
@@ -274,11 +274,11 @@ export function switchClaudeSession(
       "-w",
       credentials,
     ],
-    { encoding: "utf8" },
+    { encoding: "utf8" }
   );
   if (written.status !== 0) {
     throw new Error(
-      `Keychain refused the session: ${(written.stderr || "unknown error").trim()}`,
+      `Keychain refused the session: ${(written.stderr || "unknown error").trim()}`
     );
   }
 
@@ -309,7 +309,7 @@ export function switchClaudeSession(
 export function claudeAccessTokenFor(
   name: string,
   dataDir: string,
-  liveAccountName?: string,
+  liveAccountName?: string
 ): string | null {
   const fromSession = (session: ClaudeSession | null): string | null => {
     if (!session) return null;
@@ -327,6 +327,6 @@ export function claudeAccessTokenFor(
     if (live) return live;
   }
   return fromSession(
-    record(readJson(sessionFile(dataDir, name))) as ClaudeSession | null,
+    record(readJson(sessionFile(dataDir, name))) as ClaudeSession | null
   );
 }

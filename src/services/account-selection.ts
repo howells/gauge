@@ -14,7 +14,7 @@ export interface AccountFilter {
 /** Resolve status filters against configured identities before network work. */
 export function selectConfiguredAccounts<T extends ConfiguredAccount>(
   accounts: readonly T[],
-  filter: AccountFilter,
+  filter: AccountFilter
 ): T[] {
   const providerMatches = filter.provider
     ? accounts.filter((account) => account.id.provider === filter.provider)
@@ -24,7 +24,7 @@ export function selectConfiguredAccounts<T extends ConfiguredAccount>(
   }
 
   const matches = providerMatches.filter(
-    (account) => account.id.name === filter.account,
+    (account) => account.id.name === filter.account
   );
   if (matches.length === 1) {
     return matches;
@@ -35,7 +35,7 @@ export function selectConfiguredAccounts<T extends ConfiguredAccount>(
       exitCode: 2,
       details: {
         candidates: matches.map(
-          (account) => `${account.id.provider}:${account.id.name}`,
+          (account) => `${account.id.provider}:${account.id.name}`
         ),
       },
     });

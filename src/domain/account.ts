@@ -7,7 +7,7 @@ const AccountNameSchema = z
   .string()
   .regex(
     /^[a-zA-Z0-9_-]+$/,
-    "Account name must use only letters, numbers, hyphens, or underscores.",
+    "Account name must use only letters, numbers, hyphens, or underscores."
   );
 
 export const AccountIdSchema = z.strictObject({

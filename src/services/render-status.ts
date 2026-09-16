@@ -1,6 +1,8 @@
 import fs from "node:fs";
 import path from "node:path";
+
 import chalk from "chalk";
+
 import type { Provider } from "../domain/account.js";
 import type { UsageRecommendation } from "../domain/recommendation.js";
 import type { AccountSnapshot } from "../domain/snapshot.js";
@@ -142,13 +144,13 @@ function cellStatus(account: StatusAccountView, now: Date): CellStatus {
   // A labelled window belongs to one model pool. It can be full without the
   // account being blocked for every other Codex model.
   const blocked = windows.filter(
-    (window) => !window.label && window.usedPercent >= 100,
+    (window) => !window.label && window.usedPercent >= 100
   );
   if (blocked.length > 0) {
     const waits = blocked.map((window) =>
       window.resetsAt === null
         ? Number.POSITIVE_INFINITY
-        : Math.max(0, new Date(window.resetsAt).getTime() - now.getTime()),
+        : Math.max(0, new Date(window.resetsAt).getTime() - now.getTime())
     );
     return { kind: "blocked", primary, secondary, waitMs: Math.min(...waits) };
   }
@@ -197,14 +199,14 @@ function preferredOrder(): string[] {
   try {
     const raw = fs.readFileSync(
       path.join(getDataDir(), "display.json"),
-      "utf8",
+      "utf8"
     );
     const parsed: unknown = JSON.parse(raw);
     if (typeof parsed !== "object" || parsed === null) return [];
     const { accountOrder } = parsed as { accountOrder?: unknown };
     if (!Array.isArray(accountOrder)) return [];
     return accountOrder.filter(
-      (name): name is string => typeof name === "string",
+      (name): name is string => typeof name === "string"
     );
   } catch {
     return [];
@@ -227,8 +229,8 @@ function buildRows(accounts: StatusAccountView[], now: Date): GridRow[] {
   for (const row of rows.values()) {
     row.minWaitMs = Math.min(
       ...Object.values(row.accounts).map(
-        (account) => cellStatus(account, now).waitMs,
-      ),
+        (account) => cellStatus(account, now).waitMs
+      )
     );
   }
   const preferred = preferredOrder();
@@ -256,7 +258,7 @@ function buildRows(accounts: StatusAccountView[], now: Date): GridRow[] {
 function meterCell(
   account: StatusAccountView | undefined,
   now: Date,
-  active = false,
+  active = false
 ): string {
   // Two columns of gutter on every cell so the marker costs no width and the
   // grid does not shift as the cursor moves across it.
@@ -284,7 +286,7 @@ function meterCell(
     const resets = account.usage?.resetsApplicable ?? 0;
     if (resets > 0) {
       return cell(
-        `${meter(100)} ${chalk.red("full")} ${chalk.dim(`· ${resets} reset${resets === 1 ? "" : "s"}`)}`,
+        `${meter(100)} ${chalk.red("full")} ${chalk.dim(`· ${resets} reset${resets === 1 ? "" : "s"}`)}`
       );
     }
     const wait = Number.isFinite(status.waitMs)
@@ -357,7 +359,7 @@ function detailCell(account: StatusAccountView | undefined, now: Date): string {
     renewalDate &&
     renewsAtMs !== null &&
     !drawnResets.some(
-      (reset) => reset !== null && Date.parse(reset) === renewsAtMs,
+      (reset) => reset !== null && Date.parse(reset) === renewsAtMs
     )
       ? `renews ${renewalDate}`
       : null;
@@ -388,7 +390,7 @@ function detailCell(account: StatusAccountView | undefined, now: Date): string {
 
 function header(accounts: StatusAccountView[], now: Date): string {
   const ready = accounts.filter(
-    (account) => cellStatus(account, now).kind === "ready",
+    (account) => cellStatus(account, now).kind === "ready"
   ).length;
   const counts = `${accounts.length} account${accounts.length === 1 ? "" : "s"} · ${ready} ready`;
   return `${INDENT}${chalk.bold("gauge")}  ${chalk.dim(counts)}`;
@@ -398,8 +400,7 @@ function columnHeader(providers: Provider[]): string {
   const cells = providers
     // Two-space gutter to match the cells, so a heading sits over its column.
     .map(
-      (provider) =>
-        `  ${pad(chalk.dim(PROVIDER_NAME[provider]), COL_CELL - 2)}`,
+      (provider) => `  ${pad(chalk.dim(PROVIDER_NAME[provider]), COL_CELL - 2)}`
     )
     .join("  ");
   return `${INDENT}${" ".repeat(COL_LABEL)}  ${cells}`.trimEnd();
@@ -408,7 +409,7 @@ function columnHeader(providers: Provider[]): string {
 function recommendationLine(
   recommendation: UsageRecommendation | null,
   accounts: StatusAccountView[],
-  now: Date,
+  now: Date
 ): string {
   if (!recommendation) {
     return `${INDENT}${chalk.dim("No account is currently usable.")}`;
@@ -417,14 +418,14 @@ function recommendationLine(
   const picked = accounts.find(
     (account) =>
       account.provider === recommendation.account.provider &&
-      account.name === recommendation.account.name,
+      account.name === recommendation.account.name
   );
   const plan = picked?.usage?.plan ? chalk.dim(` · ${picked.usage.plan}`) : "";
   if (recommendation.status === "use_now") {
     // Naming the cost keeps "ready now" honest: this pick stands usable
     // because redeeming a reset would clear it, and the credit is spent.
     const ready = chalk.dim(
-      recommendation.viaReset ? "ready now · via reset" : "ready now",
+      recommendation.viaReset ? "ready now · via reset" : "ready now"
     );
     const line = `${INDENT}${chalk.green("→")} ${chalk.bold(id)}  ${ready}${plan}`;
     // The second line is the one the dashboard could not say before: something
@@ -510,7 +511,7 @@ function machineLines(accounts: StatusAccountView[]): string[] {
       const detail = sameAsCli
         ? chalk.dim(`same account as ${claudeCode?.surface}`)
         : chalk.yellow(
-            `an account not configured here · ${(login.accountId ?? "unknown").slice(0, 8)}…`,
+            `an account not configured here · ${(login.accountId ?? "unknown").slice(0, 8)}…`
           );
       return `${INDENT}${surface}  ${detail}`;
     }),
@@ -546,7 +547,7 @@ export interface ClaudeSwitchWarning {
  */
 export function renderSwitchWarning(
   switched: ClaudeSwitchWarning | null,
-  now: Date,
+  now: Date
 ): string | null {
   if (!switched || switched.previous.length === 0) return null;
   const ageMs = now.getTime() - switched.switchedAt.getTime();
@@ -570,12 +571,12 @@ export function renderSwitchWarning(
  */
 function switchWarningLines(
   accounts: StatusAccountView[],
-  now: Date,
+  now: Date
 ): string[] {
   const switches = claudeSwitchesWithin(
     getDataDir(),
     now,
-    SWITCH_WARNING_MAX_AGE_MS,
+    SWITCH_WARNING_MAX_AGE_MS
   );
   if (switches.length === 0) return [];
   const byUuid = claudeAccountNamesByUuid(getDataDir());
@@ -596,16 +597,16 @@ function switchWarningLines(
             ? (byEmail.get(entry.previousEmail.toLowerCase()) ??
               entry.previousEmail)
             : undefined) ??
-          "another account",
-      ),
+          "another account"
+      )
     ),
   ];
   const mostRecent = live.reduce((latest, entry) =>
-    entry.switchedAt.getTime() > latest.switchedAt.getTime() ? entry : latest,
+    entry.switchedAt.getTime() > latest.switchedAt.getTime() ? entry : latest
   );
   const warning = renderSwitchWarning(
     { previous: names, switchedAt: mostRecent.switchedAt },
-    now,
+    now
   );
   return warning ? [warning] : [];
 }
@@ -613,7 +614,7 @@ function switchWarningLines(
 /** The Claude Code login as machine-logins sees it, for identity comparison. */
 function readClaudeCodeLogin(): { uuid: string | null; email: string | null } {
   const login = readMachineLogins().find(
-    (candidate) => candidate.surface === "Claude Code",
+    (candidate) => candidate.surface === "Claude Code"
   );
   return { uuid: login?.accountId ?? null, email: login?.email ?? null };
 }
@@ -621,7 +622,7 @@ function readClaudeCodeLogin(): { uuid: string | null; email: string | null } {
 /** Whether a displaced account is the one Claude Code is signed into again. */
 function sameIdentity(
   entry: LastClaudeSwitch,
-  signedIn: { uuid: string | null; email: string | null },
+  signedIn: { uuid: string | null; email: string | null }
 ): boolean {
   if (entry.previousUuid !== null && entry.previousUuid === signedIn.uuid) {
     return true;
@@ -637,7 +638,7 @@ function renderEmptyState(): string {
   const width = Math.max(...ADD_STEPS.map((step) => step.label.length));
   const rows = ADD_STEPS.map(
     (step) =>
-      `${INDENT}${chalk.white(step.label.padEnd(width))}   ${chalk.dim(step.command)}`,
+      `${INDENT}${chalk.white(step.label.padEnd(width))}   ${chalk.dim(step.command)}`
   );
   return [
     "",
@@ -666,7 +667,7 @@ function renderEmptyState(): string {
  */
 export function statusRowOrder(
   accounts: StatusAccountView[],
-  now: Date,
+  now: Date
 ): string[] {
   return buildRows(accounts, now).map((row) => row.label);
 }
@@ -674,7 +675,7 @@ export function statusRowOrder(
 /** The apps the dashboard draws columns for, in the order it draws them. */
 export function statusProviderOrder(accounts: StatusAccountView[]): Provider[] {
   return PROVIDER_ORDER.filter((provider) =>
-    accounts.some((account) => account.provider === provider),
+    accounts.some((account) => account.provider === provider)
   );
 }
 
@@ -696,13 +697,13 @@ export function renderStatusDashboard(
    * prints too, and two renderers for one grid is how the piped output and the
    * one on screen come to disagree.
    */
-  selected?: { label: string; provider: Provider },
+  selected?: { label: string; provider: Provider }
 ): string {
   if (accounts.length === 0) {
     return renderEmptyState();
   }
   const providers = PROVIDER_ORDER.filter((provider) =>
-    accounts.some((account) => account.provider === provider),
+    accounts.some((account) => account.provider === provider)
   );
   const rows = buildRows(accounts, now);
   const width = COL_LABEL + 2 + (COL_CELL + 2) * providers.length - 2;
@@ -717,15 +718,15 @@ export function renderStatusDashboard(
     const name = truncate(row.label, COL_LABEL);
     const label = pad(
       onRow ? chalk.cyan.bold(name) : chalk.white(name),
-      COL_LABEL,
+      COL_LABEL
     );
     const meters = providers
       .map((provider) =>
         meterCell(
           row.accounts[provider],
           now,
-          onRow && selected?.provider === provider,
-        ),
+          onRow && selected?.provider === provider
+        )
       )
       .join("  ");
     const details = providers
@@ -749,13 +750,13 @@ export function renderStatusDashboard(
 /** Render the single-line quick recommendation. */
 export function renderQuickRecommendation(
   recommendation: UsageRecommendation | null,
-  now: Date,
+  now: Date
 ): string {
   if (!recommendation) return "No account recommendation available.\n";
   const id = `${recommendation.account.provider}:${recommendation.account.name}`;
   if (recommendation.status === "use_now") {
     const ready = chalk.dim(
-      recommendation.viaReset ? "ready now · via reset" : "ready now",
+      recommendation.viaReset ? "ready now · via reset" : "ready now"
     );
     return `${chalk.green("→")} ${chalk.bold(id)}  ${ready}\n`;
   }

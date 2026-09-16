@@ -23,12 +23,12 @@ before(() => {
   assert.equal(extract.status, 0, extract.stderr.toString());
   fs.symlinkSync(
     path.join(root, "node_modules"),
-    path.join(buildRoot, "node_modules"),
+    path.join(buildRoot, "node_modules")
   );
   const compile = spawnSync(
     path.join(root, "node_modules", ".bin", "tsc"),
     ["-p", path.join(buildRoot, "tsconfig.json"), "--types", "node"],
-    { cwd: buildRoot, encoding: "utf8" },
+    { cwd: buildRoot, encoding: "utf8" }
   );
   assert.equal(compile.status, 0, compile.stderr);
 });
@@ -57,15 +57,15 @@ test("v2.0.1 fixed point executes help, discovery, reads, aliases, and errors", 
   assert.equal(describe.command, "describe");
   assert.deepEqual(
     (describe.data as { commands: Array<{ command: string }> }).commands.map(
-      ({ command }) => command,
+      ({ command }) => command
     ),
-    ["status", "list", "describe", "add", "refresh", "remove"],
+    ["status", "list", "describe", "add", "refresh", "remove"]
   );
 
   const list = parseJson(runV2(["list", "--format", "json"]));
   assert.deepEqual(
     { command: list.command, data: list.data, ok: list.ok },
-    { command: "list", data: { accounts: [] }, ok: true },
+    { command: "list", data: { accounts: [] }, ok: true }
   );
   const ndjson = runV2(["list", "--format", "ndjson"]);
   assert.equal(ndjson.status, 0);
@@ -83,7 +83,7 @@ test("v2.0.1 fixed point executes help, discovery, reads, aliases, and errors", 
         code: string;
       }
     ).code,
-    "INVALID_IDENTIFIER",
+    "INVALID_IDENTIFIER"
   );
 });
 
@@ -105,7 +105,7 @@ function runV2(args: string[]): {
         cwd,
         encoding: "utf8",
         env: { ...process.env, HOME: home },
-      },
+      }
     );
     assert.equal(result.error, undefined);
     assert.equal(result.stderr, "");

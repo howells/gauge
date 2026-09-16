@@ -2,10 +2,9 @@
 
 import { createRequire } from "node:module";
 import process from "node:process";
+
 import { CommanderError } from "commander";
-import { runDoctorCommand } from "./commands/doctor-handler.js";
-import { runMigrateCommand } from "./commands/migrate-handler.js";
-import { COMMAND_SPECS } from "./commands/specs.js";
+
 import {
   runAddCommand,
   runDescribeCommand,
@@ -14,6 +13,9 @@ import {
   runRemoveCommand,
   runStatusCommand,
 } from "./commands.js";
+import { runDoctorCommand } from "./commands/doctor-handler.js";
+import { runMigrateCommand } from "./commands/migrate-handler.js";
+import { COMMAND_SPECS } from "./commands/specs.js";
 import type { Provider } from "./domain/account.js";
 import {
   type CommandResult,
@@ -60,10 +62,10 @@ const handlers: CommandHandlers = {
             typeof options.format === "string"
               ? options.format
               : requestedFormat,
-            isTTY,
+            isTTY
           ) !== "human",
       }),
-      options,
+      options
     );
   },
   list: ({ options }) => {
@@ -78,7 +80,7 @@ const handlers: CommandHandlers = {
     const target = resolveAccountTarget(
       positional.providerOrName,
       positional.name,
-      options.provider,
+      options.provider
     );
     await emitResult(
       await runAddCommand(target.name, {
@@ -89,10 +91,10 @@ const handlers: CommandHandlers = {
             typeof options.format === "string"
               ? options.format
               : requestedFormat,
-            isTTY,
+            isTTY
           ) !== "human",
       }),
-      options,
+      options
     );
   },
   refresh: async ({ arguments: positional, options }) => {
@@ -100,7 +102,7 @@ const handlers: CommandHandlers = {
     const target = resolveAccountTarget(
       positional.providerOrName,
       positional.name,
-      options.provider,
+      options.provider
     );
     await emitResult(
       await runRefreshCommand(target.name, {
@@ -111,10 +113,10 @@ const handlers: CommandHandlers = {
             typeof options.format === "string"
               ? options.format
               : requestedFormat,
-            isTTY,
+            isTTY
           ) !== "human",
       }),
-      options,
+      options
     );
   },
   remove: ({ arguments: positional, options }) => {
@@ -122,14 +124,14 @@ const handlers: CommandHandlers = {
     const target = resolveAccountTarget(
       positional.providerOrName,
       positional.name,
-      options.provider,
+      options.provider
     );
     emitResult(
       runRemoveCommand(target.name, {
         ...options,
         provider: target.provider,
       }),
-      options,
+      options
     );
   },
   doctor: ({ options }) => {
@@ -140,7 +142,7 @@ const handlers: CommandHandlers = {
   migrate: ({ options }) => {
     emitResult(
       runMigrateCommand(getDataDir(), options.dryRun === true),
-      options,
+      options
     );
   },
 };
@@ -196,7 +198,7 @@ try {
         command: detectCommandName(argv),
         cwd: process.cwd(),
         isTTY,
-      },
+      }
     );
 
     emitRendered(rendered.content, rendered.outputPath);
@@ -211,7 +213,7 @@ function emitResult(result: CommandResult, options: OutputOptions): void {
     {
       cwd: process.cwd(),
       isTTY,
-    },
+    }
   );
   emitRendered(rendered.content, rendered.outputPath);
   if (result.exitCode !== undefined) {
@@ -231,7 +233,7 @@ function emitRendered(content: string, outputPath?: string): void {
   }
 
   process.stdout.write(
-    `${JSON.stringify({ ok: true, output_path: outputPath })}\n`,
+    `${JSON.stringify({ ok: true, output_path: outputPath })}\n`
   );
 }
 
@@ -253,7 +255,7 @@ function detectCommandName(args: string[]): string {
     COMMAND_SPECS.find(
       (spec) =>
         args.includes(spec.name) ||
-        spec.aliases.some((alias) => args.includes(alias)),
+        spec.aliases.some((alias) => args.includes(alias))
     )?.name ?? "status"
   );
 }
@@ -273,7 +275,7 @@ function peekFlagValue(args: string[], flag: string): string | undefined {
 function resolveAccountTarget(
   first: string | undefined,
   second: string | undefined,
-  providerOption: unknown,
+  providerOption: unknown
 ): { name: string | undefined; provider?: Provider } {
   if (typeof providerOption === "string") {
     return {

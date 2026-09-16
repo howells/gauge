@@ -3,6 +3,7 @@ import fs from "node:fs";
 import os from "node:os";
 import path from "node:path";
 import { test } from "node:test";
+
 import {
   accountExists,
   createAccount,
@@ -42,7 +43,7 @@ test("account facade delegates every mutation to provider-scoped v3 storage", ()
     const claudeStorage = importStorageState(
       "work",
       { json: jsonState },
-      "claude",
+      "claude"
     );
     assert.equal(fs.existsSync(claudeStorage), true);
 
@@ -52,24 +53,24 @@ test("account facade delegates every mutation to provider-scoped v3 storage", ()
     const cursorStorage = importStorageState(
       "cursor-work",
       { filePath: cursorFile },
-      "cursor",
+      "cursor"
     );
     assert.equal(fs.existsSync(cursorStorage), true);
 
     assert.deepEqual(
       listAccounts().map(({ provider, name }) => `${provider}:${name}`),
-      ["claude:work", "codex:work", "cursor:cursor-work"],
+      ["claude:work", "codex:work", "cursor:cursor-work"]
     );
     assert.deepEqual(
       listAccountDetails("codex").map(
-        ({ provider, name }) => `${provider}:${name}`,
+        ({ provider, name }) => `${provider}:${name}`
       ),
-      ["codex:work"],
+      ["codex:work"]
     );
     const artifacts = getAccountArtifacts("work", "claude");
     assert.match(
       artifacts.accountPath,
-      /accounts\/v3\/claude\/work\/config\.json$/,
+      /accounts\/v3\/claude\/work\/config\.json$/
     );
     assert.equal(listAccountDetails("claude")[0]?.hasStorageState, true);
 

@@ -3,10 +3,10 @@ import { COMMAND_WIRE_JSON_SCHEMAS } from "./commands/wire-schemas.js";
 
 /** Return metadata-derived schemas for all (or a specific) CLI command. */
 export function describeCommands(
-  commandName?: string,
+  commandName?: string
 ): Record<string, unknown> {
   const commands = COMMAND_SPECS.filter((spec) =>
-    matchesCommand(spec, commandName),
+    matchesCommand(spec, commandName)
   ).map((spec) => ({
     command: spec.name,
     aliases: spec.aliases,
@@ -50,7 +50,7 @@ export function describeCommands(
 
 function matchesCommand(
   spec: CommandSpec,
-  commandName: string | undefined,
+  commandName: string | undefined
 ): boolean {
   return (
     !commandName ||

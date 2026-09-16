@@ -1,4 +1,5 @@
 import process from "node:process";
+
 import { sanitizeForAgent, writeSandboxedOutput } from "./security.js";
 
 export type OutputFormat = "human" | "json" | "ndjson";
@@ -48,7 +49,7 @@ interface RenderedOutput {
 /** Determine the output format, defaulting to JSON for non-TTY and human for TTY. */
 export function resolveOutputFormat(
   requestedFormat: string | undefined,
-  isTTY = process.stdout.isTTY ?? false,
+  isTTY = process.stdout.isTTY ?? false
 ): OutputFormat {
   if (
     requestedFormat === "human" ||
@@ -103,7 +104,7 @@ function maskValue(value: unknown, mask: string[][]): unknown {
 function assignPath(
   target: Record<string, unknown>,
   source: Record<string, unknown>,
-  path: string[],
+  path: string[]
 ): void {
   if (path.length === 0) {
     return;
@@ -157,14 +158,14 @@ export function paginateItems(
   items: unknown[],
   options: { page?: number; pageAll?: boolean; pageSize?: number },
   itemName: string,
-  summary?: Record<string, unknown>,
+  summary?: Record<string, unknown>
 ): PagePayload[] {
   const pageSize = Math.max(1, options.pageSize ?? items.length ?? 1);
   const totalPages = Math.max(1, Math.ceil(items.length / pageSize));
 
   if (options.pageAll) {
     return Array.from({ length: totalPages }, (_, index) =>
-      buildPage(items, itemName, summary, index + 1, pageSize, totalPages),
+      buildPage(items, itemName, summary, index + 1, pageSize, totalPages)
     );
   }
 
@@ -178,7 +179,7 @@ function buildPage(
   summary: Record<string, unknown> | undefined,
   page: number,
   pageSize: number,
-  totalPages: number,
+  totalPages: number
 ): PagePayload {
   const start = (page - 1) * pageSize;
   const pageItems = items.slice(start, start + pageSize);
@@ -200,7 +201,7 @@ function buildPage(
 export function renderCommandResult(
   result: CommandResult,
   options: OutputOptions,
-  context: { cwd: string; isTTY?: boolean },
+  context: { cwd: string; isTTY?: boolean }
 ): RenderedOutput {
   const format = resolveOutputFormat(options.format, context.isTTY);
   const sanitize = options.sanitize ?? true;
@@ -210,7 +211,7 @@ export function renderCommandResult(
       result.human,
       format,
       options.outputFile,
-      context.cwd,
+      context.cwd
     );
   }
 
@@ -223,7 +224,7 @@ export function renderCommandResult(
           pageSize: options.pageSize,
         },
         result.paginated.itemName,
-        result.paginated.summary,
+        result.paginated.summary
       )
     : [
         {
@@ -242,14 +243,14 @@ export function renderCommandResult(
       result.command,
       applyFieldMask(
         sanitize ? sanitizeForAgent(page.data) : page.data,
-        options.fields,
+        options.fields
       ),
       page.page_info,
       result.dryRun ?? false,
       sanitize,
       result.ok ?? true,
-      result.result,
-    ),
+      result.result
+    )
   );
 
   const content =
@@ -264,7 +265,7 @@ export function renderCommandResult(
                 meta: structuredPages[0]?.meta,
               },
           null,
-          2,
+          2
         )}\n`
       : `${structuredPages.map((page) => JSON.stringify(page)).join("\n")}\n`;
 
@@ -275,7 +276,7 @@ export function renderCommandResult(
 export function renderError(
   error: { code?: string; message: string; details?: unknown },
   options: OutputOptions,
-  context: { cwd: string; isTTY?: boolean; command: string },
+  context: { cwd: string; isTTY?: boolean; command: string }
 ): RenderedOutput {
   const format = resolveOutputFormat(options.format, context.isTTY);
   if (format === "human") {
@@ -283,7 +284,7 @@ export function renderError(
       `${error.message}\n`,
       format,
       options.outputFile,
-      context.cwd,
+      context.cwd
     );
   }
 
@@ -320,7 +321,7 @@ function buildEnvelope(
   dryRun: boolean,
   sanitized: boolean,
   ok: boolean,
-  result?: "complete" | "failed" | "partial",
+  result?: "complete" | "failed" | "partial"
 ): Record<string, unknown> {
   return {
     ok,
@@ -341,7 +342,7 @@ function writeMaybeToFile(
   content: string,
   format: OutputFormat,
   outputFile: string | undefined,
-  cwd: string,
+  cwd: string
 ): RenderedOutput {
   if (!outputFile) {
     return { content, format };

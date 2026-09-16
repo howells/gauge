@@ -1,5 +1,6 @@
 import assert from "node:assert/strict";
 import { test } from "node:test";
+
 import { raceWithTimeout } from "../src/runtime/deadline.js";
 
 test("raceWithTimeout returns the timeout value for a never-settling operation", async () => {
@@ -7,7 +8,7 @@ test("raceWithTimeout returns the timeout value for a never-settling operation",
   const result = await raceWithTimeout(
     new Promise<boolean>(() => undefined),
     10,
-    false,
+    false
   );
 
   assert.equal(result, false);

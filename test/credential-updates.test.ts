@@ -3,6 +3,7 @@ import fs from "node:fs";
 import os from "node:os";
 import path from "node:path";
 import { test } from "node:test";
+
 import { AccountRepository } from "../src/persistence/account-repository.js";
 import { applyPendingCredentialUpdates } from "../src/services/credential-updates.js";
 
@@ -39,11 +40,11 @@ test("pending Claude storage state is atomically applied through the account rep
       allowedCodexHomes: [],
       dataRoot,
       policy: "refresh-if-stale",
-    },
+    }
   );
 
   const stored = JSON.parse(
-    fs.readFileSync(repository.pathsFor(id).storageState, "utf8"),
+    fs.readFileSync(repository.pathsFor(id).storageState, "utf8")
   ) as { cookies: Array<{ value: string }> };
   assert.equal(stored.cookies[0]?.value, "new");
 });
@@ -65,7 +66,7 @@ test("never policy discards pending storage-state writes", () => {
         value: { cookies: [], origins: [] },
       },
     ],
-    { allowedCodexHomes: [], dataRoot, policy: "never" },
+    { allowedCodexHomes: [], dataRoot, policy: "never" }
   );
 
   assert.equal(fs.readFileSync(storagePath, "utf8"), before);

@@ -1,5 +1,6 @@
 import assert from "node:assert/strict";
 import { test } from "node:test";
+
 import {
   fetchOAuthUsage,
   planFromRateLimitTier,
@@ -41,7 +42,7 @@ test("fetchOAuthUsage reads both windows from the token", async () => {
           organization: { rate_limit_tier: "default_claude_max_20x" },
         },
       },
-    }),
+    })
   );
 
   assert.equal(reading?.plan, "max_20x");
@@ -75,7 +76,7 @@ test("fetchOAuthUsage keeps an idle window instead of promoting the other one", 
         },
       },
       "/api/oauth/profile": { status: 500 },
-    }),
+    })
   );
 
   assert.deepEqual(reading?.session, { resetsAt: null, usedPercent: 0 });
@@ -88,7 +89,7 @@ test("fetchOAuthUsage keeps an idle window instead of promoting the other one", 
 test("fetchOAuthUsage returns null on a refused token so the cookie path still runs", async () => {
   const reading = await fetchOAuthUsage(
     "stale",
-    responder({ "/api/oauth/usage": { status: 401 } }),
+    responder({ "/api/oauth/usage": { status: 401 } })
   );
   // An expired token is an optimisation missing, never an account failing.
   assert.equal(reading, null);
@@ -106,7 +107,7 @@ test("fetchOAuthUsage keeps the reading when only the profile fails", async () =
         },
       },
       "/api/oauth/profile": { status: 500 },
-    }),
+    })
   );
 
   assert.equal(reading?.plan, null);
@@ -159,7 +160,7 @@ test("fetchOAuthUsage falls back to the limits array when the legacy weekly fiel
         },
       },
       "/api/oauth/profile": { status: 500 },
-    }),
+    })
   );
 
   assert.deepEqual(reading?.session, { resetsAt: null, usedPercent: 0 });
@@ -182,7 +183,7 @@ test("fetchOAuthUsage treats null limits as absent", async () => {
         },
       },
       "/api/oauth/profile": { status: 500 },
-    }),
+    })
   );
 
   assert.deepEqual(reading?.session, { resetsAt: null, usedPercent: 10 });

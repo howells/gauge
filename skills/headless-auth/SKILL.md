@@ -28,6 +28,4 @@ gauge refresh --json '{"name":"personal","storage_state_file":"./state.json"}' -
 gauge refresh --json '{"name":"personal","storage_state_file":"./state.json"}' --format json
 ```
 
-Cursor storage-state inputs retain only `.cursor.com` and `.cursor.sh` cookies.
-Raw Cookie headers are accepted only by explicitly named raw-cookie environment
-inputs such as `GAUGE_CURSOR_COOKIE` and never as a storage-state fallback.
+Cursor storage-state inputs retain only `.cursor.com` and `.cursor.sh` cookies. Raw Cookie headers are accepted only by explicitly named raw-cookie environment inputs such as `GAUGE_CURSOR_COOKIE` and never as a storage-state fallback.

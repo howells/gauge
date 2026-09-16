@@ -20,11 +20,11 @@ test("package.json uses scoped gauge name and bin", () => {
 test("CLI help text references gauge", () => {
   const programSource = fs.readFileSync(
     path.join(root, "src", "program.ts"),
-    "utf-8",
+    "utf-8"
   );
   const specsSource = fs.readFileSync(
     path.join(root, "src", "commands", "specs.ts"),
-    "utf-8",
+    "utf-8"
   );
   assert.match(programSource, /\.name\("gauge"\)/);
   assert.match(specsSource, /gauge add/);

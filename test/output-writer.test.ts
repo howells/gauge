@@ -3,6 +3,7 @@ import fs from "node:fs";
 import os from "node:os";
 import path from "node:path";
 import { test } from "node:test";
+
 import { writeConfinedOutput } from "../src/persistence/output-writer.js";
 
 test("output writer tolerates an EEXIST parent-creation race", () => {
@@ -31,6 +32,6 @@ test("output writer propagates unexpected path metadata failures", () => {
           throw failure;
         },
       }),
-    /metadata unavailable/,
+    /metadata unavailable/
   );
 });

@@ -1,6 +1,7 @@
 import { randomUUID } from "node:crypto";
 import fs from "node:fs";
 import path from "node:path";
+
 import {
   type AccountConfigV3,
   AccountConfigV3Schema,
@@ -57,7 +58,7 @@ export class AccountRepository {
   readonly #replaceFile: (
     target: string,
     content: string,
-    mode: number,
+    mode: number
   ) => void;
 
   constructor(options: AccountRepositoryOptions) {
@@ -95,13 +96,13 @@ export class AccountRepository {
     if (readStatus(paths.directory)) {
       throw new CLIError(
         `Account "${id.provider}:${id.name}" already exists.`,
-        { code: "ACCOUNT_EXISTS", exitCode: 2 },
+        { code: "ACCOUNT_EXISTS", exitCode: 2 }
       );
     }
 
     const stage = path.join(
       path.dirname(paths.directory),
-      `.${id.name}.stage-${this.#randomId()}`,
+      `.${id.name}.stage-${this.#randomId()}`
     );
     if (readStatus(stage)) {
       throw new CLIError("Account staging path already exists.", {
@@ -114,16 +115,16 @@ export class AccountRepository {
       const config = buildConfig(
         id,
         write,
-        write.addedAt === undefined ? this.#now() : new Date(write.addedAt),
+        write.addedAt === undefined ? this.#now() : new Date(write.addedAt)
       );
       writeStagedFile(
         path.join(stage, "config.json"),
-        `${JSON.stringify(config, null, 2)}\n`,
+        `${JSON.stringify(config, null, 2)}\n`
       );
       if (storageState) {
         writeStagedFile(
           path.join(stage, "storage-state.json"),
-          `${JSON.stringify(storageState, null, 2)}\n`,
+          `${JSON.stringify(storageState, null, 2)}\n`
         );
       }
       if (write.profileSource !== undefined) {
@@ -160,7 +161,7 @@ export class AccountRepository {
             ? current.config.renewsAt
             : write.renewsAt,
       },
-      new Date(current.config.addedAt),
+      new Date(current.config.addedAt)
     );
 
     const replacements = [
@@ -208,7 +209,7 @@ export class AccountRepository {
     this.#replaceFile(
       current.paths.storageState,
       `${JSON.stringify(storageState, null, 2)}\n`,
-      0o600,
+      0o600
     );
     return this.get(rawId);
   }
@@ -223,7 +224,7 @@ export class AccountRepository {
     assertDirectoryNotSymlink(status, paths.directory);
     const tombstone = path.join(
       path.dirname(paths.directory),
-      `.${id.name}.tombstone-${this.#randomId()}`,
+      `.${id.name}.tombstone-${this.#randomId()}`
     );
     fs.renameSync(paths.directory, tombstone);
     flushDirectory(path.dirname(paths.directory));
@@ -247,7 +248,7 @@ export class AccountRepository {
       throw unsafeAccountPath(paths.config);
     }
     const config = AccountConfigV3Schema.parse(
-      JSON.parse(fs.readFileSync(paths.config, "utf8")) as unknown,
+      JSON.parse(fs.readFileSync(paths.config, "utf8")) as unknown
     );
     if (config.provider !== id.provider || config.name !== id.name) {
       throw new CLIError("Account config identity does not match its path.", {
@@ -307,7 +308,7 @@ export class AccountRepository {
 function buildConfig(
   id: AccountId,
   write: AccountWrite,
-  addedAt: Date,
+  addedAt: Date
 ): AccountConfigV3 {
   return AccountConfigV3Schema.parse({
     schema_version: 3,
@@ -321,7 +322,7 @@ function buildConfig(
 }
 
 function parseOptionalStorageState(
-  value: unknown,
+  value: unknown
 ): PlaywrightStorageState | undefined {
   return value === undefined ? undefined : parseStorageStateObject(value);
 }
@@ -362,7 +363,7 @@ function unsafeAccountPath(target: string): CLIError {
     {
       code: "UNSAFE_ACCOUNT_PATH",
       details: { target },
-    },
+    }
   );
 }
 

@@ -15,12 +15,12 @@ export interface AtomicReplaceOptions {
 export function atomicReplace(
   destinationPath: string,
   content: string,
-  options: AtomicReplaceOptions = {},
+  options: AtomicReplaceOptions = {}
 ): void {
   const directory = path.dirname(destinationPath);
   const temporaryPath = path.join(
     directory,
-    `.${path.basename(destinationPath)}.${process.pid}.${randomUUID()}.tmp`,
+    `.${path.basename(destinationPath)}.${process.pid}.${randomUUID()}.tmp`
   );
   const rename = options.rename ?? fs.renameSync;
   const close = options.close ?? fs.closeSync;
@@ -47,7 +47,7 @@ export function atomicReplace(
       if (!isMissingPathError(cleanupError)) {
         throw new AggregateError(
           [error, cleanupError],
-          "Atomic replacement and temporary-file cleanup both failed.",
+          "Atomic replacement and temporary-file cleanup both failed."
         );
       }
     }
@@ -58,7 +58,7 @@ export function atomicReplace(
 function flushDirectory(
   directory: string,
   fsync: (descriptor: number) => void,
-  close: (descriptor: number) => void,
+  close: (descriptor: number) => void
 ): void {
   const descriptor = fs.openSync(directory, "r");
   try {
