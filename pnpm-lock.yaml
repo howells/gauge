@@ -31,7 +31,7 @@ importers:
         specifier: ^0.2.3
         version: 0.2.3
       '@howells/lint':
-        specifier: ^3.5.0
+        specifier: ^3.5.1
         version: 3.5.1
       '@howells/typescript-config':
         specifier: ^0.1.2

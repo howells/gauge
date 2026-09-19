@@ -55,7 +55,7 @@
   },
   "devDependencies": {
     "@howells/husky": "^0.2.3",
-    "@howells/lint": "^3.5.0",
+    "@howells/lint": "^3.5.1",
     "@howells/typescript-config": "^0.1.2",
     "@types/node": "^22.10.0",
     "c8": "10.1.3",
