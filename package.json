@@ -39,11 +39,13 @@
     "package:smoke": "node scripts/package-smoke.js",
     "knip": "knip --reporter compact",
     "prepack": "pnpm build && pnpm schema:check",
-    "lint": "node scripts/check-lint-baseline.mjs",
-    "lint:all": "howells-check .",
+    "lint": "howells-check .",
+    "lint:ratchet": "howells-ratchet",
+    "lint:rebaseline": "howells-ratchet --write",
     "format": "howells-fix",
     "typecheck": "tsc --noEmit",
-    "prepare": "howells-husky"
+    "prepare": "howells-husky",
+    "prepush": "pnpm typecheck && pnpm lint:ratchet"
   },
   "dependencies": {
     "chalk": "^5.3.0",
@@ -53,7 +55,7 @@
   },
   "devDependencies": {
     "@howells/husky": "^0.2.3",
-    "@howells/lint": "^3.3.2",
+    "@howells/lint": "^3.5.0",
     "@howells/typescript-config": "^0.1.2",
     "@types/node": "^22.10.0",
     "c8": "10.1.3",
