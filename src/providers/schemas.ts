@@ -25,8 +25,8 @@ const UsageWindowSchema = z.strictObject({
 export const ProviderUsageReadingSchema = z.strictObject({
   email: z.string().email().max(320).optional(),
   plan: z.string().min(1).max(100),
+  renewsAt: z.union([NormalizedDateSchema, z.null()]).optional(),
   resetsApplicable: z.number().finite().int().nonnegative().optional(),
   resetsAvailable: z.number().finite().int().nonnegative().optional(),
-  renewsAt: z.union([NormalizedDateSchema, z.null()]).optional(),
   windows: z.array(UsageWindowSchema).max(16),
 });

@@ -10,21 +10,16 @@ import { UsageService } from "../src/services/usage-service.js";
 
 test("collects an ordered result and returns pending credential updates", async () => {
   const source: AccountSource = {
-    id: { provider: "codex", name: "work" },
-    source: "configured",
-    provider: "codex",
+    id: { name: "work", provider: "codex" },
     order: 0,
+    provider: "codex",
+    source: "configured",
   };
   let receivedContext: ProviderAcquisitionContext | undefined;
   const adapter: UsageProviderAdapter = {
-    provider: "codex",
     acquire: async (sources, context) => {
       receivedContext = context;
       return {
-        results: sources.map((item) => ({
-          sourceId: item.id,
-          usage: { plan: "Pro", windows: [] },
-        })),
         pendingCredentialUpdates: [
           {
             sourceId: source.id,
@@ -33,12 +28,17 @@ test("collects an ordered result and returns pending credential updates", async 
             value: { accessToken: "new" },
           },
         ],
+        results: sources.map((item) => ({
+          sourceId: item.id,
+          usage: { plan: "Pro", windows: [] },
+        })),
       };
     },
+    provider: "codex",
   };
   const service = new UsageService({
     adapters: [adapter],
-    now: () => 1_000,
+    now: () => 1000,
   });
 
   const snapshot = await service.collect([source], {
@@ -51,10 +51,10 @@ test("collects an ordered result and returns pending credential updates", async 
   assert.equal(snapshot.accounts[0]?.usage?.plan, "Pro");
   assert.equal(snapshot.pendingCredentialUpdates.length, 1);
   assert.deepEqual(snapshot.summary, {
-    total: 1,
-    succeeded: 1,
     failed: 0,
+    succeeded: 1,
     timed_out: 0,
+    total: 1,
   });
 });
 
@@ -65,18 +65,20 @@ test("starts provider groups concurrently", async () => {
     releaseClaude = resolve;
   });
   const adapter = (provider: "claude" | "codex"): UsageProviderAdapter => ({
-    provider,
     acquire: async (sources) => {
       started.push(provider);
-      if (provider === "claude") await claudeGate;
+      if (provider === "claude") {
+        await claudeGate;
+      }
       return {
+        pendingCredentialUpdates: [],
         results: sources.map((source) => ({
           sourceId: source.id,
           usage: { plan: provider, windows: [] },
         })),
-        pendingCredentialUpdates: [],
       };
     },
+    provider,
   });
   const service = new UsageService({
     adapters: [adapter("claude"), adapter("codex")],
@@ -84,16 +86,16 @@ test("starts provider groups concurrently", async () => {
   const collection = service.collect(
     [
       {
-        id: { provider: "claude", name: "one" },
-        source: "configured",
-        provider: "claude",
+        id: { name: "one", provider: "claude" },
         order: 0,
+        provider: "claude",
+        source: "configured",
       },
       {
-        id: { provider: "codex", name: "two" },
-        source: "configured",
-        provider: "codex",
+        id: { name: "two", provider: "codex" },
         order: 0,
+        provider: "codex",
+        source: "configured",
       },
     ],
     { credentialRefresh: "refresh-if-stale" }
@@ -110,14 +112,14 @@ test("starts provider groups concurrently", async () => {
 test("orders providers and places configured sources before ambient sources", async () => {
   const adapters: UsageProviderAdapter[] = ["claude", "codex", "cursor"].map(
     (provider) => ({
-      provider: provider as UsageProviderAdapter["provider"],
       acquire: async (sources) => ({
+        pendingCredentialUpdates: [],
         results: sources.map((source) => ({
           sourceId: source.id,
           usage: { plan: source.source, windows: [] },
         })),
-        pendingCredentialUpdates: [],
       }),
+      provider: provider as UsageProviderAdapter["provider"],
     })
   );
   const service = new UsageService({ adapters });
@@ -125,34 +127,34 @@ test("orders providers and places configured sources before ambient sources", as
   const snapshot = await service.collect(
     [
       {
-        id: { provider: "cursor", ambient: "env" },
-        source: "ambient",
+        id: { ambient: "env", provider: "cursor" },
+        order: 0,
         provider: "cursor",
-        order: 0,
-      },
-      {
-        id: { provider: "claude", ambient: "browser" },
         source: "ambient",
-        provider: "claude",
+      },
+      {
+        id: { ambient: "browser", provider: "claude" },
         order: -1,
-      },
-      {
-        id: { provider: "codex", name: "second" },
-        source: "configured",
-        provider: "codex",
-        order: 1,
-      },
-      {
-        id: { provider: "claude", name: "first" },
-        source: "configured",
         provider: "claude",
-        order: 0,
+        source: "ambient",
       },
       {
-        id: { provider: "codex", name: "first" },
-        source: "configured",
+        id: { name: "second", provider: "codex" },
+        order: 1,
         provider: "codex",
+        source: "configured",
+      },
+      {
+        id: { name: "first", provider: "claude" },
         order: 0,
+        provider: "claude",
+        source: "configured",
+      },
+      {
+        id: { name: "first", provider: "codex" },
+        order: 0,
+        provider: "codex",
+        source: "configured",
       },
     ],
     { credentialRefresh: "refresh-if-stale" }
@@ -161,11 +163,11 @@ test("orders providers and places configured sources before ambient sources", as
   assert.deepEqual(
     snapshot.accounts.map((account) => account.source.id),
     [
-      { provider: "claude", name: "first" },
-      { provider: "claude", ambient: "browser" },
-      { provider: "codex", name: "first" },
-      { provider: "codex", name: "second" },
-      { provider: "cursor", ambient: "env" },
+      { name: "first", provider: "claude" },
+      { ambient: "browser", provider: "claude" },
+      { name: "first", provider: "codex" },
+      { name: "second", provider: "codex" },
+      { ambient: "env", provider: "cursor" },
     ]
   );
 });
@@ -173,25 +175,20 @@ test("orders providers and places configured sources before ambient sources", as
 test("turns adapter count or order violations into typed internal failures", async () => {
   const sources: AccountSource[] = [
     {
-      id: { provider: "codex", name: "first" },
-      source: "configured",
-      provider: "codex",
+      id: { name: "first", provider: "codex" },
       order: 0,
+      provider: "codex",
+      source: "configured",
     },
     {
-      id: { provider: "codex", name: "second" },
-      source: "configured",
-      provider: "codex",
+      id: { name: "second", provider: "codex" },
       order: 1,
+      provider: "codex",
+      source: "configured",
     },
   ];
   const adapter: UsageProviderAdapter = {
-    provider: "codex",
     acquire: async () => ({
-      results: [...sources].reverse().map((source) => ({
-        sourceId: source.id,
-        usage: { plan: source.id.provider, windows: [] },
-      })),
       pendingCredentialUpdates: [
         {
           sourceId: sources[0]?.id ?? { provider: "codex", name: "first" },
@@ -200,7 +197,12 @@ test("turns adapter count or order violations into typed internal failures", asy
           value: "untrusted-after-contract-violation",
         },
       ],
+      results: [...sources].reverse().map((source) => ({
+        sourceId: source.id,
+        usage: { plan: source.id.provider, windows: [] },
+      })),
     }),
+    provider: "codex",
   };
   const service = new UsageService({ adapters: [adapter] });
 
@@ -214,21 +216,21 @@ test("turns adapter count or order violations into typed internal failures", asy
   );
   assert.equal(snapshot.pendingCredentialUpdates.length, 0);
   assert.deepEqual(snapshot.summary, {
-    total: 2,
-    succeeded: 0,
     failed: 2,
+    succeeded: 0,
     timed_out: 0,
+    total: 2,
   });
 });
 
 test("returns typed timeouts when an adapter never settles", async () => {
   let adapterSignal: AbortSignal | undefined;
   const adapter: UsageProviderAdapter = {
-    provider: "claude",
     acquire: async (_sources, context) => {
       adapterSignal = context.signal;
-      return new Promise(() => undefined);
+      return await new Promise(() => {});
     },
+    provider: "claude",
   };
   const service = new UsageService({
     adapters: [adapter],
@@ -241,19 +243,18 @@ test("returns typed timeouts when an adapter never settles", async () => {
     service.collect(
       [
         {
-          id: { provider: "claude", name: "work" },
-          source: "configured",
-          provider: "claude",
+          id: { name: "work", provider: "claude" },
           order: 0,
+          provider: "claude",
+          source: "configured",
         },
       ],
       { credentialRefresh: "refresh-if-stale" }
     ),
     new Promise<never>((_resolve, reject) => {
-      guard = setTimeout(
-        () => reject(new Error("usage service remained pending")),
-        250
-      );
+      guard = setTimeout(() => {
+        reject(new Error("usage service remained pending"));
+      }, 250);
     }),
   ]);
   clearTimeout(guard);
@@ -265,32 +266,34 @@ test("returns typed timeouts when an adapter never settles", async () => {
     retryable: true,
   });
   assert.deepEqual(snapshot.summary, {
-    total: 1,
-    succeeded: 0,
     failed: 1,
+    succeeded: 0,
     timed_out: 1,
+    total: 1,
   });
 });
 
 test("a timed-out source does not discard a completed peer from the same provider", async () => {
   const adapter: UsageProviderAdapter = {
-    provider: "claude",
     acquire: async (sources) => {
       const source = sources[0];
-      if (!source) throw new Error("missing source");
+      if (!source) {
+        throw new Error("missing source");
+      }
       if ("name" in source.id && source.id.name === "hung") {
-        return new Promise(() => undefined);
+        return await new Promise(() => {});
       }
       return {
+        pendingCredentialUpdates: [],
         results: [
           {
             sourceId: source.id,
             usage: { plan: "Max", windows: [] },
           },
         ],
-        pendingCredentialUpdates: [],
       };
     },
+    provider: "claude",
   };
   const service = new UsageService({
     adapters: [adapter],
@@ -301,16 +304,16 @@ test("a timed-out source does not discard a completed peer from the same provide
   const snapshot = await service.collect(
     [
       {
-        id: { provider: "claude", name: "hung" },
-        source: "configured",
-        provider: "claude",
+        id: { name: "hung", provider: "claude" },
         order: 0,
+        provider: "claude",
+        source: "configured",
       },
       {
-        id: { provider: "claude", name: "ready" },
-        source: "configured",
-        provider: "claude",
+        id: { name: "ready", provider: "claude" },
         order: 1,
+        provider: "claude",
+        source: "configured",
       },
     ],
     { credentialRefresh: "refresh-if-stale" }
@@ -319,33 +322,39 @@ test("a timed-out source does not discard a completed peer from the same provide
   assert.equal(snapshot.accounts[0]?.error?.code, "provider/timeout");
   assert.equal(snapshot.accounts[1]?.usage?.plan, "Max");
   assert.deepEqual(snapshot.summary, {
-    total: 2,
-    succeeded: 1,
     failed: 1,
+    succeeded: 1,
     timed_out: 1,
+    total: 2,
   });
 });
 
 test("timeout waits for cooperative provider cleanup before returning", async () => {
   let cleaned = false;
   const adapter: UsageProviderAdapter = {
-    provider: "claude",
     acquire: async (sources, context) => {
       await new Promise<void>((resolve) => {
-        context.signal.addEventListener("abort", () => resolve(), {
-          once: true,
-        });
+        context.signal.addEventListener(
+          "abort",
+          () => {
+            resolve();
+          },
+          {
+            once: true,
+          }
+        );
       });
       await new Promise<void>((resolve) => setImmediate(resolve));
       cleaned = true;
       return {
+        pendingCredentialUpdates: [],
         results: sources.map((source) => ({
           sourceId: source.id,
           usage: { plan: "late", windows: [] },
         })),
-        pendingCredentialUpdates: [],
       };
     },
+    provider: "claude",
   };
   const service = new UsageService({
     adapters: [adapter],
@@ -356,10 +365,10 @@ test("timeout waits for cooperative provider cleanup before returning", async ()
   const snapshot = await service.collect(
     [
       {
-        id: { provider: "claude", name: "work" },
-        source: "configured",
-        provider: "claude",
+        id: { name: "work", provider: "claude" },
         order: 0,
+        provider: "claude",
+        source: "configured",
       },
     ],
     { credentialRefresh: "refresh-if-stale" }
@@ -374,34 +383,34 @@ test("caps direct acquisitions at four globally across provider groups", async (
   let maximum = 0;
   const adapters: UsageProviderAdapter[] = ["claude", "codex", "cursor"].map(
     (provider) => ({
-      provider: provider as UsageProviderAdapter["provider"],
       acquire: async (sources, context) => {
         await Promise.all(
-          sources.map(() =>
-            context.acquireDirect(async () => {
+          sources.map(async () => {
+            await context.acquireDirect(async () => {
               active += 1;
               maximum = Math.max(maximum, active);
               await new Promise<void>((resolve) => setTimeout(resolve, 5));
               active -= 1;
-            })
-          )
+            });
+          })
         );
         return {
+          pendingCredentialUpdates: [],
           results: sources.map((source) => ({
             sourceId: source.id,
             usage: { plan: provider, windows: [] },
           })),
-          pendingCredentialUpdates: [],
         };
       },
+      provider: provider as UsageProviderAdapter["provider"],
     })
   );
   const sources: AccountSource[] = adapters.flatMap((adapter) =>
     [0, 1, 2].map((order) => ({
-      id: { provider: adapter.provider, name: `account-${order}` },
-      source: "configured" as const,
-      provider: adapter.provider,
+      id: { name: `account-${order}`, provider: adapter.provider },
       order,
+      provider: adapter.provider,
+      source: "configured" as const,
     }))
   );
   const service = new UsageService({ adapters });
@@ -419,10 +428,10 @@ test("represents sources with no registered adapter as typed failures", async ()
   const snapshot = await service.collect(
     [
       {
-        id: { provider: "cursor", ambient: "environment" },
-        source: "ambient",
-        provider: "cursor",
+        id: { ambient: "environment", provider: "cursor" },
         order: 0,
+        provider: "cursor",
+        source: "ambient",
       },
     ],
     { credentialRefresh: "never" }
@@ -430,45 +439,45 @@ test("represents sources with no registered adapter as typed failures", async ()
 
   assert.equal(snapshot.accounts[0]?.error?.code, "provider/adapter-missing");
   assert.deepEqual(snapshot.summary, {
-    total: 1,
-    succeeded: 0,
     failed: 1,
+    succeeded: 0,
     timed_out: 0,
+    total: 1,
   });
 });
 
 test("contains adapter exceptions as typed failures without losing other providers", async () => {
   const failing: UsageProviderAdapter = {
-    provider: "claude",
     acquire: async () => {
       throw new Error("upstream unavailable");
     },
+    provider: "claude",
   };
   const succeeding: UsageProviderAdapter = {
-    provider: "codex",
     acquire: async (sources) => ({
+      pendingCredentialUpdates: [],
       results: sources.map((source) => ({
         sourceId: source.id,
         usage: { plan: "Pro", windows: [] },
       })),
-      pendingCredentialUpdates: [],
     }),
+    provider: "codex",
   };
   const service = new UsageService({ adapters: [failing, succeeding] });
 
   const snapshot = await service.collect(
     [
       {
-        id: { provider: "claude", name: "one" },
-        source: "configured",
-        provider: "claude",
+        id: { name: "one", provider: "claude" },
         order: 0,
+        provider: "claude",
+        source: "configured",
       },
       {
-        id: { provider: "codex", name: "two" },
-        source: "configured",
-        provider: "codex",
+        id: { name: "two", provider: "codex" },
         order: 0,
+        provider: "codex",
+        source: "configured",
       },
     ],
     { credentialRefresh: "refresh-if-stale" }
@@ -481,9 +490,9 @@ test("contains adapter exceptions as typed failures without losing other provide
   assert.equal(snapshot.accounts[0]?.error?.retryable, true);
   assert.equal(snapshot.accounts[1]?.usage?.plan, "Pro");
   assert.deepEqual(snapshot.summary, {
-    total: 2,
-    succeeded: 1,
     failed: 1,
+    succeeded: 1,
     timed_out: 0,
+    total: 2,
   });
 });

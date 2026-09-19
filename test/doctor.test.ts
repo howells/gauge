@@ -59,7 +59,7 @@ test("doctor reports legacy migration and unsafe data-root failures without cred
   fs.mkdirSync(realRoot, { mode: 0o777 });
   fs.writeFileSync(
     path.join(realRoot, "work.json"),
-    JSON.stringify({ name: "work", addedAt: "2026-01-01T00:00:00.000Z" })
+    JSON.stringify({ addedAt: "2026-01-01T00:00:00.000Z", name: "work" })
   );
   fs.symlinkSync(realRoot, linkedRoot, "dir");
 
@@ -97,7 +97,7 @@ test("doctor checks v3 identity, credential artifacts, profiles, and tombstones"
   fs.chmodSync(root, 0o700);
   const accounts = new AccountRepository({ dataRoot: root });
   accounts.add(
-    { provider: "cursor", name: "work" },
+    { name: "work", provider: "cursor" },
     { storageState: { cookies: [], origins: [] } }
   );
   const directory = path.join(root, "accounts", "v3", "cursor", "work");
@@ -147,7 +147,7 @@ test("doctor detects ambient and configured Codex readiness without credentials"
     { mode: 0o600 }
   );
   new AccountRepository({ dataRoot: root }).add(
-    { provider: "codex", name: "work" },
+    { name: "work", provider: "codex" },
     { codexHome }
   );
 
@@ -180,7 +180,7 @@ test("doctor rejects malformed storage state and unusable Codex auth", () => {
   const root = path.join(parent, ".gauge");
   const accounts = new AccountRepository({ dataRoot: root });
   accounts.add(
-    { provider: "cursor", name: "work" },
+    { name: "work", provider: "cursor" },
     { storageState: { cookies: [], origins: [] } }
   );
   fs.writeFileSync(

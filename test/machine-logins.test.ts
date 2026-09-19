@@ -8,7 +8,7 @@ import { test } from "node:test";
 import { readMachineLogins } from "../src/services/machine-logins.js";
 
 function jwt(claims: Record<string, unknown>): string {
-  const body = Buffer.from(JSON.stringify(claims), "utf8").toString(
+  const body = Buffer.from(JSON.stringify(claims), "utf-8").toString(
     "base64url"
   );
   return `header.${body}.signature`;
@@ -25,7 +25,9 @@ function withoutCodexHome<T>(run: () => T): T {
   try {
     return run();
   } finally {
-    if (previous !== undefined) process.env.CODEX_HOME = previous;
+    if (previous !== undefined) {
+      process.env.CODEX_HOME = previous;
+    }
   }
 }
 

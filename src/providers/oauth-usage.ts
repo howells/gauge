@@ -1,6 +1,10 @@
 import { z } from "zod";
 
-import { ClaudeLimitSchema, windowFromLimits } from "./upstream-schemas.js";
+import {
+  ClaudeLimitSchema,
+  scopedClaudeLimits,
+  windowFromLimits,
+} from "./upstream-schemas.js";
 
 /**
  * Read a Claude account's usage from its Claude Code OAuth token.
@@ -37,12 +41,12 @@ const Window = z
 
 const UsageResponse = z.object({
   five_hour: Window,
-  seven_day: Window,
   limits: z
     .array(ClaudeLimitSchema)
     .max(100)
     .nullish()
     .transform((value) => value ?? undefined),
+  seven_day: Window,
 });
 
 const ProfileResponse = z.object({
@@ -71,6 +75,12 @@ export interface OAuthUsageReading {
   email: string | null;
   plan: string | null;
   session: OAuthUsageWindow | null;
+  /** Model-scoped weekly sub-limits (Fable, for instance). */
+  scoped: {
+    model: string;
+    resetsAt: string | null;
+    usedPercent: number;
+  }[];
   weekly: OAuthUsageWindow | null;
 }
 
@@ -84,12 +94,24 @@ export interface OAuthUsageReading {
  * the way up to the last step.
  */
 export function planFromRateLimitTier(tier: string | null): string | null {
-  if (!tier) return null;
-  if (tier.includes("max_20x")) return "max_20x";
-  if (tier.includes("max_5x")) return "max_5x";
-  if (tier.includes("max")) return "max";
-  if (tier.includes("pro")) return "pro";
-  if (tier.includes("free")) return "free";
+  if (!tier) {
+    return null;
+  }
+  if (tier.includes("max_20x")) {
+    return "max_20x";
+  }
+  if (tier.includes("max_5x")) {
+    return "max_5x";
+  }
+  if (tier.includes("max")) {
+    return "max";
+  }
+  if (tier.includes("pro")) {
+    return "pro";
+  }
+  if (tier.includes("free")) {
+    return "free";
+  }
   return null;
 }
 
@@ -109,7 +131,9 @@ function toWindow(
     | null
     | undefined
 ): OAuthUsageWindow | null {
-  if (!value || typeof value.utilization !== "number") return null;
+  if (!value || typeof value.utilization !== "number") {
+    return null;
+  }
   return { resetsAt: value.resets_at ?? null, usedPercent: value.utilization };
 }
 
@@ -131,18 +155,20 @@ export type OAuthFetch = (
  */
 export async function fetchOAuthUsage(
   accessToken: string,
-  fetchImpl: OAuthFetch = globalThis.fetch as unknown as OAuthFetch
+  fetchImpl: OAuthFetch = globalThis.fetch
 ): Promise<OAuthUsageReading | null> {
   const headers = {
-    "anthropic-beta": OAUTH_BETA,
     Accept: "application/json",
     Authorization: `Bearer ${accessToken}`,
+    "anthropic-beta": OAUTH_BETA,
   };
   try {
     const usageRes = await fetchImpl(`${OAUTH_BASE}/api/oauth/usage`, {
       headers,
     });
-    if (!usageRes.ok) return null;
+    if (!usageRes.ok) {
+      return null;
+    }
     const usage = UsageResponse.parse(await usageRes.json());
     // Same fallback as the cookie path: the named window wins, and the
     // `limits` entry for the same horizon takes over when the legacy field is
@@ -157,7 +183,14 @@ export async function fetchOAuthUsage(
     };
     const session = toWindow(usage.five_hour) ?? fromLimits("session");
     const weekly = toWindow(usage.seven_day) ?? fromLimits("weekly_all");
-    if (!session && !weekly) return null;
+    const scoped = scopedClaudeLimits(usage.limits).map((limit) => ({
+      model: limit.model,
+      resetsAt: limit.resets_at,
+      usedPercent: limit.utilization,
+    }));
+    if (!session && !weekly && scoped.length === 0) {
+      return null;
+    }
 
     // The profile is what names the plan; usage alone cannot. A failure here
     // costs the label and not the reading.
@@ -177,7 +210,7 @@ export async function fetchOAuthUsage(
     } catch {
       // Label only; the windows above are the reading that matters.
     }
-    return { email, plan, session, weekly };
+    return { email, plan, scoped, session, weekly };
   } catch {
     return null;
   }

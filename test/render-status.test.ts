@@ -17,11 +17,11 @@ function view(overrides: {
   renewsAt?: string | null;
   resetsApplicable?: number;
   resetsAvailable?: number;
-  windows: Array<{
+  windows: {
     kind: "session" | "weekly" | "included" | "on_demand";
     resetsAt: string | null;
     usedPercent: number;
-  }>;
+  }[];
 }): StatusAccountView {
   return {
     error: null,
@@ -88,8 +88,8 @@ test("a countdown that lands on the renewal instant is not said twice", () => {
   const renewal = "2026-09-21T16:31:30Z";
   const output = render(
     view({
-      provider: "cursor",
       plan: "Cursor Enterprise",
+      provider: "cursor",
       renewsAt: renewal,
       windows: [
         { kind: "included", resetsAt: renewal, usedPercent: 56.7 },
@@ -108,8 +108,8 @@ test("an idle window on the renewal instant still names the date", () => {
   const renewal = "2026-09-19T19:52:00Z";
   const output = render(
     view({
-      provider: "cursor",
       plan: "Cursor Pro",
+      provider: "cursor",
       renewsAt: renewal,
       windows: [{ kind: "included", resetsAt: renewal, usedPercent: 0 }],
     })
@@ -157,10 +157,10 @@ test("a blocked codex cell names its applicable resets instead of the wait", () 
   // fact the cell exists to carry.
   const output = render(
     view({
-      provider: "codex",
       plan: "Pro 20x",
-      resetsAvailable: 2,
+      provider: "codex",
       resetsApplicable: 1,
+      resetsAvailable: 2,
       windows: [
         {
           kind: "weekly",
@@ -176,10 +176,10 @@ test("a blocked codex cell names its applicable resets instead of the wait", () 
 test("a blocked cell without resets still counts down", () => {
   const output = render(
     view({
-      provider: "codex",
       plan: "Pro 20x",
-      resetsAvailable: 0,
+      provider: "codex",
       resetsApplicable: 0,
+      resetsAvailable: 0,
       windows: [
         {
           kind: "weekly",
@@ -195,10 +195,10 @@ test("a blocked cell without resets still counts down", () => {
 test("the detail line names the resets an account holds", () => {
   const output = render(
     view({
-      provider: "codex",
       plan: "Pro 20x",
-      resetsAvailable: 3,
+      provider: "codex",
       resetsApplicable: 0,
+      resetsAvailable: 3,
       windows: [
         { kind: "session", resetsAt: null, usedPercent: 0 },
         { kind: "weekly", resetsAt: null, usedPercent: 40 },
@@ -211,10 +211,10 @@ test("the detail line names the resets an account holds", () => {
 test("a holding of zero resets draws nothing", () => {
   const output = render(
     view({
-      provider: "codex",
       plan: "Pro 20x",
-      resetsAvailable: 0,
+      provider: "codex",
       resetsApplicable: 0,
+      resetsAvailable: 0,
       windows: [{ kind: "weekly", resetsAt: null, usedPercent: 40 }],
     })
   );

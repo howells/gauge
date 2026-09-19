@@ -26,7 +26,11 @@ export function atomicReplace(
   const close = options.close ?? fs.closeSync;
   const fsync = options.fsync ?? fs.fsyncSync;
   const unlink = options.unlink ?? fs.unlinkSync;
-  const write = options.write ?? ((fd, value) => fs.writeFileSync(fd, value));
+  const write =
+    options.write ??
+    ((fd, value) => {
+      fs.writeFileSync(fd, value);
+    });
   let descriptor: number | null = null;
 
   try {
@@ -47,7 +51,8 @@ export function atomicReplace(
       if (!isMissingPathError(cleanupError)) {
         throw new AggregateError(
           [error, cleanupError],
-          "Atomic replacement and temporary-file cleanup both failed."
+          "Atomic replacement and temporary-file cleanup both failed.",
+          { cause: cleanupError }
         );
       }
     }

@@ -7,7 +7,7 @@ import { after, before, test } from "node:test";
 import { fileURLToPath } from "node:url";
 
 const BASELINE_COMMIT = "45f9cb571107a8e568fc4ce46de6cc9339cd50ea";
-const root = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..");
+const root = path.resolve(import.meta.dirname, "..");
 let buildRoot = "";
 
 before(() => {
@@ -28,7 +28,7 @@ before(() => {
   const compile = spawnSync(
     path.join(root, "node_modules", ".bin", "tsc"),
     ["-p", path.join(buildRoot, "tsconfig.json"), "--types", "node"],
-    { cwd: buildRoot, encoding: "utf8" }
+    { cwd: buildRoot, encoding: "utf-8" }
   );
   assert.equal(compile.status, 0, compile.stderr);
 });
@@ -56,7 +56,7 @@ test("v2.0.1 fixed point executes help, discovery, reads, aliases, and errors", 
   const describe = parseJson(runV2(["describe", "--format", "json"]));
   assert.equal(describe.command, "describe");
   assert.deepEqual(
-    (describe.data as { commands: Array<{ command: string }> }).commands.map(
+    (describe.data as { commands: { command: string }[] }).commands.map(
       ({ command }) => command
     ),
     ["status", "list", "describe", "add", "refresh", "remove"]
@@ -103,7 +103,7 @@ function runV2(args: string[]): {
       [path.join(buildRoot, "dist", "cli.js"), ...args],
       {
         cwd,
-        encoding: "utf8",
+        encoding: "utf-8",
         env: { ...process.env, HOME: home },
       }
     );

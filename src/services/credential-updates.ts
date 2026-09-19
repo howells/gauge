@@ -3,10 +3,8 @@ import { z } from "zod";
 import { AccountIdSchema } from "../domain/account.js";
 import type { PendingCredentialUpdate } from "../domain/snapshot.js";
 import { AccountRepository } from "../persistence/account-repository.js";
-import {
-  type CredentialRefreshPolicy,
-  ExternalCredentialWriter,
-} from "../persistence/external-credential-writer.js";
+import { ExternalCredentialWriter } from "../persistence/external-credential-writer.js";
+import type { CredentialRefreshPolicy } from "../persistence/external-credential-writer.js";
 import { CLIError } from "../security.js";
 import { parseStorageStateObject } from "../storage-state.js";
 
@@ -47,7 +45,9 @@ export function applyPendingCredentialUpdates(
   const storageUpdates = updates.filter(
     (update) => update.kind === "storage-state"
   );
-  if (storageUpdates.length === 0 || options.policy === "never") return;
+  if (storageUpdates.length === 0 || options.policy === "never") {
+    return;
+  }
   const repository = new AccountRepository({ dataRoot: options.dataRoot });
   for (const pending of storageUpdates) {
     const id = AccountIdSchema.safeParse(pending.sourceId);

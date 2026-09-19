@@ -12,13 +12,15 @@ test("migration preflight permits only describe, doctor, and migrate with legacy
   fs.writeFileSync(
     path.join(root, "work.json"),
     JSON.stringify({
-      name: "work",
       addedAt: "2026-01-01T00:00:00.000Z",
+      name: "work",
     })
   );
 
   for (const command of ["describe", "doctor", "migrate"] as const) {
-    assert.doesNotThrow(() => assertStateCommandAllowed(command, root));
+    assert.doesNotThrow(() => {
+      assertStateCommandAllowed(command, root);
+    });
   }
   for (const command of [
     "status",
@@ -28,7 +30,9 @@ test("migration preflight permits only describe, doctor, and migrate with legacy
     "remove",
   ] as const) {
     assert.throws(
-      () => assertStateCommandAllowed(command, root),
+      () => {
+        assertStateCommandAllowed(command, root);
+      },
       (error: unknown) => {
         assert.ok(error instanceof CLIError);
         assert.equal(error.code, "MIGRATION_REQUIRED");
@@ -48,7 +52,9 @@ test("migration preflight is read-only for missing data roots", () => {
   const parent = fs.mkdtempSync(path.join(os.tmpdir(), "gauge-preflight-"));
   const root = path.join(parent, ".gauge");
 
-  assert.doesNotThrow(() => assertStateCommandAllowed("status", root));
+  assert.doesNotThrow(() => {
+    assertStateCommandAllowed("status", root);
+  });
   assert.equal(fs.existsSync(root), false);
 });
 
@@ -58,5 +64,7 @@ test("migration preflight ignores v3 metadata at the data root", () => {
     fs.writeFileSync(path.join(root, filename), "{}\n", { mode: 0o600 });
   }
 
-  assert.doesNotThrow(() => assertStateCommandAllowed("list", root));
+  assert.doesNotThrow(() => {
+    assertStateCommandAllowed("list", root);
+  });
 });

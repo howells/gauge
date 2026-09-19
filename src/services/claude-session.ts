@@ -32,7 +32,7 @@ export interface ClaudeSession {
 
 function readJson(file: string): unknown {
   try {
-    return JSON.parse(fs.readFileSync(file, "utf8"));
+    return JSON.parse(fs.readFileSync(file, "utf-8"));
   } catch {
     return null;
   }
@@ -50,10 +50,12 @@ function keychainAccount(): string | null {
     "security",
     ["find-generic-password", "-s", SERVICE],
     {
-      encoding: "utf8",
+      encoding: "utf-8",
     }
   );
-  if (found.status !== 0) return null;
+  if (found.status !== 0) {
+    return null;
+  }
   return /"acct"<blob>="([^"]*)"/u.exec(found.stdout)?.[1] ?? null;
 }
 
@@ -61,21 +63,31 @@ function keychainAccount(): string | null {
 export function readClaudeSession(
   homeDir: string = os.homedir()
 ): ClaudeSession | null {
-  if (process.platform !== "darwin") return null;
+  if (process.platform !== "darwin") {
+    return null;
+  }
   const account = keychainAccount();
-  if (!account) return null;
+  if (!account) {
+    return null;
+  }
   const secret = spawnSync(
     "security",
     ["find-generic-password", "-s", SERVICE, "-w"],
-    { encoding: "utf8" }
+    { encoding: "utf-8" }
   );
-  if (secret.status !== 0) return null;
+  if (secret.status !== 0) {
+    return null;
+  }
   const credentials = secret.stdout.trim();
-  if (credentials === "") return null;
+  if (credentials === "") {
+    return null;
+  }
   const profile = record(
     record(readJson(path.join(homeDir, ".claude.json")))?.oauthAccount
   );
-  if (!profile) return null;
+  if (!profile) {
+    return null;
+  }
   return { credentials, keychainAccount: account, profile };
 }
 
@@ -184,7 +196,9 @@ export function claudeSwitchesWithin(
   maxAgeMs: number
 ): LastClaudeSwitch[] {
   const raw = readJson(switchLog(dataDir));
-  if (!Array.isArray(raw)) return [];
+  if (!Array.isArray(raw)) {
+    return [];
+  }
   const cutoff = now.getTime() - maxAgeMs;
   const byIdentity = new Map<string, LastClaudeSwitch>();
   for (const item of raw) {
@@ -194,7 +208,9 @@ export function claudeSwitchesWithin(
     const uuid =
       typeof entry?.previousUuid === "string" ? entry.previousUuid : null;
     const iso = typeof entry?.switchedAt === "string" ? entry.switchedAt : null;
-    if (!iso) continue;
+    if (!iso) {
+      continue;
+    }
     const switchedAt = new Date(iso);
     const time = switchedAt.getTime();
     if (!Number.isFinite(time) || time < cutoff || time > now.getTime()) {
@@ -274,7 +290,7 @@ export function switchClaudeSession(
       "-w",
       credentials,
     ],
-    { encoding: "utf8" }
+    { encoding: "utf-8" }
   );
   if (written.status !== 0) {
     throw new Error(
@@ -312,7 +328,9 @@ export function claudeAccessTokenFor(
   liveAccountName?: string
 ): string | null {
   const fromSession = (session: ClaudeSession | null): string | null => {
-    if (!session) return null;
+    if (!session) {
+      return null;
+    }
     try {
       const parsed = record(JSON.parse(session.credentials));
       const oauth = record(parsed?.claudeAiOauth);
@@ -324,7 +342,9 @@ export function claudeAccessTokenFor(
   };
   if (liveAccountName === name) {
     const live = fromSession(readClaudeSession());
-    if (live) return live;
+    if (live) {
+      return live;
+    }
   }
   return fromSession(
     record(readJson(sessionFile(dataDir, name))) as ClaudeSession | null

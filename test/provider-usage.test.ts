@@ -67,32 +67,32 @@ test("Codex reads only the frontier rate limit and ignores model pools", async (
   globalThis.fetch = async () =>
     new Response(
       JSON.stringify({
-        plan_type: "pro",
-        rate_limit: {
-          primary_window: {
-            used_percent: 71,
-            limit_window_seconds: 10_080 * 60,
-            reset_at: 1_800_000_000,
-          },
-        },
         additional_rate_limits: [
           {
             limit_name: "GPT-5.3-Codex-Spark",
             metered_feature: "codex_bengalfox",
             rate_limit: {
               primary_window: {
-                used_percent: 37,
                 limit_window_seconds: 300 * 60,
                 reset_at: 1_700_000_000,
+                used_percent: 37,
               },
               secondary_window: {
-                used_percent: 12,
                 limit_window_seconds: 10_080 * 60,
                 reset_at: 1_800_000_000,
+                used_percent: 12,
               },
             },
           },
         ],
+        plan_type: "pro",
+        rate_limit: {
+          primary_window: {
+            limit_window_seconds: 10_080 * 60,
+            reset_at: 1_800_000_000,
+            used_percent: 71,
+          },
+        },
       }),
       { status: 200 }
     );
@@ -109,8 +109,11 @@ test("Codex reads only the frontier rate limit and ignores model pools", async (
     assert.equal(accounts[0]?.monthly, null);
   } finally {
     globalThis.fetch = originalFetch;
-    if (originalHome === undefined) delete process.env.CODEX_HOME;
-    else process.env.CODEX_HOME = originalHome;
+    if (originalHome === undefined) {
+      delete process.env.CODEX_HOME;
+    } else {
+      process.env.CODEX_HOME = originalHome;
+    }
   }
 });
 
@@ -132,9 +135,9 @@ test("Codex carries usage-limit reset credits through to the account reading", a
         plan_type: "pro",
         rate_limit: {
           primary_window: {
-            used_percent: 100,
             limit_window_seconds: 10_080 * 60,
             reset_at: 1_800_000_000,
+            used_percent: 100,
           },
         },
         rate_limit_reset_credits: {
@@ -153,8 +156,11 @@ test("Codex carries usage-limit reset credits through to the account reading", a
     assert.equal(account?.resetsApplicable, 1);
   } finally {
     globalThis.fetch = originalFetch;
-    if (originalHome === undefined) delete process.env.CODEX_HOME;
-    else process.env.CODEX_HOME = originalHome;
+    if (originalHome === undefined) {
+      delete process.env.CODEX_HOME;
+    } else {
+      process.env.CODEX_HOME = originalHome;
+    }
   }
 });
 
@@ -185,8 +191,11 @@ test("Codex accounts without a reset-credits block read as holding none", async 
     assert.equal(account?.resetsApplicable, undefined);
   } finally {
     globalThis.fetch = originalFetch;
-    if (originalHome === undefined) delete process.env.CODEX_HOME;
-    else process.env.CODEX_HOME = originalHome;
+    if (originalHome === undefined) {
+      delete process.env.CODEX_HOME;
+    } else {
+      process.env.CODEX_HOME = originalHome;
+    }
   }
 });
 
@@ -262,12 +271,12 @@ test("explicit raw-cookie files accept cookie syntax but reject controls", () =>
 test("Cursor meters included usage and on-demand as separate things", () => {
   const usage = {
     individualUsage: {
+      onDemand: { limit: 100, used: 25 },
       plan: {
         apiPercentUsed: 20,
         autoPercentUsed: 40,
         totalPercentUsed: 60,
       },
-      onDemand: { used: 25, limit: 100 },
     },
   };
 
@@ -281,10 +290,10 @@ test("Cursor reports the shared pool a seat with no on-demand limit draws from",
   // here returned the included figure twice and never reached the pool.
   const usage = {
     individualUsage: {
-      plan: { autoPercentUsed: 0, apiPercentUsed: 0, totalPercentUsed: 0 },
-      onDemand: { used: 0, limit: null },
+      onDemand: { limit: null, used: 0 },
+      plan: { apiPercentUsed: 0, autoPercentUsed: 0, totalPercentUsed: 0 },
     },
-    teamUsage: { onDemand: { used: 293_417, limit: 500_000 } },
+    teamUsage: { onDemand: { limit: 500_000, used: 293_417 } },
   };
 
   assert.equal(cursorUsagePercent(usage), 0);
@@ -296,8 +305,8 @@ test("Cursor draws no on-demand window when nothing meters one", () => {
   assert.equal(
     cursorSecondaryPercent({
       individualUsage: {
+        onDemand: { enabled: false, limit: null, used: 0 },
         plan: { totalPercentUsed: 100 },
-        onDemand: { enabled: false, used: 0, limit: null },
       },
       teamUsage: {},
     }),
@@ -327,7 +336,7 @@ test("Codex never-refresh policy tries the existing token once without writes", 
       JSON.stringify({
         plan_type: "pro",
         rate_limit: {
-          primary_window: { used_percent: 20, reset_at: 1_800_000_000 },
+          primary_window: { reset_at: 1_800_000_000, used_percent: 20 },
         },
       }),
       { status: 200 }
@@ -344,11 +353,14 @@ test("Codex never-refresh policy tries the existing token once without writes", 
       urls.some((url) => url.includes("auth.openai.com")),
       false
     );
-    assert.equal(fs.readFileSync(authPath, "utf8"), auth);
+    assert.equal(fs.readFileSync(authPath, "utf-8"), auth);
   } finally {
     globalThis.fetch = originalFetch;
-    if (originalHome === undefined) delete process.env.CODEX_HOME;
-    else process.env.CODEX_HOME = originalHome;
+    if (originalHome === undefined) {
+      delete process.env.CODEX_HOME;
+    } else {
+      process.env.CODEX_HOME = originalHome;
+    }
   }
 });
 
@@ -387,15 +399,18 @@ test("Codex refresh returns a pending update without provider-side writes", asyn
       onCredentialUpdate: (update) => updates.push(update),
     });
     assert.equal(updates.length, 1);
-    assert.equal(fs.readFileSync(authPath, "utf8"), auth);
+    assert.equal(fs.readFileSync(authPath, "utf-8"), auth);
     assert.deepEqual(
       Object.keys(updates[0] as object).sort(),
       ["accessToken", "homePath", "lastRefresh", "refreshToken"].sort()
     );
   } finally {
     globalThis.fetch = originalFetch;
-    if (originalHome === undefined) delete process.env.CODEX_HOME;
-    else process.env.CODEX_HOME = originalHome;
+    if (originalHome === undefined) {
+      delete process.env.CODEX_HOME;
+    } else {
+      process.env.CODEX_HOME = originalHome;
+    }
   }
 });
 
@@ -445,7 +460,7 @@ test("a refused Codex token is refreshed and retried rather than reported", asyn
     return new Response(
       JSON.stringify({
         plan_type: "pro",
-        rate_limit: { primary_window: { used_percent: 12, reset_at: 1 } },
+        rate_limit: { primary_window: { reset_at: 1, used_percent: 12 } },
       }),
       { status: 200 }
     );
@@ -466,10 +481,13 @@ test("a refused Codex token is refreshed and retried rather than reported", asyn
     assert.equal(updates.length, 1);
   } finally {
     globalThis.fetch = originalFetch;
-    if (originalHome === undefined) delete process.env.CODEX_HOME;
-    else process.env.CODEX_HOME = originalHome;
+    if (originalHome === undefined) {
+      delete process.env.CODEX_HOME;
+    } else {
+      process.env.CODEX_HOME = originalHome;
+    }
   }
-  assert.match(fs.readFileSync(authPath, "utf8"), /expired-access/u);
+  assert.match(fs.readFileSync(authPath, "utf-8"), /expired-access/u);
 });
 
 test("a refused Codex token is retried once, not repeatedly", async () => {
@@ -497,8 +515,11 @@ test("a refused Codex token is retried once, not repeatedly", async () => {
     assert.equal(urls.length, 3);
   } finally {
     globalThis.fetch = originalFetch;
-    if (originalHome === undefined) delete process.env.CODEX_HOME;
-    else process.env.CODEX_HOME = originalHome;
+    if (originalHome === undefined) {
+      delete process.env.CODEX_HOME;
+    } else {
+      process.env.CODEX_HOME = originalHome;
+    }
   }
 });
 
@@ -527,8 +548,11 @@ test("never-refresh forbids the retry rotation too", async () => {
     );
   } finally {
     globalThis.fetch = originalFetch;
-    if (originalHome === undefined) delete process.env.CODEX_HOME;
-    else process.env.CODEX_HOME = originalHome;
+    if (originalHome === undefined) {
+      delete process.env.CODEX_HOME;
+    } else {
+      process.env.CODEX_HOME = originalHome;
+    }
   }
 });
 
@@ -556,8 +580,11 @@ test("Codex rejects oversized provider responses without exposing their body", a
     assert.doesNotMatch(accounts[0]?.error ?? "", /upstream-secret-body/);
   } finally {
     globalThis.fetch = originalFetch;
-    if (originalHome === undefined) delete process.env.CODEX_HOME;
-    else process.env.CODEX_HOME = originalHome;
+    if (originalHome === undefined) {
+      delete process.env.CODEX_HOME;
+    } else {
+      process.env.CODEX_HOME = originalHome;
+    }
   }
 });
 
@@ -599,7 +626,10 @@ test("Codex cancels a streaming response as soon as the byte limit is crossed", 
     assert.equal(pulls, 2);
   } finally {
     globalThis.fetch = originalFetch;
-    if (originalHome === undefined) delete process.env.CODEX_HOME;
-    else process.env.CODEX_HOME = originalHome;
+    if (originalHome === undefined) {
+      delete process.env.CODEX_HOME;
+    } else {
+      process.env.CODEX_HOME = originalHome;
+    }
   }
 });

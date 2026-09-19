@@ -5,9 +5,9 @@ import { CLIError } from "../src/security.js";
 import { selectConfiguredAccounts } from "../src/services/account-selection.js";
 
 const accounts = [
-  { id: { provider: "claude", name: "work" }, order: 0 },
-  { id: { provider: "codex", name: "work" }, order: 1 },
-  { id: { provider: "cursor", name: "personal" }, order: 2 },
+  { id: { name: "work", provider: "claude" }, order: 0 },
+  { id: { name: "work", provider: "codex" }, order: 1 },
+  { id: { name: "personal", provider: "cursor" }, order: 2 },
 ] as const;
 
 test("provider filtering selects configured accounts before acquisition", () => {
@@ -16,8 +16,8 @@ test("provider filtering selects configured accounts before acquisition", () => 
   ]);
   assert.deepEqual(
     selectConfiguredAccounts(accounts, {
-      provider: "cursor",
       account: "personal",
+      provider: "cursor",
     }),
     [accounts[2]]
   );

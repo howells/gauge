@@ -1,4 +1,5 @@
-import { COMMAND_SPECS, type CommandSpec } from "./commands/specs.js";
+import { COMMAND_SPECS } from "./commands/specs.js";
+import type { CommandSpec } from "./commands/specs.js";
 import { COMMAND_WIRE_JSON_SCHEMAS } from "./commands/wire-schemas.js";
 
 /** Return metadata-derived schemas for all (or a specific) CLI command. */
@@ -8,15 +9,12 @@ export function describeCommands(
   const commands = COMMAND_SPECS.filter((spec) =>
     matchesCommand(spec, commandName)
   ).map((spec) => ({
-    command: spec.name,
     aliases: spec.aliases,
-    root_alias: spec.rootAlias,
-    kind: hasWriteEffect(spec) ? "mutating" : "read",
-    summary: spec.summary,
-    examples: spec.examples,
     arguments: spec.arguments,
+    command: spec.name,
+    examples: spec.examples,
+    kind: hasWriteEffect(spec) ? "mutating" : "read",
     options: spec.options,
-    side_effects: spec.sideEffects,
     raw_payload: {
       accepts_json_option: spec.options.some((option) => option.key === "json"),
       accepts_stdin: spec.options.some((option) => option.key === "inputFile"),
@@ -27,24 +25,27 @@ export function describeCommands(
       supports_fields: spec.output.supportsFields,
       supports_ndjson: spec.output.supportsNdjson,
     },
+    root_alias: spec.rootAlias,
     safety: {
       dry_run: spec.safety.dryRun,
       sanitizes_remote_strings: spec.safety.sanitizesRemoteStrings,
     },
+    side_effects: spec.sideEffects,
+    summary: spec.summary,
   }));
 
   return {
+    commands,
     generated_at: new Date().toISOString(),
-    security_posture:
-      "The agent is not a trusted operator. Use --dry-run for mutating commands, use --fields on reads, and keep output paths inside the current working directory.",
+    global_options: COMMAND_SPECS.find((spec) => spec.rootAlias)?.options ?? [],
     runtime: {
-      non_tty_default_format: "json",
       headless_auth: true,
       minimum_node_major: 20,
+      non_tty_default_format: "json",
       supported_surfaces: ["binary", "json", "ndjson"],
     },
-    global_options: COMMAND_SPECS.find((spec) => spec.rootAlias)?.options ?? [],
-    commands,
+    security_posture:
+      "The agent is not a trusted operator. Use --dry-run for mutating commands, use --fields on reads, and keep output paths inside the current working directory.",
   };
 }
 

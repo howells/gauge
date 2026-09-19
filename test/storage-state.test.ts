@@ -10,25 +10,22 @@ test("accepts a complete documented Playwright storage state", () => {
   const state = {
     cookies: [
       {
-        name: "session",
-        value: "secret",
         domain: ".example.com",
-        path: "/",
         expires: 1_800_000_000,
         httpOnly: true,
-        secure: true,
-        sameSite: "Lax",
+        name: "session",
         partitionKey: "https://example.com",
+        path: "/",
+        sameSite: "Lax",
+        secure: true,
+        value: "secret",
       },
     ],
     origins: [
       {
-        origin: "https://example.com",
-        localStorage: [{ name: "theme", value: "dark" }],
         indexedDB: [
           {
             name: "cache",
-            version: 1,
             stores: [
               {
                 name: "entries",
@@ -45,8 +42,11 @@ test("accepts a complete documented Playwright storage state", () => {
                 ],
               },
             ],
+            version: 1,
           },
         ],
+        localStorage: [{ name: "theme", value: "dark" }],
+        origin: "https://example.com",
       },
     ],
   } as const;
@@ -62,14 +62,14 @@ test("parses JSON strings through a distinct typed entry point", () => {
 
 test("rejects malformed documented fields and top-level junk", () => {
   const cookie = {
-    name: "session",
-    value: "secret",
     domain: ".example.com",
-    path: "/",
     expires: -1,
     httpOnly: true,
-    secure: true,
+    name: "session",
+    path: "/",
     sameSite: "Lax",
+    secure: true,
+    value: "secret",
   };
   const invalidStates = [
     // The top-level wrapper is gauge's own contract and stays strict.
@@ -81,8 +81,8 @@ test("rejects malformed documented fields and top-level junk", () => {
 
   for (const state of invalidStates) {
     assert.throws(() => parseStorageStateObject(state), {
-      name: "CLIError",
       message: /not valid Playwright state/,
+      name: "CLIError",
     });
   }
 });
@@ -94,22 +94,22 @@ test("tolerates and preserves Playwright-owned unknown keys", () => {
   const state = {
     cookies: [
       {
-        name: "session",
-        value: "secret",
+        _crHasCrossSiteAncestor: true,
         domain: ".example.com",
-        path: "/",
         expires: 1_800_000_000,
         httpOnly: true,
-        secure: true,
+        name: "session",
+        path: "/",
         sameSite: "Lax" as const,
-        _crHasCrossSiteAncestor: true,
+        secure: true,
+        value: "secret",
       },
     ],
     origins: [
       {
-        origin: "https://example.com",
-        localStorage: [{ name: "theme", value: "dark", futureField: 1 }],
         futureOriginField: "keep",
+        localStorage: [{ futureField: 1, name: "theme", value: "dark" }],
+        origin: "https://example.com",
       },
     ],
   };

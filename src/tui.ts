@@ -10,6 +10,7 @@ import {
   runRefreshCommand,
   runStatusCommand,
 } from "./commands.js";
+import type { Provider } from "./domain/account.js";
 import { assertSafeName, getDataDir } from "./paths.js";
 import {
   captureClaudeSession,
@@ -26,10 +27,10 @@ import {
 import { claudeAccountNamesByUuid } from "./services/machine-logins.js";
 import {
   renderStatusDashboard,
-  type StatusAccountView,
   statusProviderOrder,
   statusRowOrder,
 } from "./services/render-status.js";
+import type { StatusAccountView } from "./services/render-status.js";
 import {
   codexSwitchTargets,
   switchCodexLogin,
@@ -72,15 +73,21 @@ function brokenAccounts(data: unknown): BrokenAccount[] {
     return [];
   }
   const { accounts } = data as { accounts?: unknown };
-  if (!Array.isArray(accounts)) return [];
+  if (!Array.isArray(accounts)) {
+    return [];
+  }
   return accounts.flatMap((account) => {
-    if (typeof account !== "object" || account === null) return [];
+    if (typeof account !== "object" || account === null) {
+      return [];
+    }
     const entry = account as {
       error?: unknown;
       name?: unknown;
       provider?: unknown;
     };
-    if (!entry.error) return [];
+    if (!entry.error) {
+      return [];
+    }
     if (typeof entry.name !== "string" || typeof entry.provider !== "string") {
       return [];
     }
@@ -172,13 +179,13 @@ export async function runTUI(): Promise<void> {
   let broken: BrokenAccount[] = [];
   let targets: SwitchTarget[] = [];
   let rowLabels: string[] = [];
-  let columns: ("claude" | "codex" | "cursor")[] = [];
+  let columns: Provider[] = [];
   let row = 0;
   let column = 0;
 
   const writeView = (content: string): void => {
     if (previousLineCount > 0) {
-      process.stdout.write(`\x1b[${previousLineCount}A\x1b[0J`);
+      process.stdout.write(`\u001B[${previousLineCount}A\u001B[0J`);
     }
     process.stdout.write(content);
     previousLineCount = (content.match(/\n/g) ?? []).length;
@@ -200,7 +207,9 @@ export async function runTUI(): Promise<void> {
 
   /** Repaint from what is already known — no network, no flicker. */
   const draw = (): void => {
-    if (!snapshot) return;
+    if (!snapshot) {
+      return;
+    }
     const label = rowLabels[row];
     const provider = columns[column];
     const selected = label && provider ? { label, provider } : undefined;
@@ -230,8 +239,12 @@ export async function runTUI(): Promise<void> {
     // cell while Enter acts on another.
     rowLabels = statusRowOrder(views, new Date());
     columns = statusProviderOrder(views);
-    if (row >= rowLabels.length) row = Math.max(0, rowLabels.length - 1);
-    if (column >= columns.length) column = Math.max(0, columns.length - 1);
+    if (row >= rowLabels.length) {
+      row = Math.max(0, rowLabels.length - 1);
+    }
+    if (column >= columns.length) {
+      column = Math.max(0, columns.length - 1);
+    }
     // Capture on sight, so simply using the tools builds the set that can later
     // be switched to and nobody has to remember a capture step.
     captureSignedInClaude();
@@ -271,9 +284,13 @@ export async function runTUI(): Promise<void> {
   const captureSignedInClaude = (): void => {
     const session = readClaudeSession();
     const uuid = session?.profile.accountUuid;
-    if (!session || typeof uuid !== "string") return;
+    if (!session || typeof uuid !== "string") {
+      return;
+    }
     const name = claudeAccountNamesByUuid(getDataDir()).get(uuid);
-    if (!name) return;
+    if (!name) {
+      return;
+    }
     try {
       captureClaudeSession(getDataDir(), name, session);
     } catch {
@@ -380,7 +397,9 @@ export async function runTUI(): Promise<void> {
     }
     process.stdout.write(`\n   ${chalk.dim("any key to continue")}`);
     await new Promise<void>((resolve) =>
-      process.stdin.once("keypress", () => resolve())
+      process.stdin.once("keypress", () => {
+        resolve();
+      })
     );
     previousLineCount = 0;
     await reload();
@@ -400,19 +419,25 @@ export async function runTUI(): Promise<void> {
   ): Promise<void> => {
     if (provider === "codex") {
       const remedy = codexLoginRemedy(name);
-      if (!remedy) throw new Error(`No Codex home for "${name}".`);
+      if (!remedy) {
+        throw new Error(`No Codex home for "${name}".`);
+      }
       const login = spawnSync("codex", ["login"], {
         env: { ...process.env, CODEX_HOME: remedy.home },
         stdio: "inherit",
       });
-      if (login.error) throw login.error;
+      if (login.error) {
+        throw login.error;
+      }
       if (login.status !== 0) {
         throw new Error(`codex login exited ${login.status}`);
       }
       return;
     }
     const login = spawnSync("claude", ["auth", "login"], { stdio: "inherit" });
-    if (login.error) throw login.error;
+    if (login.error) {
+      throw login.error;
+    }
     if (login.status !== 0) {
       throw new Error(`claude auth login exited ${login.status}`);
     }
@@ -468,15 +493,21 @@ export async function runTUI(): Promise<void> {
           return;
         }
         if (key.name === "backspace") {
-          if (typed.pop() !== undefined) process.stdout.write("\b \b");
+          if (typed.pop() !== undefined) {
+            process.stdout.write("\b \b");
+          }
           return;
         }
         // Printable single characters only. A control byte or an arrow key's
         // escape sequence must never reach the answer: both would be invisible
         // in the echo and would then be validated as part of a name.
         const character = value ?? key.sequence ?? "";
-        if (key.ctrl || key.meta || character.length !== 1) return;
-        if (character < " " || character === "\x7f") return;
+        if (key.ctrl || key.meta || character.length !== 1) {
+          return;
+        }
+        if (character < " " || character === "\u007F") {
+          return;
+        }
         typed.push(character);
         process.stdout.write(character);
       };
@@ -502,8 +533,12 @@ export async function runTUI(): Promise<void> {
       const answer = await ask(
         `   ${chalk.dim(`app claude/codex/cursor [${preset}]:`)} `
       );
-      if (answer === null) return null;
-      if (answer === "") return preset;
+      if (answer === null) {
+        return null;
+      }
+      if (answer === "") {
+        return preset;
+      }
       const provider = answer.toLowerCase();
       if (
         provider === "claude" ||
@@ -540,9 +575,13 @@ export async function runTUI(): Promise<void> {
   const prepareCodexHome = async (name: string): Promise<string | null> => {
     const managed = managedCodexHome(getDataDir(), name);
     const typed = await ask(`   ${chalk.dim(`codex home [${managed}]:`)} `);
-    if (typed === null) return null;
+    if (typed === null) {
+      return null;
+    }
     const home = typed === "" ? managed : resolveCodexHomeInput(typed);
-    if (codexHomeHasLogin(home)) return home;
+    if (codexHomeHasLogin(home)) {
+      return home;
+    }
 
     createCodexHome(home);
     process.stdout.write(
@@ -552,7 +591,9 @@ export async function runTUI(): Promise<void> {
       env: { ...process.env, CODEX_HOME: home },
       stdio: "inherit",
     });
-    if (login.error) throw login.error;
+    if (login.error) {
+      throw login.error;
+    }
     if (login.status !== 0) {
       throw new Error(`codex login exited ${login.status}`);
     }
@@ -580,10 +621,14 @@ export async function runTUI(): Promise<void> {
     column: "claude" | "codex" | "cursor" | undefined
   ): Promise<string> => {
     const provider = await askProvider(column);
-    if (provider === null) return chalk.dim("cancelled");
+    if (provider === null) {
+      return chalk.dim("cancelled");
+    }
     const surface = SURFACE_NAME[provider];
     const name = await ask(`   ${chalk.dim("name:")} `);
-    if (name === null || name === "") return chalk.dim("cancelled");
+    if (name === null || name === "") {
+      return chalk.dim("cancelled");
+    }
     // Checked before anything is opened or logged in to, because both of the
     // failures below are certain in advance and neither is worth discovering at
     // the end of a browser flow.
@@ -595,7 +640,9 @@ export async function runTUI(): Promise<void> {
     let codexHome: string | undefined;
     if (provider === "codex") {
       const home = await prepareCodexHome(name);
-      if (home === null) return chalk.dim("cancelled");
+      if (home === null) {
+        return chalk.dim("cancelled");
+      }
       codexHome = home;
     } else {
       process.stdout.write(
@@ -631,7 +678,9 @@ export async function runTUI(): Promise<void> {
       `\n   ${outcome}\n\n   ${chalk.dim("any key to continue")}`
     );
     await new Promise<void>((resolve) =>
-      process.stdin.once("keypress", () => resolve())
+      process.stdin.once("keypress", () => {
+        resolve();
+      })
     );
     prompting = false;
     previousLineCount = 0;
@@ -675,7 +724,9 @@ export async function runTUI(): Promise<void> {
   };
 
   await reload();
-  if (!process.stdin.isTTY) return;
+  if (!process.stdin.isTTY) {
+    return;
+  }
 
   readline.emitKeypressEvents(process.stdin);
   process.stdin.setRawMode(true);
@@ -687,12 +738,16 @@ export async function runTUI(): Promise<void> {
       ): void => {
         // Checked before the quit keys, not after: while a prompt is open these
         // keystrokes are letters in an answer, and the prompt has its own ctrl-C.
-        if (prompting) return;
+        if (prompting) {
+          return;
+        }
         if ((key.ctrl && key.name === "c") || key.name === "q") {
           resolve();
           return;
         }
-        if (processing) return;
+        if (processing) {
+          return;
+        }
         // Direct manipulation: the cursor moves over the accounts already on
         // screen and Enter acts on the one under it, so there is no mode to be
         // in and no key to remember for a thing that is being looked at.
@@ -729,10 +784,15 @@ export async function runTUI(): Promise<void> {
         if (key.name === "return" || key.name === "enter") {
           const name = rowLabels[row];
           const provider = columns[column];
-          if (!name || !provider) return;
+          if (!name || !provider) {
+            return;
+          }
           // Cursor is the only cell Enter does nothing on; everywhere else it
-          // either switches to a stored session or starts a login.
-          if (provider === "cursor") return;
+          // either switches to a stored session or starts a login. Z.AI and
+          // Grok have no switchable session, so they sit out like Cursor.
+          if (provider !== "claude" && provider !== "codex") {
+            return;
+          }
           processing = true;
           signInAs(name, provider)
             .catch(reject)
@@ -743,7 +803,12 @@ export async function runTUI(): Promise<void> {
         }
         if (key.name === "a") {
           processing = true;
-          addAccount(columns[column])
+          const activeProvider = columns[column];
+          addAccount(
+            activeProvider === "zai" || activeProvider === "grok"
+              ? undefined
+              : activeProvider
+          )
             .catch(reject)
             .finally(() => {
               processing = false;
@@ -761,7 +826,9 @@ export async function runTUI(): Promise<void> {
             });
           return;
         }
-        if (key.name !== "r") return;
+        if (key.name !== "r") {
+          return;
+        }
         processing = true;
         reload()
           .catch(reject)

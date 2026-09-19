@@ -41,7 +41,7 @@ test("writes refreshed Codex tokens while preserving unrelated auth data", () =>
     applied: true,
     authPath: fs.realpathSync(authPath),
   });
-  assert.deepEqual(JSON.parse(fs.readFileSync(authPath, "utf8")), {
+  assert.deepEqual(JSON.parse(fs.readFileSync(authPath, "utf-8")), {
     account: { id: "account-1" },
     tokens: {
       access_token: "new-access-token",
@@ -86,7 +86,7 @@ test("never policy returns a typed result without writing credentials", () => {
   });
   assert.equal(writes, 0);
   assert.equal(
-    fs.readFileSync(authPath, "utf8"),
+    fs.readFileSync(authPath, "utf-8"),
     '{"tokens":{"access_token":"old-token"}}'
   );
 });
@@ -124,7 +124,7 @@ test("rejects mismatched and escaping Codex homes", () => {
   }
 
   assert.equal(
-    fs.readFileSync(otherAuth, "utf8"),
+    fs.readFileSync(otherAuth, "utf-8"),
     '{"tokens":{"access_token":"old-token"}}'
   );
 });
@@ -190,7 +190,7 @@ test("rejects a symlinked Codex auth file", () => {
       error instanceof CLIError && error.code === "CODEX_AUTH_SYMLINK"
   );
   assert.equal(
-    fs.readFileSync(outsideAuth, "utf8"),
+    fs.readFileSync(outsideAuth, "utf-8"),
     '{"tokens":{"access_token":"old-token"}}'
   );
 });
@@ -224,13 +224,14 @@ test("preserves old auth when atomic replacement fails without exposing tokens",
   fs.writeFileSync(authPath, oldAuth, { mode: 0o600 });
   const writer = new ExternalCredentialWriter({
     allowedCodexHomes: [homePath],
-    replaceFile: (destinationPath, content, options) =>
+    replaceFile: (destinationPath, content, options) => {
       atomicReplace(destinationPath, content, {
         ...options,
         rename: () => {
           throw new Error("injected replacement failure");
         },
-      }),
+      });
+    },
   });
 
   assert.throws(
@@ -247,11 +248,11 @@ test("preserves old auth when atomic replacement fails without exposing tokens",
       assert.doesNotMatch(String(error), /sensitive-new-token/);
       return (
         error instanceof Error &&
-        /injected replacement failure/.test(error.message)
+        error.message.includes("injected replacement failure")
       );
     }
   );
-  assert.equal(fs.readFileSync(authPath, "utf8"), oldAuth);
+  assert.equal(fs.readFileSync(authPath, "utf-8"), oldAuth);
   assert.deepEqual(fs.readdirSync(homePath), ["auth.json"]);
 });
 

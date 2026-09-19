@@ -4,7 +4,7 @@ import path from "node:path";
 import { test } from "node:test";
 import { fileURLToPath } from "node:url";
 
-const root = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..");
+const root = path.resolve(import.meta.dirname, "..");
 
 // biome-ignore lint/suspicious/noExplicitAny: test-only JSON parsing
 function readJson(filePath: string): Record<string, any> {

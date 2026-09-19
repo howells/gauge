@@ -54,3 +54,9 @@
 
 - `gauge migrate --dry-run --format json`
 - `gauge migrate --format json`
+
+## serve
+
+- `gauge serve --format json`
+- `gauge serve --port 4517 --format json`
+- `gauge serve --no-credential-refresh --format json`

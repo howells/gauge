@@ -12,7 +12,7 @@ function fakeDataDir(): string {
 
 function writeSwitchLog(
   dataDir: string,
-  entries: Array<Record<string, unknown>>
+  entries: Record<string, unknown>[]
 ): void {
   const file = path.join(dataDir, "backups", "claude-switch-log.json");
   fs.mkdirSync(path.dirname(file), { recursive: true });
@@ -26,13 +26,13 @@ test("claudeSwitchesWithin reads every recent displaced account", () => {
   const dataDir = fakeDataDir();
   writeSwitchLog(dataDir, [
     {
-      previousUuid: "gmail-uuid",
       previousEmail: "person@gmail.com",
+      previousUuid: "gmail-uuid",
       switchedAt: "2026-09-02T12:00:00.000Z",
     },
     {
-      previousUuid: "work-uuid",
       previousEmail: "person@work.com",
+      previousUuid: "work-uuid",
       switchedAt: "2026-09-02T13:30:00.000Z",
     },
   ]);
@@ -52,13 +52,13 @@ test("claudeSwitchesWithin drops switches older than the window", () => {
   const dataDir = fakeDataDir();
   writeSwitchLog(dataDir, [
     {
-      previousUuid: "old-uuid",
       previousEmail: "old@example.com",
+      previousUuid: "old-uuid",
       switchedAt: "2026-08-30T12:00:00.000Z",
     },
     {
-      previousUuid: "new-uuid",
       previousEmail: "new@example.com",
+      previousUuid: "new-uuid",
       switchedAt: "2026-09-02T13:00:00.000Z",
     },
   ]);
@@ -72,13 +72,13 @@ test("claudeSwitchesWithin deduplicates a repeated account", () => {
   const dataDir = fakeDataDir();
   writeSwitchLog(dataDir, [
     {
-      previousUuid: "gmail-uuid",
       previousEmail: "person@gmail.com",
+      previousUuid: "gmail-uuid",
       switchedAt: "2026-09-02T10:00:00.000Z",
     },
     {
-      previousUuid: "gmail-uuid",
       previousEmail: "person@gmail.com",
+      previousUuid: "gmail-uuid",
       switchedAt: "2026-09-02T13:00:00.000Z",
     },
   ]);

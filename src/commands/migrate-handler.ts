@@ -9,7 +9,7 @@ export function runMigrateCommand(
     const plan = planLegacyMigration(dataRoot);
     return {
       command: "migrate",
-      data: { action: "migrate", accounts: plan.accounts },
+      data: { accounts: plan.accounts, action: "migrate" },
       dryRun: true,
       human: `Dry run: would migrate ${plan.accounts.length} account(s).\n`,
     };

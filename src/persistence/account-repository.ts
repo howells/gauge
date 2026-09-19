@@ -2,18 +2,15 @@ import { randomUUID } from "node:crypto";
 import fs from "node:fs";
 import path from "node:path";
 
-import {
-  type AccountConfigV3,
-  AccountConfigV3Schema,
-  type AccountId,
-  AccountIdSchema,
-  type Provider,
+import { AccountConfigV3Schema, AccountIdSchema } from "../domain/account.js";
+import type {
+  AccountConfigV3,
+  AccountId,
+  Provider,
 } from "../domain/account.js";
 import { CLIError } from "../security.js";
-import {
-  type PlaywrightStorageState,
-  parseStorageStateObject,
-} from "../storage-state.js";
+import { parseStorageStateObject } from "../storage-state.js";
+import type { PlaywrightStorageState } from "../storage-state.js";
 import { atomicReplace } from "./atomic-replace.js";
 
 export interface AccountRecord {
@@ -47,7 +44,7 @@ export interface AccountRepositoryOptions {
   replaceFile?: (target: string, content: string, mode: number) => void;
 }
 
-const PROVIDERS: Provider[] = ["claude", "codex", "cursor"];
+const PROVIDERS: Provider[] = ["claude", "codex", "cursor", "zai", "grok"];
 
 /** Own Gauge's provider-scoped v3 account tree. */
 export class AccountRepository {
@@ -67,10 +64,14 @@ export class AccountRepository {
     this.#randomId = options.randomId ?? randomUUID;
     this.#removeTree =
       options.removeTree ??
-      ((target) => fs.rmSync(target, { recursive: true }));
+      ((target) => {
+        fs.rmSync(target, { recursive: true });
+      });
     this.#replaceFile =
       options.replaceFile ??
-      ((target, content, mode) => atomicReplace(target, content, { mode }));
+      ((target, content, mode) => {
+        atomicReplace(target, content, { mode });
+      });
   }
 
   get accountsRoot(): string {
@@ -133,8 +134,8 @@ export class AccountRepository {
           throw unsafeAccountPath(write.profileSource);
         }
         fs.cpSync(write.profileSource, path.join(stage, "profile"), {
-          recursive: true,
           filter: (source) => isMigratableProfileEntry(fs.lstatSync(source)),
+          recursive: true,
         });
       }
       flushDirectory(stage);
@@ -179,7 +180,7 @@ export class AccountRepository {
       },
     ];
     const previous = replacements.map(({ target }) => ({
-      content: fs.existsSync(target) ? fs.readFileSync(target, "utf8") : null,
+      content: fs.existsSync(target) ? fs.readFileSync(target, "utf-8") : null,
       target,
     }));
     let committed = 0;
@@ -248,7 +249,7 @@ export class AccountRepository {
       throw unsafeAccountPath(paths.config);
     }
     const config = AccountConfigV3Schema.parse(
-      JSON.parse(fs.readFileSync(paths.config, "utf8")) as unknown
+      JSON.parse(fs.readFileSync(paths.config, "utf-8")) as unknown
     );
     if (config.provider !== id.provider || config.name !== id.name) {
       throw new CLIError("Account config identity does not match its path.", {
@@ -287,7 +288,7 @@ export class AccountRepository {
         if (name.startsWith(".")) {
           continue;
         }
-        records.push(this.get({ provider, name }));
+        records.push(this.get({ name, provider }));
       }
     }
     return records;
@@ -311,10 +312,10 @@ function buildConfig(
   addedAt: Date
 ): AccountConfigV3 {
   return AccountConfigV3Schema.parse({
-    schema_version: 3,
-    provider: id.provider,
-    name: id.name,
     addedAt: addedAt.toISOString(),
+    name: id.name,
+    provider: id.provider,
+    schema_version: 3,
     ...(write.codexHome !== undefined && { codexHome: write.codexHome }),
     ...(write.renewsAt !== undefined &&
       write.renewsAt !== null && { renewsAt: write.renewsAt }),
@@ -370,7 +371,7 @@ function unsafeAccountPath(target: string): CLIError {
 function writeStagedFile(target: string, content: string): void {
   const descriptor = fs.openSync(target, "wx", 0o600);
   try {
-    fs.writeFileSync(descriptor, content, "utf8");
+    fs.writeFileSync(descriptor, content, "utf-8");
     fs.fsyncSync(descriptor);
   } finally {
     fs.closeSync(descriptor);

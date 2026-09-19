@@ -52,8 +52,8 @@ test("Codex dry-run validates referenced credentials without creating Gauge stat
   fs.writeFileSync(path.join(codexHome, "auth.json"), "{}");
 
   await assert.rejects(
-    () =>
-      runAddCommand("invalid", {
+    async () =>
+      await runAddCommand("invalid", {
         codexHome,
         dryRun: true,
         provider: "codex",
@@ -114,7 +114,7 @@ test("manual renewal accepts null clearing values", () => {
   assert.equal(normalizeRenewalInput("null"), null);
   assert.equal(normalizeRenewalInput(" "), null);
   assert.equal(normalizeRenewalInput(null), null);
-  assert.equal(normalizeRenewalInput(undefined), undefined);
+  assert.equal(normalizeRenewalInput(), undefined);
   assert.throws(() => normalizeRenewalInput(123), /date string or null/);
 });
 
@@ -126,8 +126,8 @@ test("manual renewal rejects invalid timestamps", () => {
 
 test("runAddCommand rejects unsupported providers at the wire boundary", async () => {
   await assert.rejects(
-    () =>
-      runAddCommand("work", {
+    async () =>
+      await runAddCommand("work", {
         dryRun: true,
         provider: "unknown",
       }),

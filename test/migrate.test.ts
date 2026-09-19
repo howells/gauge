@@ -30,8 +30,8 @@ function writeLegacy(
 test("legacy migration preflight detects v2 state without mutating it", () => {
   const root = dataRoot();
   writeLegacy(root, "personal", {
-    name: "personal",
     addedAt: "2026-01-01T00:00:00.000Z",
+    name: "personal",
   });
   const before = fs.readdirSync(root);
 
@@ -44,7 +44,7 @@ test("legacy migration preflight detects v2 state without mutating it", () => {
   assert.deepEqual(plan.accounts, [
     {
       destination: path.join(root, "accounts", "v3", "claude", "personal"),
-      id: { provider: "claude", name: "personal" },
+      id: { name: "personal", provider: "claude" },
       source: path.join(root, "personal.json"),
     },
   ]);
@@ -76,9 +76,9 @@ test("v3 root metadata does not masquerade as a legacy account", () => {
 test("migration rejects provider and name conflicts before writing", () => {
   const root = dataRoot();
   writeLegacy(root, "codex-work", {
-    provider: "cursor",
-    name: "work",
     addedAt: "2026-01-01T00:00:00.000Z",
+    name: "work",
+    provider: "cursor",
   });
 
   assert.throws(
@@ -93,9 +93,9 @@ test("migration rejects provider and name conflicts before writing", () => {
 test("migration validates referenced storage state during dry-run", () => {
   const root = dataRoot();
   writeLegacy(root, "cursor-work", {
-    provider: "cursor",
-    name: "work",
     addedAt: "2026-01-01T00:00:00.000Z",
+    name: "work",
+    provider: "cursor",
   });
   fs.writeFileSync(path.join(root, "cursor-work-storage.json"), "not json");
 
@@ -109,9 +109,9 @@ test("migration validates referenced storage state during dry-run", () => {
 test("migration commits v3 directories, copies profiles, and cleans legacy sources", () => {
   const root = dataRoot();
   writeLegacy(root, "cursor-work", {
-    provider: "cursor",
-    name: "work",
     addedAt: "2026-01-01T00:00:00.000Z",
+    name: "work",
+    provider: "cursor",
   });
   fs.writeFileSync(
     path.join(root, "cursor-work-storage.json"),
@@ -132,7 +132,7 @@ test("migration commits v3 directories, copies profiles, and cleans legacy sourc
     true
   );
   assert.equal(
-    fs.readFileSync(path.join(destination, "profile", "cache"), "utf8"),
+    fs.readFileSync(path.join(destination, "profile", "cache"), "utf-8"),
     "data"
   );
   assert.equal(fs.existsSync(path.join(root, "cursor-work.json")), false);
@@ -147,9 +147,9 @@ test("migration commits v3 directories, copies profiles, and cleans legacy sourc
 test("migration skips transient Chrome singleton artifacts inside profiles", () => {
   const root = dataRoot();
   writeLegacy(root, "cursor-work", {
-    provider: "cursor",
-    name: "work",
     addedAt: "2026-01-01T00:00:00.000Z",
+    name: "work",
+    provider: "cursor",
   });
   fs.writeFileSync(
     path.join(root, "cursor-work-storage.json"),
@@ -178,11 +178,11 @@ test("migration skips transient Chrome singleton artifacts inside profiles", () 
   const destination = path.join(root, "accounts", "v3", "cursor", "work");
   const destinationProfile = path.join(destination, "profile");
   assert.equal(
-    fs.readFileSync(path.join(destinationProfile, "cache"), "utf8"),
+    fs.readFileSync(path.join(destinationProfile, "cache"), "utf-8"),
     "data"
   );
   assert.equal(
-    fs.readFileSync(path.join(destinationProfile, "nested", "inner"), "utf8"),
+    fs.readFileSync(path.join(destinationProfile, "nested", "inner"), "utf-8"),
     "nested-data"
   );
   assert.equal(
@@ -206,8 +206,8 @@ test("migration resumes idempotently after interruption without deleting sources
   const root = dataRoot();
   for (const name of ["one", "two"]) {
     writeLegacy(root, name, {
-      name,
       addedAt: "2026-01-01T00:00:00.000Z",
+      name,
     });
   }
   let commits = 0;
@@ -217,7 +217,9 @@ test("migration resumes idempotently after interruption without deleting sources
       migrateLegacyAccounts(root, {
         afterAccountCommit: () => {
           commits += 1;
-          if (commits === 1) throw new Error("injected interruption");
+          if (commits === 1) {
+            throw new Error("injected interruption");
+          }
         },
         randomId: () => "migration",
       }),
@@ -249,9 +251,9 @@ test("migration resumes idempotently after interruption without deleting sources
 test("migration resumes cleanup after the legacy config was already removed", () => {
   const root = dataRoot();
   writeLegacy(root, "cursor-work", {
-    provider: "cursor",
-    name: "work",
     addedAt: "2026-01-01T00:00:00.000Z",
+    name: "work",
+    provider: "cursor",
   });
   fs.writeFileSync(
     path.join(root, "cursor-work-storage.json"),
@@ -290,9 +292,9 @@ test("migration resumes cleanup after the legacy config was already removed", ()
 test("migration recovery fingerprints committed artifacts after source removal", () => {
   const root = dataRoot();
   writeLegacy(root, "cursor-work", {
-    provider: "cursor",
-    name: "work",
     addedAt: "2026-01-01T00:00:00.000Z",
+    name: "work",
+    provider: "cursor",
   });
   fs.writeFileSync(
     path.join(root, "cursor-work-storage.json"),
@@ -343,8 +345,8 @@ test("migration recovery fingerprints committed artifacts after source removal",
 test("migration rejects a differing existing v3 destination before cleanup", () => {
   const root = dataRoot();
   writeLegacy(root, "work", {
-    name: "work",
     addedAt: "2026-01-01T00:00:00.000Z",
+    name: "work",
     renewsAt: "2026-02-01T00:00:00.000Z",
   });
   const destination = path.join(root, "accounts", "v3", "claude", "work");
@@ -352,11 +354,11 @@ test("migration rejects a differing existing v3 destination before cleanup", () 
   fs.writeFileSync(
     path.join(destination, "config.json"),
     JSON.stringify({
-      schema_version: 3,
-      provider: "claude",
-      name: "work",
       addedAt: "2026-01-01T00:00:00.000Z",
+      name: "work",
+      provider: "claude",
       renewsAt: "2026-03-01T00:00:00.000Z",
+      schema_version: 3,
     })
   );
 
@@ -367,7 +369,7 @@ test("migration rejects a differing existing v3 destination before cleanup", () 
   );
   assert.equal(fs.existsSync(path.join(root, "work.json")), true);
   assert.equal(
-    JSON.parse(fs.readFileSync(path.join(destination, "config.json"), "utf8"))
+    JSON.parse(fs.readFileSync(path.join(destination, "config.json"), "utf-8"))
       .renewsAt,
     "2026-03-01T00:00:00.000Z"
   );
@@ -385,7 +387,7 @@ test("migration preflights every destination before committing any account", () 
   });
   const repository = new AccountRepository({ dataRoot: root });
   repository.add(
-    { provider: "claude", name: "zulu" },
+    { name: "zulu", provider: "claude" },
     { addedAt: "2024-01-01T00:00:00.000Z" }
   );
 
@@ -409,8 +411,8 @@ test("migration accepts only a byte-equivalent existing destination", () => {
   fs.mkdirSync(path.join(profile, "nested"), { recursive: true });
   fs.writeFileSync(path.join(profile, "nested", "cache"), "same-profile");
   writeLegacy(root, "work", {
-    name: "work",
     addedAt: "2026-01-01T00:00:00.000Z",
+    name: "work",
   });
   const storageState = { cookies: [], origins: [] };
   fs.writeFileSync(
@@ -418,7 +420,7 @@ test("migration accepts only a byte-equivalent existing destination", () => {
     JSON.stringify(storageState)
   );
   new AccountRepository({ dataRoot: root }).add(
-    { provider: "claude", name: "work" },
+    { name: "work", provider: "claude" },
     {
       addedAt: "2026-01-01T00:00:00.000Z",
       profileSource: profile,
@@ -440,7 +442,7 @@ test("migration accepts only a byte-equivalent existing destination", () => {
         "nested",
         "cache"
       ),
-      "utf8"
+      "utf-8"
     ),
     "same-profile"
   );
@@ -449,12 +451,12 @@ test("migration accepts only a byte-equivalent existing destination", () => {
 test("migration recovery rejects unsafe journal sources and missing committed destinations", () => {
   for (const journal of [
     {
-      id: { provider: "claude", name: "work" },
+      id: { name: "work", provider: "claude" },
       source: path.join(os.tmpdir(), "outside-work.json"),
       status: "committed",
     },
     {
-      id: { provider: "claude", name: "work" },
+      id: { name: "work", provider: "claude" },
       source: path.join(dataRoot(), "work.json"),
       status: "committed",
     },
@@ -465,7 +467,7 @@ test("migration recovery rejects unsafe journal sources and missing committed de
       : { ...journal, source: path.join(root, "work.json") };
     fs.writeFileSync(
       path.join(root, "migration-v3.json"),
-      JSON.stringify({ schema_version: 1, entries: [entry] }),
+      JSON.stringify({ entries: [entry], schema_version: 1 }),
       { mode: 0o600 }
     );
     assert.throws(
@@ -484,7 +486,7 @@ test("migration rejects symlinked configs, storage state, profiles, and roots", 
     if (artifact === "config") {
       fs.writeFileSync(
         path.join(outside, "config.json"),
-        JSON.stringify({ name: "work", addedAt: "2026-01-01T00:00:00.000Z" })
+        JSON.stringify({ addedAt: "2026-01-01T00:00:00.000Z", name: "work" })
       );
       fs.symlinkSync(
         path.join(outside, "config.json"),
@@ -492,14 +494,17 @@ test("migration rejects symlinked configs, storage state, profiles, and roots", 
       );
     } else {
       writeLegacy(root, "work", {
-        name: "work",
         addedAt: "2026-01-01T00:00:00.000Z",
+        name: "work",
       });
       const suffix =
         artifact === "storage" ? "work-storage.json" : "profile-work";
       const target = path.join(outside, artifact);
-      if (artifact === "storage") fs.writeFileSync(target, "{}");
-      else fs.mkdirSync(target);
+      if (artifact === "storage") {
+        fs.writeFileSync(target, "{}");
+      } else {
+        fs.mkdirSync(target);
+      }
       fs.symlinkSync(
         target,
         path.join(root, suffix),
@@ -522,20 +527,20 @@ test("migration rejects symlinked configs, storage state, profiles, and roots", 
 test("migration rejects a journal that does not match the legacy sources", () => {
   const root = dataRoot();
   writeLegacy(root, "work", {
-    name: "work",
     addedAt: "2026-01-01T00:00:00.000Z",
+    name: "work",
   });
   fs.writeFileSync(
     path.join(root, "migration-v3.json"),
     JSON.stringify({
-      schema_version: 1,
       entries: [
         {
-          id: { provider: "claude", name: "different" },
+          id: { name: "different", provider: "claude" },
           source: path.join(root, "different.json"),
           status: "pending",
         },
       ],
+      schema_version: 1,
     }),
     { mode: 0o600 }
   );
@@ -551,8 +556,8 @@ test("migration rejects a journal that does not match the legacy sources", () =>
 test("migration rejects a journal fingerprint that differs from its source", () => {
   const root = dataRoot();
   writeLegacy(root, "work", {
-    name: "work",
     addedAt: "2026-01-01T00:00:00.000Z",
+    name: "work",
   });
   assert.throws(
     () =>
@@ -564,8 +569,8 @@ test("migration rejects a journal fingerprint that differs from its source", () 
     /injected interruption/
   );
   const journalPath = path.join(root, "migration-v3.json");
-  const journal = JSON.parse(fs.readFileSync(journalPath, "utf8")) as {
-    entries: Array<{ fingerprint: string }>;
+  const journal = JSON.parse(fs.readFileSync(journalPath, "utf-8")) as {
+    entries: { fingerprint: string }[];
   };
   const [entry] = journal.entries;
   assert.ok(entry);

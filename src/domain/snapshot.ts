@@ -38,7 +38,9 @@ export interface ProviderError {
  *
  * `session`, `weekly`, and `monthly` are time horizons declared by the
  * provider. Cursor's monthly readings are named for what they meter instead:
- * the plan's included usage, and anything bought on demand beyond it.
+ * the plan's included usage, and anything bought on demand beyond it. `scoped`
+ * is a model pool carved out of a longer horizon — Claude's Fable allowance —
+ * and always carries a `label`.
  */
 export const USAGE_WINDOW_KINDS = [
   "session",
@@ -46,6 +48,7 @@ export const USAGE_WINDOW_KINDS = [
   "monthly",
   "included",
   "on_demand",
+  "scoped",
 ] as const;
 
 export type UsageWindowKind = (typeof USAGE_WINDOW_KINDS)[number];

@@ -24,9 +24,9 @@ function repository(
 test("AccountRepository stores provider-scoped accounts in the exact v3 layout", () => {
   const { dataRoot, repository: accounts } = repository();
 
-  accounts.add({ provider: "claude", name: "codex-work" });
+  accounts.add({ name: "codex-work", provider: "claude" });
   accounts.add(
-    { provider: "codex", name: "work" },
+    { name: "work", provider: "codex" },
     { codexHome: "/tmp/codex-work" }
   );
 
@@ -52,8 +52,8 @@ test("AccountRepository stores provider-scoped accounts in the exact v3 layout",
   assert.deepEqual(
     accounts.list().map((account) => account.id),
     [
-      { provider: "claude", name: "codex-work" },
-      { provider: "codex", name: "work" },
+      { name: "codex-work", provider: "claude" },
+      { name: "work", provider: "codex" },
     ]
   );
 });
@@ -63,7 +63,7 @@ test("AccountRepository validates storage state before exposing a staged add", (
 
   assert.throws(() =>
     accounts.add(
-      { provider: "cursor", name: "work" },
+      { name: "work", provider: "cursor" },
       { storageState: { cookies: [{ name: "broken" }], origins: [] } }
     )
   );
@@ -81,7 +81,7 @@ test("AccountRepository validates storage state before exposing a staged add", (
 
 test("AccountRepository refresh preserves the committed file when replacement fails", () => {
   const { dataRoot, repository: accounts } = repository();
-  const id = { provider: "claude", name: "work" } as const;
+  const id = { name: "work", provider: "claude" } as const;
   accounts.add(id, {
     storageState: { cookies: [], origins: [] },
   });
@@ -93,7 +93,7 @@ test("AccountRepository refresh preserves the committed file when replacement fa
     "work",
     "storage-state.json"
   );
-  const before = fs.readFileSync(storagePath, "utf8");
+  const before = fs.readFileSync(storagePath, "utf-8");
 
   const failing = new AccountRepository({
     dataRoot,
@@ -108,25 +108,27 @@ test("AccountRepository refresh preserves the committed file when replacement fa
     () => failing.refresh(id, { storageState: { cookies: [], origins: [] } }),
     /injected replacement failure/
   );
-  assert.equal(fs.readFileSync(storagePath, "utf8"), before);
+  assert.equal(fs.readFileSync(storagePath, "utf-8"), before);
 });
 
 test("AccountRepository refresh rolls back an earlier replacement when a later one fails", () => {
   const { dataRoot, repository: accounts } = repository();
-  const id = { provider: "claude", name: "work" } as const;
+  const id = { name: "work", provider: "claude" } as const;
   accounts.add(id, {
     renewsAt: "2026-07-12T00:00:00.000Z",
     storageState: { cookies: [], origins: [] },
   });
   const before = accounts.get(id);
-  const beforeConfig = fs.readFileSync(before.paths.config, "utf8");
-  const beforeStorage = fs.readFileSync(before.paths.storageState, "utf8");
+  const beforeConfig = fs.readFileSync(before.paths.config, "utf-8");
+  const beforeStorage = fs.readFileSync(before.paths.storageState, "utf-8");
   let replacements = 0;
   const failing = new AccountRepository({
     dataRoot,
     replaceFile: (target, content, mode) => {
       replacements += 1;
-      if (replacements === 2) throw new Error("injected second-write failure");
+      if (replacements === 2) {
+        throw new Error("injected second-write failure");
+      }
       fs.writeFileSync(target, content, { mode });
     },
   });
@@ -153,9 +155,9 @@ test("AccountRepository refresh rolls back an earlier replacement when a later o
       }),
     /injected second-write failure/
   );
-  assert.equal(fs.readFileSync(before.paths.config, "utf8"), beforeConfig);
+  assert.equal(fs.readFileSync(before.paths.config, "utf-8"), beforeConfig);
   assert.equal(
-    fs.readFileSync(before.paths.storageState, "utf8"),
+    fs.readFileSync(before.paths.storageState, "utf-8"),
     beforeStorage
   );
 });
@@ -163,7 +165,7 @@ test("AccountRepository refresh rolls back an earlier replacement when a later o
 test("AccountRepository hides an account before recursive tombstone cleanup", () => {
   const removed: string[] = [];
   const { dataRoot, repository: initial } = repository();
-  const id = { provider: "cursor", name: "work" } as const;
+  const id = { name: "work", provider: "cursor" } as const;
   initial.add(id);
 
   const accounts = new AccountRepository({
@@ -189,7 +191,7 @@ test("AccountRepository hides an account before recursive tombstone cleanup", ()
 test("AccountRepository creates owner-only directories and files", () => {
   const { dataRoot, repository: accounts } = repository();
   accounts.add(
-    { provider: "claude", name: "work" },
+    { name: "work", provider: "claude" },
     {
       storageState: { cookies: [], origins: [] },
     }
@@ -212,7 +214,7 @@ test("AccountRepository rejects symlinked data roots", () => {
   const accounts = new AccountRepository({ dataRoot: linkedRoot });
 
   assert.throws(
-    () => accounts.add({ provider: "claude", name: "work" }),
+    () => accounts.add({ name: "work", provider: "claude" }),
     (error: unknown) =>
       error instanceof Error &&
       "code" in error &&
@@ -223,15 +225,15 @@ test("AccountRepository rejects symlinked data roots", () => {
 
 test("AccountRepository rejects duplicate and missing account operations", () => {
   const { repository: accounts } = repository();
-  const id = { provider: "claude", name: "work" } as const;
+  const id = { name: "work", provider: "claude" } as const;
   accounts.add(id);
 
   assert.throws(() => accounts.add(id));
-  assert.throws(() => accounts.get({ provider: "claude", name: "missing" }));
+  assert.throws(() => accounts.get({ name: "missing", provider: "claude" }));
   assert.throws(() =>
-    accounts.refresh({ provider: "claude", name: "missing" }, {})
+    accounts.refresh({ name: "missing", provider: "claude" }, {})
   );
-  assert.equal(accounts.remove({ provider: "claude", name: "missing" }), false);
+  assert.equal(accounts.remove({ name: "missing", provider: "claude" }), false);
 });
 
 test("AccountRepository lists an existing data root without an accounts tree", () => {
@@ -241,7 +243,7 @@ test("AccountRepository lists an existing data root without an accounts tree", (
 
 test("AccountRepository rollback removes a newly introduced storage file", () => {
   const { dataRoot, repository: accounts } = repository();
-  const id = { provider: "claude", name: "work" } as const;
+  const id = { name: "work", provider: "claude" } as const;
   accounts.add(id);
   const record = accounts.get(id);
   let replacements = 0;
@@ -249,7 +251,9 @@ test("AccountRepository rollback removes a newly introduced storage file", () =>
     dataRoot,
     replaceFile: (target, content, mode) => {
       replacements += 1;
-      if (replacements === 2) throw new Error("config replacement failed");
+      if (replacements === 2) {
+        throw new Error("config replacement failed");
+      }
       fs.writeFileSync(target, content, { mode });
     },
   });
@@ -266,7 +270,7 @@ test("AccountRepository rollback removes a newly introduced storage file", () =>
 
 test("AccountRepository add() excludes non-file profile entries from the copy", () => {
   const { repository: accounts } = repository();
-  const id = { provider: "claude", name: "work" } as const;
+  const id = { name: "work", provider: "claude" } as const;
   const profileSource = fs.mkdtempSync(
     path.join(os.tmpdir(), "gauge-profile-source-")
   );
@@ -279,7 +283,7 @@ test("AccountRepository add() excludes non-file profile entries from the copy", 
   const record = accounts.add(id, { profileSource });
 
   assert.equal(
-    fs.readFileSync(path.join(record.paths.profile, "cache"), "utf8"),
+    fs.readFileSync(path.join(record.paths.profile, "cache"), "utf-8"),
     "data"
   );
   assert.equal(

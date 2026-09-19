@@ -7,10 +7,8 @@ import type { Provider } from "../domain/account.js";
 import type { UsageRecommendation } from "../domain/recommendation.js";
 import type { AccountSnapshot } from "../domain/snapshot.js";
 import { getDataDir } from "../paths.js";
-import {
-  claudeSwitchesWithin,
-  type LastClaudeSwitch,
-} from "./claude-session.js";
+import { claudeSwitchesWithin } from "./claude-session.js";
+import type { LastClaudeSwitch } from "./claude-session.js";
 import {
   claudeAccountNamesByUuid,
   readMachineLogins,
@@ -29,7 +27,7 @@ export interface StatusAccountView {
 // ─── ANSI-aware string helpers ───────────────────────────────────────────────
 
 // biome-ignore lint/suspicious/noControlCharactersInRegex: ANSI escape stripping needs ESC.
-const ANSI_RE = /\x1b\[[0-9;]*m/g;
+const ANSI_RE = /\u001B\[[0-9;]*m/g;
 
 function visibleLength(value: string): number {
   return value.replace(ANSI_RE, "").length;
@@ -47,12 +45,18 @@ function truncate(value: string, max: number): string {
 
 function timeUntil(iso: string, now: Date): string {
   const ms = new Date(iso).getTime() - now.getTime();
-  if (!Number.isFinite(ms) || ms <= 0) return "now";
+  if (!Number.isFinite(ms) || ms <= 0) {
+    return "now";
+  }
   const minutes = Math.floor(ms / 60_000);
   const hours = Math.floor(minutes / 60);
   const days = Math.floor(hours / 24);
-  if (days > 0) return `${days}d`;
-  if (hours > 0) return `${hours}h`;
+  if (days > 0) {
+    return `${days}d`;
+  }
+  if (hours > 0) {
+    return `${hours}h`;
+  }
   return `${Math.max(1, minutes)}m`;
 }
 
@@ -67,7 +71,9 @@ function timeUntil(iso: string, now: Date): string {
  */
 function renewalLabel(iso: string, now: Date): string | null {
   const date = new Date(iso);
-  if (Number.isNaN(date.getTime())) return null;
+  if (Number.isNaN(date.getTime())) {
+    return null;
+  }
   const month = new Intl.DateTimeFormat("en-GB", {
     day: "numeric",
     month: "short",
@@ -84,8 +90,12 @@ function renewalLabel(iso: string, now: Date): string | null {
 const METER_WIDTH = 10;
 
 function meterColor(percent: number): (value: string) => string {
-  if (percent >= 90) return chalk.red;
-  if (percent >= 60) return chalk.yellow;
+  if (percent >= 90) {
+    return chalk.red;
+  }
+  if (percent >= 60) {
+    return chalk.yellow;
+  }
   return chalk.green;
 }
 
@@ -104,16 +114,19 @@ type WindowView = NonNullable<AccountSnapshot["usage"]>["windows"][number];
 
 /** What to call each limit in the one line of room a cell has for it. */
 const WINDOW_LABEL: Record<WindowView["kind"], string> = {
+  included: "plan",
+  monthly: "mo",
+  on_demand: "on-demand",
+  scoped: "scoped",
   session: "session",
   weekly: "wk",
-  monthly: "mo",
-  included: "plan",
-  on_demand: "on-demand",
 };
 
 /** Keep provider-owned model labels legible in one compact status cell. */
 function compactWindowLabel(window: WindowView): string | null {
-  if (!window.label) return null;
+  if (!window.label) {
+    return null;
+  }
   return window.label.replace(/^GPT-[^-]+-Codex-/u, "");
 }
 
@@ -138,7 +151,7 @@ function cellStatus(account: StatusAccountView, now: Date): CellStatus {
   if (account.error || !account.usage) {
     return { kind: "error", primary: null, secondary: null, waitMs: Infinity };
   }
-  const windows = account.usage.windows;
+  const { windows } = account.usage;
   const primary = windows[0] ?? null;
   const secondary = windows[1] ?? null;
   // A labelled window belongs to one model pool. It can be full without the
@@ -165,11 +178,13 @@ const COL_LABEL = 21;
 // September renewal, whose en-GB month runs four letters.
 const COL_CELL = 34;
 
-const PROVIDER_ORDER: Provider[] = ["claude", "codex", "cursor"];
+const PROVIDER_ORDER: Provider[] = ["claude", "codex", "cursor", "zai", "grok"];
 const PROVIDER_NAME: Record<Provider, string> = {
   claude: "Claude",
   codex: "Codex",
   cursor: "Cursor",
+  grok: "Grok",
+  zai: "Z.AI",
 };
 
 interface GridRow {
@@ -199,12 +214,16 @@ function preferredOrder(): string[] {
   try {
     const raw = fs.readFileSync(
       path.join(getDataDir(), "display.json"),
-      "utf8"
+      "utf-8"
     );
     const parsed: unknown = JSON.parse(raw);
-    if (typeof parsed !== "object" || parsed === null) return [];
+    if (typeof parsed !== "object" || parsed === null) {
+      return [];
+    }
     const { accountOrder } = parsed as { accountOrder?: unknown };
-    if (!Array.isArray(accountOrder)) return [];
+    if (!Array.isArray(accountOrder)) {
+      return [];
+    }
     return accountOrder.filter(
       (name): name is string => typeof name === "string"
     );
@@ -216,10 +235,12 @@ function preferredOrder(): string[] {
 function buildRows(accounts: StatusAccountView[], now: Date): GridRow[] {
   const rows = new Map<string, GridRow>();
   for (const account of accounts) {
-    if (!isProvider(account.provider)) continue;
+    if (!isProvider(account.provider)) {
+      continue;
+    }
     const row = rows.get(account.name) ?? {
-      label: account.name,
       accounts: {},
+      label: account.name,
       minWaitMs: Infinity,
     };
     // First entry wins on a label collision — configured sources come first.
@@ -242,8 +263,12 @@ function buildRows(accounts: StatusAccountView[], now: Date): GridRow[] {
     const rightRank = preferred.indexOf(right.label);
     if (leftRank !== rightRank) {
       // Unlisted names keep the computed order, after every listed one.
-      if (leftRank === -1) return 1;
-      if (rightRank === -1) return -1;
+      if (leftRank === -1) {
+        return 1;
+      }
+      if (rightRank === -1) {
+        return -1;
+      }
       return leftRank - rightRank;
     }
     if (left.minWaitMs !== right.minWaitMs) {
@@ -265,7 +290,9 @@ function meterCell(
   const gutter = active ? chalk.cyan("› ") : "  ";
   const cell = (content: string): string =>
     `${gutter}${pad(content, COL_CELL - 2)}`;
-  if (!account) return cell(chalk.dim("·"));
+  if (!account) {
+    return cell(chalk.dim("·"));
+  }
   const status = cellStatus(account, now);
   if (status.kind === "error") {
     return cell(chalk.red("needs re-auth"));
@@ -310,7 +337,9 @@ function detailCell(account: StatusAccountView | undefined, now: Date): string {
   // line sits under its own meter and every column keeps one width.
   const width = COL_CELL - 2;
   const cell = (content: string): string => `  ${pad(content, width)}`;
-  if (!account?.usage) return cell("");
+  if (!account?.usage) {
+    return cell("");
+  }
   const status = cellStatus(account, now);
 
   const plan = account.usage.plan || null;
@@ -381,7 +410,9 @@ function detailCell(account: StatusAccountView | undefined, now: Date): string {
     const line = tier
       .filter((part): part is string => part !== null)
       .join(" · ");
-    if (visibleLength(line) <= width) return cell(chalk.dim(line));
+    if (visibleLength(line) <= width) {
+      return cell(chalk.dim(line));
+    }
   }
   return cell(chalk.dim(truncate(reading ?? plan ?? renews ?? "", width)));
 }
@@ -431,7 +462,9 @@ function recommendationLine(
     // The second line is the one the dashboard could not say before: something
     // better is about to free up, and switching now would be the worse move.
     const alternative = recommendation.waitFor;
-    if (!alternative) return line;
+    if (!alternative) {
+      return line;
+    }
     const waitId = `${alternative.account.provider}:${alternative.account.name}`;
     const waitPlan = alternative.plan ? ` · ${alternative.plan}` : "";
     const left = `${100 - alternative.maximumUtilization}% free`;
@@ -445,7 +478,9 @@ function recommendationLine(
 
 function errorLines(accounts: StatusAccountView[]): string[] {
   const failed = accounts.filter((account) => account.error);
-  if (failed.length === 0) return [];
+  if (failed.length === 0) {
+    return [];
+  }
   return [
     "",
     ...failed.map((account) => {
@@ -475,12 +510,16 @@ function errorLines(accounts: StatusAccountView[]): string[] {
  */
 function machineLines(accounts: StatusAccountView[]): string[] {
   const logins = readMachineLogins();
-  if (logins.length === 0) return [];
+  if (logins.length === 0) {
+    return [];
+  }
 
   const byEmail = new Map<string, string>();
   for (const account of accounts) {
     const email = account.usage?.email;
-    if (email) byEmail.set(email.toLowerCase(), account.name);
+    if (email) {
+      byEmail.set(email.toLowerCase(), account.name);
+    }
   }
   const claudeCode = logins.find((login) => login.surface === "Claude Code");
   const byUuid = claudeAccountNamesByUuid(getDataDir());
@@ -549,9 +588,13 @@ export function renderSwitchWarning(
   switched: ClaudeSwitchWarning | null,
   now: Date
 ): string | null {
-  if (!switched || switched.previous.length === 0) return null;
+  if (!switched || switched.previous.length === 0) {
+    return null;
+  }
   const ageMs = now.getTime() - switched.switchedAt.getTime();
-  if (ageMs <= 0 || ageMs > SWITCH_WARNING_MAX_AGE_MS) return null;
+  if (ageMs <= 0 || ageMs > SWITCH_WARNING_MAX_AGE_MS) {
+    return null;
+  }
   const minutes = Math.floor(ageMs / 60_000);
   const hours = Math.floor(minutes / 60);
   const ago = hours > 0 ? `${hours}h` : `${Math.max(1, minutes)}m`;
@@ -578,16 +621,22 @@ function switchWarningLines(
     now,
     SWITCH_WARNING_MAX_AGE_MS
   );
-  if (switches.length === 0) return [];
+  if (switches.length === 0) {
+    return [];
+  }
   const byUuid = claudeAccountNamesByUuid(getDataDir());
   const byEmail = new Map<string, string>();
   for (const account of accounts) {
     const email = account.usage?.email;
-    if (email) byEmail.set(email.toLowerCase(), account.name);
+    if (email) {
+      byEmail.set(email.toLowerCase(), account.name);
+    }
   }
   const signedIn = readClaudeCodeLogin();
   const live = switches.filter((entry) => !sameIdentity(entry, signedIn));
-  if (live.length === 0) return [];
+  if (live.length === 0) {
+    return [];
+  }
   const names = [
     ...new Set(
       live.map(
@@ -616,7 +665,7 @@ function readClaudeCodeLogin(): { uuid: string | null; email: string | null } {
   const login = readMachineLogins().find(
     (candidate) => candidate.surface === "Claude Code"
   );
-  return { uuid: login?.accountId ?? null, email: login?.email ?? null };
+  return { email: login?.email ?? null, uuid: login?.accountId ?? null };
 }
 
 /** Whether a displaced account is the one Claude Code is signed into again. */
@@ -709,10 +758,12 @@ export function renderStatusDashboard(
   const width = COL_LABEL + 2 + (COL_CELL + 2) * providers.length - 2;
 
   const lines: string[] = [""];
-  lines.push(header(accounts, now));
-  lines.push(...switchWarningLines(accounts, now));
-  lines.push("");
-  lines.push(columnHeader(providers));
+  lines.push(
+    header(accounts, now),
+    ...switchWarningLines(accounts, now),
+    "",
+    columnHeader(providers)
+  );
   for (const row of rows) {
     const onRow = selected?.label === row.label;
     const name = truncate(row.label, COL_LABEL);
@@ -738,12 +789,14 @@ export function renderStatusDashboard(
       lines.push(`${INDENT}${" ".repeat(COL_LABEL)}  ${details}`.trimEnd());
     }
   }
-  lines.push("");
-  lines.push(`${INDENT}${chalk.dim("─".repeat(width))}`);
-  lines.push(recommendationLine(recommendation, accounts, now));
-  lines.push(...errorLines(accounts));
-  lines.push(...machineLines(accounts));
-  lines.push("");
+  lines.push(
+    "",
+    `${INDENT}${chalk.dim("─".repeat(width))}`,
+    recommendationLine(recommendation, accounts, now),
+    ...errorLines(accounts),
+    ...machineLines(accounts),
+    ""
+  );
   return lines.join("\n");
 }
 
@@ -752,7 +805,9 @@ export function renderQuickRecommendation(
   recommendation: UsageRecommendation | null,
   now: Date
 ): string {
-  if (!recommendation) return "No account recommendation available.\n";
+  if (!recommendation) {
+    return "No account recommendation available.\n";
+  }
   const id = `${recommendation.account.provider}:${recommendation.account.name}`;
   if (recommendation.status === "use_now") {
     const ready = chalk.dim(

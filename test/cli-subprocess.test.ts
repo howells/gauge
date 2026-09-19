@@ -6,7 +6,7 @@ import path from "node:path";
 import { test } from "node:test";
 import { fileURLToPath } from "node:url";
 
-const root = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..");
+const root = path.resolve(import.meta.dirname, "..");
 /**
  * The version this repo declares, so the version assertions below check that the
  * CLI reports what we ship rather than that the number never changes. Frozen
@@ -14,7 +14,7 @@ const root = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..");
  * moment a packaging assertion most needs to be trusted.
  */
 const packageVersion = JSON.parse(
-  fs.readFileSync(path.join(root, "package.json"), "utf8")
+  fs.readFileSync(path.join(root, "package.json"), "utf-8")
 ).version as string;
 const tsxCli = path.join(root, "node_modules", "tsx", "dist", "cli.mjs");
 const sourceCli = path.join(root, "src", "cli.ts");
@@ -64,7 +64,7 @@ function isolatedEnv(home: string): NodeJS.ProcessEnv {
 function runSource(fixture: Fixture, args: string[]): RunResult {
   const result = spawnSync(process.execPath, [tsxCli, sourceCli, ...args], {
     cwd: fixture.cwd,
-    encoding: "utf8",
+    encoding: "utf-8",
     env: isolatedEnv(fixture.home),
     timeout: 10_000,
   });
@@ -104,8 +104,8 @@ function writeAccount(
   fs.writeFileSync(
     path.join(directory, "config.json"),
     JSON.stringify({
-      schema_version: 3,
       addedAt: "2026-01-01T00:00:00.000Z",
+      schema_version: 3,
       ...account,
     }),
     { mode: 0o600 }
@@ -155,7 +155,7 @@ test("root and status aliases return the same empty structured status", (t) => {
   assert.deepEqual(rootEnvelope.data, {
     accounts: [],
     recommendation: null,
-    summary: { total: 0, succeeded: 0, failed: 0, timed_out: 0 },
+    summary: { failed: 0, succeeded: 0, timed_out: 0, total: 0 },
   });
   assert.equal((rootEnvelope.meta as { result: string }).result, "complete");
   assert.deepEqual(namedEnvelope.data, rootEnvelope.data);
@@ -228,7 +228,7 @@ test("list emits JSON and paginated NDJSON envelopes", (t) => {
   assert.deepEqual(
     pages.map(
       (page) =>
-        (page.data as { accounts: Array<{ name: string }> }).accounts[0]?.name
+        (page.data as { accounts: { name: string }[] }).accounts[0]?.name
     ),
     ["alpha", "beta"]
   );
@@ -311,7 +311,7 @@ test("refresh and remove dry-runs characterize existing Codex account changes", 
     "work"
   );
   const configPath = path.join(accountPath, "config.json");
-  const before = fs.readFileSync(configPath, "utf8");
+  const before = fs.readFileSync(configPath, "utf-8");
 
   const refresh = runSource(fixture, [
     "refresh",
@@ -327,9 +327,9 @@ test("refresh and remove dry-runs characterize existing Codex account changes", 
   const refreshEnvelope = parseJson(refresh.stdout);
   assert.deepEqual(refreshEnvelope.data, {
     action: "refresh",
+    auth_mode: "codex-home",
     name: "work",
     provider: "codex",
-    auth_mode: "codex-home",
     renews_at: "2026-07-12T00:00:00.000Z",
     writes: [configPath],
   });
@@ -359,7 +359,7 @@ test("refresh and remove dry-runs characterize existing Codex account changes", 
     path.join(accountPath, "storage-state.json"),
     path.join(accountPath, "profile"),
   ]);
-  assert.equal(fs.readFileSync(configPath, "utf8"), before);
+  assert.equal(fs.readFileSync(configPath, "utf-8"), before);
 });
 
 test("structured argument errors preserve error code and exit status", (t) => {
@@ -442,8 +442,8 @@ test("status account filters report provider-qualified ambiguity before acquisit
   const envelope = parseJson(result.stdout);
   assert.deepEqual(envelope.error, {
     code: "AMBIGUOUS_ACCOUNT",
-    message: 'Account name "work" is ambiguous.',
     details: { candidates: ["claude:work", "codex:work"] },
+    message: 'Account name "work" is ambiguous.',
   });
 });
 
@@ -471,10 +471,10 @@ test("filtered all-failed quick status emits snapshot data and exits one", (t) =
     "summary",
   ]);
   assert.deepEqual((envelope.data as { summary: unknown }).summary, {
-    total: 1,
-    succeeded: 0,
     failed: 1,
+    succeeded: 0,
     timed_out: 0,
+    total: 1,
   });
 });
 
@@ -492,7 +492,7 @@ test("built package bin executes via its shebang", (t) => {
 
   const result = spawnSync(builtCli, ["--version"], {
     cwd: fixture.cwd,
-    encoding: "utf8",
+    encoding: "utf-8",
     env: isolatedEnv(fixture.home),
     timeout: 10_000,
   });

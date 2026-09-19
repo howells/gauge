@@ -1,15 +1,8 @@
-import {
-  Command,
-  InvalidArgumentError,
-  Option,
-  type OptionValues,
-} from "commander";
+import { Command, InvalidArgumentError, Option } from "commander";
+import type { OptionValues } from "commander";
 
-import {
-  COMMAND_SPECS,
-  type CommandSpec,
-  type OptionSpec,
-} from "./commands/specs.js";
+import { COMMAND_SPECS } from "./commands/specs.js";
+import type { CommandSpec, OptionSpec } from "./commands/specs.js";
 import type { CommandName } from "./commands/wire-schemas.js";
 
 interface CommandInvocation {
@@ -48,7 +41,9 @@ export function createProgram(options: ProgramOptions): Command {
     const command = program
       .command(commandSyntax(spec))
       .description(spec.summary);
-    for (const alias of spec.aliases) command.alias(alias);
+    for (const alias of spec.aliases) {
+      command.alias(alias);
+    }
     addOptions(command, spec.options);
     command.action((...args: unknown[]) =>
       options.handlers[spec.name](invocation(spec, args))
@@ -72,8 +67,12 @@ function addOptions(command: Command, specs: readonly OptionSpec[]): void {
       spec.type === "boolean" ? "" : ` <${spec.valueName ?? "value"}>`;
     const flags = `${spec.short ? `${spec.short}, ` : ""}${spec.long}${value}`;
     const option = new Option(flags, spec.description);
-    if (spec.choices) option.choices([...spec.choices]);
-    if (spec.type === "integer") option.argParser(parsePositiveInteger);
+    if (spec.choices) {
+      option.choices([...spec.choices]);
+    }
+    if (spec.type === "integer") {
+      option.argParser(parsePositiveInteger);
+    }
     command.addOption(option);
   }
 }

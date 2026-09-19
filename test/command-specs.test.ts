@@ -19,7 +19,7 @@ import {
   RefreshWireSchema,
 } from "../src/commands/wire-schemas.js";
 
-const root = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..");
+const root = path.resolve(import.meta.dirname, "..");
 
 test("registry contains every v3 command with unique names and aliases", () => {
   assert.deepEqual(
@@ -33,6 +33,7 @@ test("registry contains every v3 command with unique names and aliases", () => {
       "remove",
       "doctor",
       "migrate",
+      "serve",
     ]
   );
 
@@ -117,7 +118,9 @@ test("every command spec is complete metadata with examples", () => {
     assert.ok(spec.summary.length > 0, `${spec.name} needs a summary`);
     assert.ok(spec.examples.length > 0, `${spec.name} needs examples`);
     assert.ok(spec.examples.every((example) => example.startsWith("gauge ")));
-    for (const example of spec.examples) validateExample(spec, example);
+    for (const example of spec.examples) {
+      validateExample(spec, example);
+    }
     assert.equal(typeof spec.output.paginated, "boolean");
     assert.equal(typeof spec.output.supportsFields, "boolean");
     assert.equal(typeof spec.output.supportsNdjson, "boolean");
@@ -143,7 +146,7 @@ test("every command spec is complete metadata with examples", () => {
 
 test("generated command example reference exactly matches canonical specs", () => {
   assert.equal(
-    fs.readFileSync(path.join(root, "docs", "command-examples.md"), "utf8"),
+    fs.readFileSync(path.join(root, "docs", "command-examples.md"), "utf-8"),
     renderCommandExamplesMarkdown()
   );
 });
@@ -157,7 +160,7 @@ test("canonical command examples are published in README, AGENTS, or bundled ski
     "skills/mutations/SKILL.md",
     "skills/status/SKILL.md",
   ]
-    .map((file) => fs.readFileSync(path.join(root, file), "utf8"))
+    .map((file) => fs.readFileSync(path.join(root, file), "utf-8"))
     .join("\n");
 
   for (const spec of COMMAND_SPECS) {
@@ -171,15 +174,18 @@ test("canonical command examples are published in README, AGENTS, or bundled ski
 });
 
 test("wire schemas export JSON Schema for discovery", () => {
-  assert.deepEqual(Object.keys(COMMAND_WIRE_JSON_SCHEMAS), [
-    "status",
-    "list",
-    "describe",
+  // Key order is not part of the contract, and an autofixing codemod has been
+  // seen resorting these literals, so compare as sets.
+  assert.deepEqual(Object.keys(COMMAND_WIRE_JSON_SCHEMAS).sort(), [
     "add",
+    "describe",
+    "doctor",
+    "list",
+    "migrate",
     "refresh",
     "remove",
-    "doctor",
-    "migrate",
+    "serve",
+    "status",
   ]);
   const addSchema = COMMAND_WIRE_JSON_SCHEMAS.add as {
     additionalProperties?: boolean;
@@ -215,7 +221,7 @@ test("metadata module imports without operational initialization", () => {
     ],
     {
       cwd: fixture,
-      encoding: "utf8",
+      encoding: "utf-8",
       env: { ...process.env, HOME: home },
     }
   );

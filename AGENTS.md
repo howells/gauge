@@ -19,6 +19,7 @@
 - `--no-credential-refresh` prohibits all credential writes, including external Codex auth changes.
 - `profile/` is a best-effort browser cache. The credential and config files are the committed state.
 - Keep output paths inside the current working directory.
+- `gauge serve` binds to 127.0.0.1 only and serves the status payload to a browser; do not expose it beyond loopback.
 
 ## Commands
 
@@ -100,6 +101,14 @@ gauge remove --json '{"name":"personal"}' --format json
 
 ```bash
 gauge doctor --format json
+```
+
+### serve
+
+```bash
+gauge serve --format json
+gauge serve --port 4517 --format json
+gauge serve --no-credential-refresh --format json
 ```
 
 ### migrate

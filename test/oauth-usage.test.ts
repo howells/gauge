@@ -22,25 +22,25 @@ test("fetchOAuthUsage reads both windows from the token", async () => {
   const reading = await fetchOAuthUsage(
     "token",
     responder({
-      "/api/oauth/usage": {
-        status: 200,
-        body: {
-          five_hour: {
-            utilization: 64,
-            resets_at: "2026-08-05T18:10:00.000Z",
-          },
-          seven_day: {
-            utilization: 99,
-            resets_at: "2026-08-08T12:00:00.000Z",
-          },
-        },
-      },
       "/api/oauth/profile": {
-        status: 200,
         body: {
           account: { email: "dan@example.com" },
           organization: { rate_limit_tier: "default_claude_max_20x" },
         },
+        status: 200,
+      },
+      "/api/oauth/usage": {
+        body: {
+          five_hour: {
+            resets_at: "2026-08-05T18:10:00.000Z",
+            utilization: 64,
+          },
+          seven_day: {
+            resets_at: "2026-08-08T12:00:00.000Z",
+            utilization: 99,
+          },
+        },
+        status: 200,
       },
     })
   );
@@ -65,17 +65,17 @@ test("fetchOAuthUsage keeps an idle window instead of promoting the other one", 
   const reading = await fetchOAuthUsage(
     "token",
     responder({
+      "/api/oauth/profile": { status: 500 },
       "/api/oauth/usage": {
-        status: 200,
         body: {
-          five_hour: { utilization: 0, resets_at: null },
+          five_hour: { resets_at: null, utilization: 0 },
           seven_day: {
-            utilization: 99,
             resets_at: "2026-08-08T12:00:00.000Z",
+            utilization: 99,
           },
         },
+        status: 200,
       },
-      "/api/oauth/profile": { status: 500 },
     })
   );
 
@@ -99,14 +99,14 @@ test("fetchOAuthUsage keeps the reading when only the profile fails", async () =
   const reading = await fetchOAuthUsage(
     "token",
     responder({
+      "/api/oauth/profile": { status: 500 },
       "/api/oauth/usage": {
-        status: 200,
         body: {
-          five_hour: { utilization: 10, resets_at: "2026-08-05T18:10:00.000Z" },
+          five_hour: { resets_at: "2026-08-05T18:10:00.000Z", utilization: 10 },
           seven_day: null,
         },
+        status: 200,
       },
-      "/api/oauth/profile": { status: 500 },
     })
   );
 
@@ -123,43 +123,43 @@ test("fetchOAuthUsage falls back to the limits array when the legacy weekly fiel
   const reading = await fetchOAuthUsage(
     "token",
     responder({
+      "/api/oauth/profile": { status: 500 },
       "/api/oauth/usage": {
-        status: 200,
         body: {
-          five_hour: { utilization: 0, resets_at: null },
-          seven_day: null,
+          five_hour: { resets_at: null, utilization: 0 },
           limits: [
             {
-              kind: "session",
               group: "session",
+              is_active: true,
+              kind: "session",
               percent: 0,
-              severity: "normal",
               resets_at: null,
               scope: null,
-              is_active: true,
+              severity: "normal",
             },
             {
-              kind: "weekly_all",
               group: "weekly",
+              is_active: true,
+              kind: "weekly_all",
               percent: 100,
-              severity: "critical",
               resets_at: "2026-09-05T11:00:00Z",
               scope: null,
-              is_active: true,
+              severity: "critical",
             },
             {
-              kind: "weekly_scoped",
               group: "weekly",
-              percent: 54,
-              severity: "normal",
-              resets_at: "2026-09-05T11:00:00Z",
-              scope: { model: { id: null, display_name: "Fable" } },
               is_active: false,
+              kind: "weekly_scoped",
+              percent: 54,
+              resets_at: "2026-09-05T11:00:00Z",
+              scope: { model: { display_name: "Fable", id: null } },
+              severity: "normal",
             },
           ],
+          seven_day: null,
         },
+        status: 200,
       },
-      "/api/oauth/profile": { status: 500 },
     })
   );
 
@@ -174,15 +174,15 @@ test("fetchOAuthUsage treats null limits as absent", async () => {
   const reading = await fetchOAuthUsage(
     "token",
     responder({
-      "/api/oauth/usage": {
-        status: 200,
-        body: {
-          five_hour: { utilization: 10, resets_at: null },
-          seven_day: null,
-          limits: null,
-        },
-      },
       "/api/oauth/profile": { status: 500 },
+      "/api/oauth/usage": {
+        body: {
+          five_hour: { resets_at: null, utilization: 10 },
+          limits: null,
+          seven_day: null,
+        },
+        status: 200,
+      },
     })
   );
 

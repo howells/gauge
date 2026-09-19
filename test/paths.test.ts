@@ -57,7 +57,9 @@ test("rejects path traversal in account names", () => {
 test("accepts valid account names", () => {
   const good = ["personal", "work-2", "my_account", "ABC123"];
   for (const name of good) {
-    assert.doesNotThrow(() => assertSafeName(name));
+    assert.doesNotThrow(() => {
+      assertSafeName(name);
+    });
   }
 });
 

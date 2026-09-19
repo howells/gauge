@@ -5,7 +5,6 @@ import path from "node:path";
 import { test } from "node:test";
 
 import {
-  type ApiRuntime,
   addAccount,
   addCursorAccount,
   derivePlan,
@@ -15,17 +14,18 @@ import {
   fetchUsageForAccount,
   normalizeDate,
 } from "../src/api.js";
+import type { ApiRuntime } from "../src/api.js";
 
 const organization = {
-  uuid: "org-1",
+  capabilities: ["chat"],
   name: "Example",
   organization_type: "individual" as const,
   rate_limit_tier: "default_claude_max_5x",
-  capabilities: ["chat"],
+  uuid: "org-1",
 };
 const usage = {
-  five_hour: { utilization: 25, resets_at: "2026-07-11T14:00:00.000Z" },
-  seven_day: { utilization: 10, resets_at: "2026-07-18T12:00:00.000Z" },
+  five_hour: { resets_at: "2026-07-11T14:00:00.000Z", utilization: 25 },
+  seven_day: { resets_at: "2026-07-18T12:00:00.000Z", utilization: 10 },
 };
 
 test("Claude pure response normalization is bounded and deterministic", () => {
@@ -41,16 +41,16 @@ test("Claude pure response normalization is bounded and deterministic", () => {
   assert.equal(
     derivePlan({
       ...organization,
-      rate_limit_tier: undefined,
       capabilities: ["claude_max"],
+      rate_limit_tier: undefined,
     }),
     "max"
   );
   assert.equal(
     derivePlan({
       ...organization,
-      rate_limit_tier: "",
       capabilities: ["chat"],
+      rate_limit_tier: "",
     }),
     "pro"
   );
@@ -58,14 +58,14 @@ test("Claude pure response normalization is bounded and deterministic", () => {
   assert.equal(
     derivePlan({
       ...organization,
-      rate_limit_tier: "default_claude_ai",
       billing_type: "none",
       capabilities: ["chat"],
+      rate_limit_tier: "default_claude_ai",
     }),
     "free"
   );
   assert.equal(
-    derivePlan({ ...organization, rate_limit_tier: "", capabilities: [] }),
+    derivePlan({ ...organization, capabilities: [], rate_limit_tier: "" }),
     "unknown"
   );
   assert.equal(
@@ -93,7 +93,9 @@ test("request acquisition fetches usage and renewal concurrently and returns pen
   let disposed = 0;
   const runtime = requestRuntime(
     async (url) => {
-      if (url === "/api/organizations") return response(200, [organization]);
+      if (url === "/api/organizations") {
+        return response(200, [organization]);
+      }
       active += 1;
       maximum = Math.max(maximum, active);
       await Promise.resolve();
@@ -172,8 +174,12 @@ test("request acquisition contains usage and optional-renewal failures", async (
     },
     {
       runtime: requestRuntime(async (url) => {
-        if (url === "/api/organizations") return response(200, [organization]);
-        if (url.endsWith("/usage")) return response(200, usage);
+        if (url === "/api/organizations") {
+          return response(200, [organization]);
+        }
+        if (url.endsWith("/usage")) {
+          return response(200, usage);
+        }
         return response(200, "not-json", "text/plain");
       }),
     }
@@ -218,8 +224,8 @@ test("missing, aborted, and never-refresh acquisitions fail without browser writ
   const controller = new AbortController();
   controller.abort(new Error("cancelled"));
   await assert.rejects(
-    () =>
-      fetchUsageForAccount(
+    async () =>
+      await fetchUsageForAccount(
         { authKey: "work", name: "work", storagePath },
         { signal: controller.signal }
       ),
@@ -244,19 +250,19 @@ test("in-flight request cancellation settles and disposes the request context on
     { authKey: "work", name: "work", storagePath },
     {
       credentialRefresh: "never",
-      signal: controller.signal,
       runtime: requestRuntime(
-        () => new Promise<ReturnType<typeof response>>(() => undefined),
+        async () => await new Promise<ReturnType<typeof response>>(() => {}),
         () => {
           disposed += 1;
         }
       ),
+      signal: controller.signal,
     }
   );
 
   await new Promise<void>((resolve) => setImmediate(resolve));
   controller.abort();
-  await assert.rejects(() => acquisition, /aborted/i);
+  await assert.rejects(async () => await acquisition, /aborted/i);
   assert.equal(disposed, 1);
 });
 
@@ -271,17 +277,17 @@ test("request context resolving after cancellation is disposed exactly once", as
   const acquisition = fetchUsageForAccount(
     { authKey: "work", name: "work", storagePath },
     {
-      signal: controller.signal,
       runtime: {
-        newRequestContext: (() =>
-          contextPromise) as ApiRuntime["newRequestContext"],
+        newRequestContext: (async () =>
+          await contextPromise) as ApiRuntime["newRequestContext"],
       },
+      signal: controller.signal,
     }
   );
 
   await new Promise<void>((resolve) => setImmediate(resolve));
   controller.abort();
-  await assert.rejects(() => acquisition, /aborted/i);
+  await assert.rejects(async () => await acquisition, /aborted/i);
   resolveContext({
     dispose: async () => {
       disposed += 1;
@@ -298,10 +304,9 @@ test("request body cancellation settles and disposes the context once", async ()
   const acquisition = fetchUsageForAccount(
     { authKey: "work", name: "work", storagePath },
     {
-      signal: controller.signal,
       runtime: requestRuntime(
         async () => ({
-          body: () => new Promise<Buffer>(() => undefined),
+          body: async () => await new Promise<Buffer>(() => {}),
           headers: () => ({
             "content-length": "100",
             "content-type": "application/json",
@@ -313,11 +318,12 @@ test("request body cancellation settles and disposes the context once", async ()
           disposed += 1;
         }
       ),
+      signal: controller.signal,
     }
   );
   await new Promise<void>((resolve) => setImmediate(resolve));
   controller.abort();
-  await assert.rejects(() => acquisition, /aborted/i);
+  await assert.rejects(async () => await acquisition, /aborted/i);
   assert.equal(disposed, 1);
 });
 
@@ -401,11 +407,15 @@ test("visible browser fallback returns usage, persists pending state, and closes
     content: async () => "<html>ready</html>",
     evaluate: async () => {
       evaluations += 1;
-      if (evaluations === 1) return [organization];
-      if (evaluations === 2) return usage;
+      if (evaluations === 1) {
+        return [organization];
+      }
+      if (evaluations === 2) {
+        return usage;
+      }
       return { next_charge_date: "2026-08-01" };
     },
-    goto: async () => undefined,
+    goto: async () => {},
   };
   const runtime = browserRuntime(page, () => {
     closed += 1;
@@ -436,7 +446,7 @@ test("visible browser fallback aborts pending navigation and closes once", async
     {
       content: async () => "<html>ready</html>",
       evaluate: async () => [organization],
-      goto: () => new Promise(() => undefined),
+      goto: async () => await new Promise(() => {}),
     },
     () => {
       closed += 1;
@@ -465,12 +475,12 @@ test("visible browser fallback closes when new-page creation is aborted", async 
   const controller = new AbortController();
   let closed = 0;
   const runtime = {
-    assertChromeInstalled: () => undefined,
+    assertChromeInstalled: () => {},
     launchPersistentContext: (async () => ({
       close: async () => {
         closed += 1;
       },
-      newPage: () => new Promise(() => undefined),
+      newPage: async () => await new Promise(() => {}),
       pages: () => [],
     })) as ApiRuntime["launchPersistentContext"],
   };
@@ -506,18 +516,18 @@ test("browser context resolving after cancellation is closed exactly once", asyn
       storagePath: path.join(profileDir, "missing.json"),
     },
     {
-      signal: controller.signal,
       runtime: {
-        assertChromeInstalled: () => undefined,
-        launchPersistentContext: (() =>
-          contextPromise) as ApiRuntime["launchPersistentContext"],
+        assertChromeInstalled: () => {},
+        launchPersistentContext: (async () =>
+          await contextPromise) as ApiRuntime["launchPersistentContext"],
       },
+      signal: controller.signal,
     }
   );
 
   await new Promise<void>((resolve) => setImmediate(resolve));
   controller.abort();
-  await assert.rejects(() => acquisition, /aborted/i);
+  await assert.rejects(async () => await acquisition, /aborted/i);
   resolveContext({
     close: async () => {
       closed += 1;
@@ -543,9 +553,9 @@ test("Claude browser responses are bounded before schema validation", async () =
           evaluate: async () => [
             { ...organization, name: "x".repeat(1024 * 1024) },
           ],
-          goto: async () => undefined,
+          goto: async () => {},
         },
-        () => undefined
+        () => {}
       ),
     }
   );
@@ -558,10 +568,10 @@ test("interactive Claude and Cursor login use injected browser seams and close o
     const page = {
       evaluate: async () =>
         provider === "claude" ? [organization] : { email: "user@example.com" },
-      goto: async () => undefined,
+      goto: async () => {},
       url: () =>
         provider === "claude" ? "https://claude.ai/new" : "https://cursor.com/",
-      waitForTimeout: async () => undefined,
+      waitForTimeout: async () => {},
     };
     const runtime = browserRuntime(page, () => {
       closed += 1;
@@ -579,9 +589,9 @@ test("interactive login timeout and verification failure return null and close",
   let closed = 0;
   const timeoutPage = {
     evaluate: async () => false,
-    goto: async () => undefined,
+    goto: async () => {},
     url: () => "https://example.com/login",
-    waitForTimeout: async () => undefined,
+    waitForTimeout: async () => {},
   };
   const timeoutRuntime = browserRuntime(timeoutPage, () => {
     closed += 1;
@@ -595,9 +605,9 @@ test("interactive login timeout and verification failure return null and close",
 
   const invalidPage = {
     evaluate: async () => [],
-    goto: async () => undefined,
+    goto: async () => {},
     url: () => "https://claude.ai/new",
-    waitForTimeout: async () => undefined,
+    waitForTimeout: async () => {},
   };
   assert.equal(
     await addAccount("work", {
@@ -662,11 +672,13 @@ function response(
 
 function requestRuntime(
   get: (url: string) => Promise<unknown>,
-  dispose: () => void = () => undefined
+  dispose: () => void = () => {}
 ): Partial<ApiRuntime> {
   return {
     newRequestContext: (async () => ({
-      dispose: async () => dispose(),
+      dispose: async () => {
+        dispose();
+      },
       get,
       storageState: async () => ({ cookies: [], origins: [] }),
     })) as ApiRuntime["newRequestContext"],
@@ -678,9 +690,11 @@ function browserRuntime(
   close: () => void
 ): Partial<ApiRuntime> {
   return {
-    assertChromeInstalled: () => undefined,
+    assertChromeInstalled: () => {},
     launchPersistentContext: (async () => ({
-      close: async () => close(),
+      close: async () => {
+        close();
+      },
       newPage: async () => page,
       pages: () => [page],
       storageState: async () => ({ cookies: [], origins: [] }),

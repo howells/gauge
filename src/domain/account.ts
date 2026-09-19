@@ -1,6 +1,6 @@
 import { z } from "zod";
 
-const ProviderSchema = z.enum(["claude", "codex", "cursor"]);
+const ProviderSchema = z.enum(["claude", "codex", "cursor", "zai", "grok"]);
 export type Provider = z.infer<typeof ProviderSchema>;
 
 const AccountNameSchema = z
@@ -17,12 +17,12 @@ export const AccountIdSchema = z.strictObject({
 export type AccountId = z.infer<typeof AccountIdSchema>;
 
 export const AccountConfigV3Schema = z.strictObject({
-  schema_version: z.literal(3),
-  provider: ProviderSchema,
-  name: AccountNameSchema,
   addedAt: z.iso.datetime(),
   codexHome: z.string().min(1).optional(),
+  name: AccountNameSchema,
+  provider: ProviderSchema,
   renewsAt: z.iso.datetime().optional(),
+  schema_version: z.literal(3),
 });
 export type AccountConfigV3 = z.infer<typeof AccountConfigV3Schema>;
 

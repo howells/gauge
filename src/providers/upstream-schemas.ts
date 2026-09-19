@@ -1,6 +1,6 @@
 import { z } from "zod";
 
-const BoundedString = z.string().max(4_096);
+const BoundedString = z.string().max(4096);
 const ShortString = z.string().max(320);
 const NormalizedDate = z
   .string()
@@ -15,8 +15,8 @@ const ResetValue = z.union([BoundedString, z.number().finite()]);
 
 const ClaudeWindow = z
   .object({
-    utilization: Percentage,
     resets_at: NormalizedDate.nullish(),
+    utilization: Percentage,
   })
   // A window with no activity reports `resets_at: null`: nothing is counting
   // down because nothing has been spent. That is a reading — "idle, wholly
@@ -28,8 +28,8 @@ const ClaudeWindow = z
   // into the five-hour slot and be drawn as the session meter. The weekly
   // number barely moves, so those accounts looked frozen. Keep the window.
   .transform((value) => ({
-    utilization: value.utilization,
     resets_at: value.resets_at ?? null,
+    utilization: value.utilization,
   }));
 
 export const ClaudeOrganizationListSchema = z
@@ -70,6 +70,53 @@ export const ClaudeLimitSchema = z.object({
 export type ClaudeLimit = z.infer<typeof ClaudeLimitSchema>;
 
 /**
+ * Model-scoped sub-limits from the `limits` array.
+ *
+ * A `weekly_scoped` entry meters one named model pool (Fable, for instance)
+ * inside the week. It is not the week: drawing it as the weekly figure would
+ * understate usage, so it is carried beside the named windows under its own
+ * label instead.
+ */
+export interface ScopedClaudeLimit {
+  model: string;
+  resets_at: string | null;
+  utilization: number;
+}
+
+export function scopedClaudeLimits(
+  limits: ClaudeLimit[] | undefined
+): ScopedClaudeLimit[] {
+  const scoped: ScopedClaudeLimit[] = [];
+  for (const limit of limits ?? []) {
+    if (limit.kind !== "weekly_scoped") {
+      continue;
+    }
+    const model = scopedModelName(limit.scope);
+    if (!model) {
+      continue;
+    }
+    scoped.push({
+      model,
+      resets_at: limit.resets_at,
+      utilization: limit.percent,
+    });
+  }
+  return scoped;
+}
+
+function scopedModelName(scope: unknown): string | null {
+  if (typeof scope !== "object" || scope === null) {
+    return null;
+  }
+  const { model } = scope as { model?: unknown };
+  if (typeof model !== "object" || model === null) {
+    return null;
+  }
+  const name = (model as { display_name?: unknown }).display_name;
+  return typeof name === "string" && name.trim().length > 0 ? name : null;
+}
+
+/**
  * The named limit a window falls back to, or null when the array is absent or
  * does not carry that kind.
  */
@@ -78,7 +125,9 @@ export function windowFromLimits(
   kind: "session" | "weekly_all"
 ): { resets_at: string | null; utilization: number } | null {
   const limit = limits?.find((entry) => entry.kind === kind);
-  if (!limit) return null;
+  if (!limit) {
+    return null;
+  }
   return { resets_at: limit.resets_at, utilization: limit.percent };
 }
 
@@ -86,33 +135,34 @@ export const ClaudeUsageResponseSchema = z
   .object({
     five_hour: ClaudeWindow.nullish(),
     iguana_necktie: ClaudeWindow.nullish(),
-    seven_day: ClaudeWindow.nullish(),
-    seven_day_cowork: ClaudeWindow.nullish(),
-    seven_day_oauth_apps: ClaudeWindow.nullish(),
-    seven_day_opus: ClaudeWindow.nullish(),
-    seven_day_sonnet: ClaudeWindow.nullish(),
     limits: z
       .array(ClaudeLimitSchema)
       .max(100)
       .nullish()
       .transform((value) => value ?? undefined),
+    seven_day: ClaudeWindow.nullish(),
+    seven_day_cowork: ClaudeWindow.nullish(),
+    seven_day_oauth_apps: ClaudeWindow.nullish(),
+    seven_day_opus: ClaudeWindow.nullish(),
+    seven_day_sonnet: ClaudeWindow.nullish(),
   })
-  .transform((value) => {
+  .transform((value) =>
     // The legacy window wins whenever it is present; the `limits` entry is the
     // reading for the same horizon and only takes over when the legacy field
     // has stopped being populated.
-    return {
+    ({
       extra_usage: null,
       five_hour: value.five_hour ?? windowFromLimits(value.limits, "session"),
       iguana_necktie: value.iguana_necktie ?? null,
+      scoped: scopedClaudeLimits(value.limits),
       seven_day:
         value.seven_day ?? windowFromLimits(value.limits, "weekly_all"),
       seven_day_cowork: value.seven_day_cowork ?? null,
       seven_day_oauth_apps: value.seven_day_oauth_apps ?? null,
       seven_day_opus: value.seven_day_opus ?? null,
       seven_day_sonnet: value.seven_day_sonnet ?? null,
-    };
-  });
+    })
+  );
 
 export const ClaudeRenewalSchema = z.object({
   next_charge_at: NormalizedDate.optional(),
@@ -124,8 +174,8 @@ const ProviderWindow = z.object({
   reset_at: ResetValue.optional(),
   resetsAt: ResetValue.optional(),
   totalPercentUsed: Percentage.optional(),
-  used_percent: Percentage.optional(),
   usedPercent: Percentage.optional(),
+  used_percent: Percentage.optional(),
 });
 
 const CodexRateLimitSchema = z

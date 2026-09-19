@@ -6,7 +6,7 @@ import path from "node:path";
 import { test } from "node:test";
 import { fileURLToPath } from "node:url";
 
-const root = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..");
+const root = path.resolve(import.meta.dirname, "..");
 const tsxCli = path.join(root, "node_modules", "tsx", "dist", "cli.mjs");
 const sourceCli = path.join(root, "src", "cli.ts");
 
@@ -64,7 +64,7 @@ function run(fixtureValue: Fixture, args: string[]) {
   }
   const result = spawnSync(process.execPath, [tsxCli, sourceCli, ...args], {
     cwd: fixtureValue.cwd,
-    encoding: "utf8",
+    encoding: "utf-8",
     env: { ...env, HOME: fixtureValue.home },
     timeout: 10_000,
   });
@@ -94,14 +94,14 @@ test("account commands return exact MIGRATION_REQUIRED recovery steps", (t) => {
     assert.equal(envelope.command, command);
     assert.deepEqual(envelope.error, {
       code: "MIGRATION_REQUIRED",
-      message:
-        "Gauge account state must be migrated before this command can run.",
       details: {
         next_steps: [
           "gauge migrate --dry-run --format json",
           "gauge migrate --format json",
         ],
       },
+      message:
+        "Gauge account state must be migrated before this command can run.",
     });
   }
 });
@@ -152,7 +152,7 @@ test("migrate dry-run plans without writes and real migrate commits", (t) => {
   const dryEnvelope = json(dryRun.stdout);
   assert.equal((dryEnvelope.meta as { dry_run: boolean }).dry_run, true);
   assert.deepEqual(
-    (dryEnvelope.data as { accounts: Array<{ id: unknown }> }).accounts.map(
+    (dryEnvelope.data as { accounts: { id: unknown }[] }).accounts.map(
       (account) => account.id
     ),
     [{ name: "personal", provider: "claude" }]
@@ -187,7 +187,7 @@ test("doctor exits one for failed checks and does not mutate state", (t) => {
   fs.chmodSync(state.dataRoot, 0o755);
   const before = fs.readFileSync(
     path.join(state.dataRoot, "personal.json"),
-    "utf8"
+    "utf-8"
   );
 
   const result = run(state, ["doctor", "--format", "json"]);
@@ -195,7 +195,7 @@ test("doctor exits one for failed checks and does not mutate state", (t) => {
   const envelope = json(result.stdout);
   assert.ok((envelope.data as { failed: number }).failed > 0);
   assert.equal(
-    fs.readFileSync(path.join(state.dataRoot, "personal.json"), "utf8"),
+    fs.readFileSync(path.join(state.dataRoot, "personal.json"), "utf-8"),
     before
   );
 });

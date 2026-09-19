@@ -17,7 +17,7 @@ test("output writer tolerates an EEXIST parent-creation race", () => {
     },
   });
 
-  assert.equal(fs.readFileSync(output, "utf8"), "value");
+  assert.equal(fs.readFileSync(output, "utf-8"), "value");
 });
 
 test("output writer propagates unexpected path metadata failures", () => {

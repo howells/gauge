@@ -1,10 +1,8 @@
 import assert from "node:assert/strict";
 import { test } from "node:test";
 
-import {
-  type RecommendationCandidate,
-  recommendUsage,
-} from "../src/domain/recommendation.js";
+import { recommendUsage } from "../src/domain/recommendation.js";
+import type { RecommendationCandidate } from "../src/domain/recommendation.js";
 
 const now = new Date("2026-07-11T12:00:00.000Z");
 
@@ -15,7 +13,7 @@ function candidate(
   windows: RecommendationCandidate["windows"]
 ): RecommendationCandidate {
   return {
-    id: { provider, name },
+    id: { name, provider },
     order,
     windows,
   };
@@ -25,22 +23,22 @@ test("recommendUsage ranks usable accounts by maximum then average utilization",
   const result = recommendUsage(
     [
       candidate("claude", "balanced", 0, [
-        { usedPercent: 40, resetsAt: "2026-07-11T13:00:00.000Z" },
-        { usedPercent: 40, resetsAt: "2026-07-12T13:00:00.000Z" },
+        { resetsAt: "2026-07-11T13:00:00.000Z", usedPercent: 40 },
+        { resetsAt: "2026-07-12T13:00:00.000Z", usedPercent: 40 },
       ]),
       candidate("codex", "spiky", 1, [
-        { usedPercent: 10, resetsAt: "2026-07-11T13:00:00.000Z" },
-        { usedPercent: 50, resetsAt: "2026-07-12T13:00:00.000Z" },
+        { resetsAt: "2026-07-11T13:00:00.000Z", usedPercent: 10 },
+        { resetsAt: "2026-07-12T13:00:00.000Z", usedPercent: 50 },
       ]),
       candidate("cursor", "lighter", 2, [
-        { usedPercent: 40, resetsAt: "2026-07-11T13:00:00.000Z" },
-        { usedPercent: 20, resetsAt: "2026-07-12T13:00:00.000Z" },
+        { resetsAt: "2026-07-11T13:00:00.000Z", usedPercent: 40 },
+        { resetsAt: "2026-07-12T13:00:00.000Z", usedPercent: 20 },
       ]),
     ],
     now
   );
 
-  assert.deepEqual(result?.account, { provider: "cursor", name: "lighter" });
+  assert.deepEqual(result?.account, { name: "lighter", provider: "cursor" });
   assert.equal(result?.status, "use_now");
 });
 
@@ -53,36 +51,36 @@ test("recommendUsage excludes failures, empty windows, expired windows, and bloc
       },
       candidate("claude", "empty", 1, []),
       candidate("claude", "expired", 2, [
-        { usedPercent: 1, resetsAt: "2026-07-11T11:00:00.000Z" },
+        { resetsAt: "2026-07-11T11:00:00.000Z", usedPercent: 1 },
       ]),
       candidate("codex", "blocked", 3, [
-        { usedPercent: 100, resetsAt: "2026-07-11T13:00:00.000Z" },
+        { resetsAt: "2026-07-11T13:00:00.000Z", usedPercent: 100 },
       ]),
       candidate("cursor", "usable", 4, [
-        { usedPercent: 99, resetsAt: "2026-07-11T13:00:00.000Z" },
+        { resetsAt: "2026-07-11T13:00:00.000Z", usedPercent: 99 },
       ]),
     ],
     now
   );
 
-  assert.deepEqual(result?.account, { provider: "cursor", name: "usable" });
+  assert.deepEqual(result?.account, { name: "usable", provider: "cursor" });
 });
 
 test("recommendUsage ranks all-blocked accounts by when every blocking window resets", () => {
   const result = recommendUsage(
     [
       candidate("claude", "two-blockers", 0, [
-        { usedPercent: 100, resetsAt: "2026-07-11T13:00:00.000Z" },
-        { usedPercent: 100, resetsAt: "2026-07-11T16:00:00.000Z" },
+        { resetsAt: "2026-07-11T13:00:00.000Z", usedPercent: 100 },
+        { resetsAt: "2026-07-11T16:00:00.000Z", usedPercent: 100 },
       ]),
       candidate("codex", "one-blocker", 1, [
-        { usedPercent: 100, resetsAt: "2026-07-11T14:00:00.000Z" },
+        { resetsAt: "2026-07-11T14:00:00.000Z", usedPercent: 100 },
       ]),
     ],
     now
   );
 
-  assert.deepEqual(result?.account, { provider: "codex", name: "one-blocker" });
+  assert.deepEqual(result?.account, { name: "one-blocker", provider: "codex" });
   assert.equal(result?.availableAt, "2026-07-11T14:00:00.000Z");
   assert.equal(result?.status, "wait");
 });
@@ -91,16 +89,16 @@ test("recommendUsage uses configured order as the final tie breaker", () => {
   const result = recommendUsage(
     [
       candidate("codex", "second", 7, [
-        { usedPercent: 20, resetsAt: "2026-07-11T13:00:00.000Z" },
+        { resetsAt: "2026-07-11T13:00:00.000Z", usedPercent: 20 },
       ]),
       candidate("claude", "first", 2, [
-        { usedPercent: 20, resetsAt: "2026-07-11T13:00:00.000Z" },
+        { resetsAt: "2026-07-11T13:00:00.000Z", usedPercent: 20 },
       ]),
     ],
     now
   );
 
-  assert.deepEqual(result?.account, { provider: "claude", name: "first" });
+  assert.deepEqual(result?.account, { name: "first", provider: "claude" });
 });
 
 test("recommendUsage offers a blocked account holding an applicable reset instead of a long wait", () => {
@@ -110,17 +108,17 @@ test("recommendUsage offers a blocked account holding an applicable reset instea
   const result = recommendUsage(
     [
       candidate("codex", "resettable", 0, [
-        { usedPercent: 100, resetsAt: "2026-07-13T12:00:00.000Z" },
+        { resetsAt: "2026-07-13T12:00:00.000Z", usedPercent: 100 },
       ]),
       candidate("claude", "blocked", 1, [
-        { usedPercent: 100, resetsAt: "2026-07-11T18:00:00.000Z" },
+        { resetsAt: "2026-07-11T18:00:00.000Z", usedPercent: 100 },
       ]),
     ],
     now
   );
   const withReset = {
     ...candidate("codex", "resettable", 0, [
-      { usedPercent: 100, resetsAt: "2026-07-13T12:00:00.000Z" },
+      { resetsAt: "2026-07-13T12:00:00.000Z", usedPercent: 100 },
     ]),
     applicableResets: 2,
   };
@@ -129,19 +127,19 @@ test("recommendUsage offers a blocked account holding an applicable reset instea
     [
       withReset,
       candidate("claude", "blocked", 1, [
-        { usedPercent: 100, resetsAt: "2026-07-11T18:00:00.000Z" },
+        { resetsAt: "2026-07-11T18:00:00.000Z", usedPercent: 100 },
       ]),
     ],
     now
   );
 
   // Without a reset the account stays a wait, ranked by its natural reset.
-  assert.deepEqual(result?.account, { provider: "claude", name: "blocked" });
+  assert.deepEqual(result?.account, { name: "blocked", provider: "claude" });
   assert.equal(result?.status, "wait");
   // With one, it is usable now, and the pick names its cost.
   assert.deepEqual(resetResult?.account, {
-    provider: "codex",
     name: "resettable",
+    provider: "codex",
   });
   assert.equal(resetResult?.status, "use_now");
   assert.equal(resetResult?.viaReset, true);
@@ -152,18 +150,18 @@ test("recommendUsage prefers a genuinely free account over one needing a reset r
     [
       {
         ...candidate("codex", "resettable", 0, [
-          { usedPercent: 100, resetsAt: "2026-07-13T12:00:00.000Z" },
+          { resetsAt: "2026-07-13T12:00:00.000Z", usedPercent: 100 },
         ]),
         applicableResets: 2,
       },
       candidate("claude", "light", 1, [
-        { usedPercent: 10, resetsAt: "2026-07-11T13:00:00.000Z" },
+        { resetsAt: "2026-07-11T13:00:00.000Z", usedPercent: 10 },
       ]),
     ],
     now
   );
 
-  assert.deepEqual(result?.account, { provider: "claude", name: "light" });
+  assert.deepEqual(result?.account, { name: "light", provider: "claude" });
   assert.equal(result?.viaReset, undefined);
 });
 
@@ -174,14 +172,14 @@ test("recommendUsage offers a natural reset beside a pick that costs a credit", 
     [
       {
         ...candidate("codex", "resettable", 0, [
-          { usedPercent: 100, resetsAt: "2026-07-13T12:00:00.000Z" },
+          { resetsAt: "2026-07-13T12:00:00.000Z", usedPercent: 100 },
         ]),
         applicableResets: 1,
       },
       {
         ...candidate("claude", "soon", 1, [
-          { usedPercent: 100, resetsAt: "2026-07-11T12:40:00.000Z" },
-          { usedPercent: 20, resetsAt: "2026-07-16T12:00:00.000Z" },
+          { resetsAt: "2026-07-11T12:40:00.000Z", usedPercent: 100 },
+          { resetsAt: "2026-07-16T12:00:00.000Z", usedPercent: 20 },
         ]),
         plan: "Max 20x",
       },
@@ -189,11 +187,11 @@ test("recommendUsage offers a natural reset beside a pick that costs a credit", 
     now
   );
 
-  assert.deepEqual(result?.account, { provider: "codex", name: "resettable" });
+  assert.deepEqual(result?.account, { name: "resettable", provider: "codex" });
   assert.equal(result?.viaReset, true);
   assert.deepEqual(result?.waitFor?.account, {
-    provider: "claude",
     name: "soon",
+    provider: "claude",
   });
   assert.equal(result?.waitFor?.availableAt, "2026-07-11T12:40:00.000Z");
 });
@@ -215,14 +213,14 @@ test("recommendUsage offers a better plan that unblocks soon instead of only the
     [
       {
         ...candidate("claude", "paid", 0, [
-          { usedPercent: 100, resetsAt: "2026-07-11T12:43:00.000Z" },
-          { usedPercent: 20, resetsAt: "2026-07-16T12:00:00.000Z" },
+          { resetsAt: "2026-07-11T12:43:00.000Z", usedPercent: 100 },
+          { resetsAt: "2026-07-16T12:00:00.000Z", usedPercent: 20 },
         ]),
         plan: "Max 20x",
       },
       {
         ...candidate("codex", "free", 1, [
-          { usedPercent: 0, resetsAt: "2026-08-11T12:00:00.000Z" },
+          { resetsAt: "2026-08-11T12:00:00.000Z", usedPercent: 0 },
         ]),
         plan: "Free",
       },
@@ -231,12 +229,12 @@ test("recommendUsage offers a better plan that unblocks soon instead of only the
   );
 
   // The usable account is still the answer to "what can I use right now".
-  assert.deepEqual(result?.account, { provider: "codex", name: "free" });
+  assert.deepEqual(result?.account, { name: "free", provider: "codex" });
   assert.equal(result?.status, "use_now");
   // And the better instrument is offered beside it, with what it will carry.
   assert.deepEqual(result?.waitFor?.account, {
-    provider: "claude",
     name: "paid",
+    provider: "claude",
   });
   assert.equal(result?.waitFor?.plan, "Max 20x");
   assert.equal(result?.waitFor?.maximumUtilization, 20);
@@ -248,14 +246,14 @@ test("recommendUsage stays silent when the account in hand is already the best i
     [
       {
         ...candidate("claude", "roomy", 0, [
-          { usedPercent: 5, resetsAt: "2026-07-11T13:00:00.000Z" },
+          { resetsAt: "2026-07-11T13:00:00.000Z", usedPercent: 5 },
         ]),
         plan: "Max 20x",
       },
       {
         ...candidate("codex", "blocked", 1, [
-          { usedPercent: 100, resetsAt: "2026-07-11T12:30:00.000Z" },
-          { usedPercent: 40, resetsAt: "2026-07-16T12:00:00.000Z" },
+          { resetsAt: "2026-07-11T12:30:00.000Z", usedPercent: 100 },
+          { resetsAt: "2026-07-16T12:00:00.000Z", usedPercent: 40 },
         ]),
         plan: "Pro",
       },
@@ -263,7 +261,7 @@ test("recommendUsage stays silent when the account in hand is already the best i
     now
   );
 
-  assert.deepEqual(result?.account, { provider: "claude", name: "roomy" });
+  assert.deepEqual(result?.account, { name: "roomy", provider: "claude" });
   // Lower plan, and less headroom after its reset than the 95% already in hand.
   assert.equal(result?.waitFor, undefined);
 });
@@ -273,13 +271,13 @@ test("recommendUsage ignores a better account whose reset is beyond the wait hor
     [
       {
         ...candidate("codex", "free", 0, [
-          { usedPercent: 0, resetsAt: "2026-08-11T12:00:00.000Z" },
+          { resetsAt: "2026-08-11T12:00:00.000Z", usedPercent: 0 },
         ]),
         plan: "Free",
       },
       {
         ...candidate("claude", "tomorrow", 1, [
-          { usedPercent: 100, resetsAt: "2026-07-12T12:00:00.000Z" },
+          { resetsAt: "2026-07-12T12:00:00.000Z", usedPercent: 100 },
         ]),
         plan: "Max 20x",
       },
@@ -287,6 +285,6 @@ test("recommendUsage ignores a better account whose reset is beyond the wait hor
     now
   );
 
-  assert.deepEqual(result?.account, { provider: "codex", name: "free" });
+  assert.deepEqual(result?.account, { name: "free", provider: "codex" });
   assert.equal(result?.waitFor, undefined);
 });

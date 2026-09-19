@@ -1,4 +1,6 @@
-type RecommendationProvider = "claude" | "codex" | "cursor";
+import type { Provider } from "./account.js";
+
+type RecommendationProvider = Provider;
 
 interface RecommendationAccountId {
   name: string;
@@ -70,7 +72,9 @@ interface RankedCandidate {
 
 /** When a window resets, or null for an idle one that is not counting down. */
 function resetTime(window: RecommendationWindow): number | null {
-  if (window.resetsAt === null) return null;
+  if (window.resetsAt === null) {
+    return null;
+  }
   const at = Date.parse(window.resetsAt);
   return Number.isFinite(at) ? at : null;
 }
@@ -92,7 +96,9 @@ export function recommendUsage(
     // recommended. A window whose reset has already passed is different: that
     // is a stale reading rather than a claim about now, and is still dropped.
     const windows = candidate.windows.filter((window) => {
-      if (window.resetsAt === null) return true;
+      if (window.resetsAt === null) {
+        return true;
+      }
       const resetAt = Date.parse(window.resetsAt);
       return Number.isFinite(resetAt) && resetAt > now.getTime();
     });
@@ -187,11 +193,19 @@ const MATERIAL_HEADROOM_GAIN = 20;
  * worth mentioning; it never reorders the recommendation itself.
  */
 function planRank(plan: string | undefined): number {
-  if (!plan) return 0;
+  if (!plan) {
+    return 0;
+  }
   const value = plan.toLowerCase();
-  if (value.includes("max")) return 3;
-  if (value.includes("20x")) return 2;
-  if (value.includes("free")) return 0;
+  if (value.includes("max")) {
+    return 3;
+  }
+  if (value.includes("20x")) {
+    return 2;
+  }
+  if (value.includes("free")) {
+    return 0;
+  }
   return 1;
 }
 
@@ -252,7 +266,9 @@ function findWaitFor(
       left.entry.resetAt - right.entry.resetAt
   )[0];
 
-  if (!winner) return undefined;
+  if (!winner) {
+    return undefined;
+  }
   return {
     account: winner.entry.candidate.id,
     availableAt: new Date(winner.entry.resetAt).toISOString(),

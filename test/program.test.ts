@@ -2,11 +2,12 @@ import assert from "node:assert/strict";
 import { test } from "node:test";
 
 import { COMMAND_SPECS } from "../src/commands/specs.js";
-import { type CommandHandlers, createProgram } from "../src/program.js";
+import { createProgram } from "../src/program.js";
+import type { CommandHandlers } from "../src/program.js";
 
 function handlers(): CommandHandlers {
   return Object.fromEntries(
-    COMMAND_SPECS.map((spec) => [spec.name, () => undefined])
+    COMMAND_SPECS.map((spec) => [spec.name, () => {}])
   ) as CommandHandlers;
 }
 

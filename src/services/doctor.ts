@@ -3,6 +3,7 @@ import os from "node:os";
 import path from "node:path";
 
 import { AccountConfigV3Schema } from "../domain/account.js";
+import type { Provider } from "../domain/account.js";
 import { isLegacyConfigFilename } from "../migrate.js";
 import { validateCodexHome } from "../persistence/external-credential-writer.js";
 import { parseStorageStateJsonValue } from "../storage-state.js";
@@ -36,9 +37,7 @@ export function runDoctorChecks(options: DoctorOptions): DoctorReport {
   checks.push(
     major >= 20
       ? pass("runtime/node", `Node ${major} is supported.`)
-      : fail("runtime/node", "Gauge requires Node 20 or newer.")
-  );
-  checks.push(
+      : fail("runtime/node", "Gauge requires Node 20 or newer."),
     options.chromePath
       ? pass(
           "runtime/chrome",
@@ -59,9 +58,7 @@ export function runDoctorChecks(options: DoctorOptions): DoctorReport {
           path.join(options.home ?? os.homedir(), ".codex")
       ),
       "Ambient Codex discovery"
-    )
-  );
-  checks.push(
+    ),
     readinessCheck(
       "readiness/cursor-ambient",
       Boolean(
@@ -84,24 +81,24 @@ export function runDoctorChecks(options: DoctorOptions): DoctorReport {
 function inspectDataRoot(dataRoot: string, checks: DoctorCheck[]): void {
   if (!fs.existsSync(dataRoot)) {
     checks.push(
-      pass("data/root", "Gauge data root will be created on first mutation.")
+      pass("data/root", "Gauge data root will be created on first mutation."),
+      pass("state/migration", "No legacy migration is required.")
     );
-    checks.push(pass("state/migration", "No legacy migration is required."));
     return;
   }
   const rootStatus = fs.lstatSync(dataRoot);
   if (rootStatus.isSymbolicLink() || !rootStatus.isDirectory()) {
-    checks.push(fail("data/root", "Gauge data root must be a real directory."));
     checks.push(
+      fail("data/root", "Gauge data root must be a real directory."),
       fail("state/migration", "Migration state cannot be inspected safely.")
     );
     return;
-  } else if ((rootStatus.mode & 0o077) !== 0) {
+  } else if ((rootStatus.mode & 0o077) === 0) {
+    checks.push(pass("data/root", "Gauge data root is safe."));
+  } else {
     checks.push(
       fail("data/permissions", "Gauge data root must be owner-only (0700).")
     );
-  } else {
-    checks.push(pass("data/root", "Gauge data root is safe."));
   }
 
   const readableRoot = rootStatus.isSymbolicLink()
@@ -178,7 +175,7 @@ function inspectAccount(
   try {
     const configStatus = fs.lstatSync(configPath);
     const config = AccountConfigV3Schema.parse(
-      JSON.parse(fs.readFileSync(configPath, "utf8")) as unknown
+      JSON.parse(fs.readFileSync(configPath, "utf-8")) as unknown
     );
     if (
       configStatus.isSymbolicLink() ||
@@ -203,26 +200,26 @@ function inspectAccount(
 
 function inspectAccountArtifacts(
   directory: string,
-  provider: "claude" | "codex" | "cursor",
+  provider: Provider,
   codexHome: string | undefined,
   checks: DoctorCheck[]
 ): void {
   const storageState = path.join(directory, "storage-state.json");
-  if (provider !== "codex") {
-    inspectCredentialFile(
-      storageState,
-      "account/storage-state",
-      "Account storage state",
-      true,
-      checks
-    );
-  } else {
+  if (provider === "codex") {
     checks.push(
       readinessCheck(
         "readiness/codex-configured",
         codexHome !== undefined && hasSafeCodexAuth(codexHome),
         "Configured Codex credentials"
       )
+    );
+  } else {
+    inspectCredentialFile(
+      storageState,
+      "account/storage-state",
+      "Account storage state",
+      true,
+      checks
     );
   }
 
@@ -262,7 +259,7 @@ function inspectCredentialFile(
     return;
   }
   try {
-    parseStorageStateJsonValue(fs.readFileSync(filePath, "utf8"));
+    parseStorageStateJsonValue(fs.readFileSync(filePath, "utf-8"));
     checks.push(pass(id, `${label} is valid protected Playwright state.`));
   } catch {
     checks.push(fail(id, `${label} contains invalid Playwright state.`));

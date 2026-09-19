@@ -17,32 +17,32 @@ test("provider usage DTO normalizes dates and constrains percentages", () => {
     plan: "Pro",
     renewsAt: "2026-07-12T00:00:00Z",
     windows: [
-      { kind: "session", usedPercent: -5, resetsAt: "2026-07-11T13:00:00Z" },
-      { kind: "weekly", usedPercent: 120, resetsAt: "2026-07-12T13:00:00Z" },
+      { kind: "session", resetsAt: "2026-07-11T13:00:00Z", usedPercent: -5 },
+      { kind: "weekly", resetsAt: "2026-07-12T13:00:00Z", usedPercent: 120 },
     ],
   });
 
   assert.equal(parsed.renewsAt, "2026-07-12T00:00:00.000Z");
   assert.deepEqual(parsed.windows, [
-    { kind: "session", usedPercent: 0, resetsAt: "2026-07-11T13:00:00.000Z" },
-    { kind: "weekly", usedPercent: 100, resetsAt: "2026-07-12T13:00:00.000Z" },
+    { kind: "session", resetsAt: "2026-07-11T13:00:00.000Z", usedPercent: 0 },
+    { kind: "weekly", resetsAt: "2026-07-12T13:00:00.000Z", usedPercent: 100 },
   ]);
 });
 
 test("provider usage DTO carries an idle window and demands a named kind", () => {
   const parsed = ProviderUsageReadingSchema.parse({
     plan: "Max 20x",
-    windows: [{ kind: "session", usedPercent: 0, resetsAt: null }],
+    windows: [{ kind: "session", resetsAt: null, usedPercent: 0 }],
   });
   assert.deepEqual(parsed.windows, [
-    { kind: "session", usedPercent: 0, resetsAt: null },
+    { kind: "session", resetsAt: null, usedPercent: 0 },
   ]);
 
   // Without a kind a window's meaning would come from its index again.
   assert.equal(
     ProviderUsageReadingSchema.safeParse({
       plan: "Max 20x",
-      windows: [{ usedPercent: 12, resetsAt: null }],
+      windows: [{ resetsAt: null, usedPercent: 12 }],
     }).success,
     false
   );
@@ -52,8 +52,8 @@ test("provider usage DTO rejects unknown fields and oversized strings", () => {
   assert.equal(
     ProviderUsageReadingSchema.safeParse({
       plan: "Pro",
-      windows: [],
       upstreamBody: "secret",
+      windows: [],
     }).success,
     false
   );
@@ -86,11 +86,11 @@ test("provider ingress schemas strip unknown fields and bound normalized values"
   });
 
   const claude = ClaudeUsageResponseSchema.parse({
+    arbitrary: "discarded",
     five_hour: {
       resets_at: "2026-07-11T13:00:00Z",
       utilization: 120,
     },
-    arbitrary: "discarded",
   });
   assert.equal(claude.five_hour?.utilization, 100);
   assert.equal(claude.five_hour?.resets_at, "2026-07-11T13:00:00.000Z");
@@ -111,34 +111,34 @@ test("provider ingress schemas strip unknown fields and bound normalized values"
   // legacy fields stop being populated, and the model-scoped sub-limit is
   // never promoted to the whole week.
   const fromLimits = ClaudeUsageResponseSchema.parse({
-    five_hour: { utilization: 0, resets_at: null },
+    five_hour: { resets_at: null, utilization: 0 },
     limits: [
       {
-        kind: "session",
         group: "session",
+        is_active: true,
+        kind: "session",
         percent: 12,
-        severity: "normal",
         resets_at: "2026-08-29T18:00:00Z",
         scope: null,
-        is_active: true,
+        severity: "normal",
       },
       {
-        kind: "weekly_all",
         group: "weekly",
+        is_active: true,
+        kind: "weekly_all",
         percent: 100,
-        severity: "critical",
         resets_at: "2026-09-05T11:00:00Z",
         scope: null,
-        is_active: true,
+        severity: "critical",
       },
       {
-        kind: "weekly_scoped",
         group: "weekly",
-        percent: 54,
-        severity: "normal",
-        resets_at: "2026-09-05T11:00:00Z",
-        scope: { model: { id: null, display_name: "Fable" }, surface: null },
         is_active: false,
+        kind: "weekly_scoped",
+        percent: 54,
+        resets_at: "2026-09-05T11:00:00Z",
+        scope: { model: { display_name: "Fable", id: null }, surface: null },
+        severity: "normal",
       },
     ],
   });
@@ -153,18 +153,18 @@ test("provider ingress schemas strip unknown fields and bound normalized values"
 
   // A legacy window that is still populated wins over its `limits` twin.
   const legacyWins = ClaudeUsageResponseSchema.parse({
-    seven_day: { utilization: 93, resets_at: "2026-09-02T09:00:00Z" },
     limits: [
       {
-        kind: "weekly_all",
         group: "weekly",
+        is_active: true,
+        kind: "weekly_all",
         percent: 100,
-        severity: "critical",
         resets_at: "2026-09-05T11:00:00Z",
         scope: null,
-        is_active: true,
+        severity: "critical",
       },
     ],
+    seven_day: { resets_at: "2026-09-02T09:00:00Z", utilization: 93 },
   });
   assert.deepEqual(legacyWins.seven_day, {
     resets_at: "2026-09-02T09:00:00.000Z",
@@ -173,24 +173,24 @@ test("provider ingress schemas strip unknown fields and bound normalized values"
 
   // Absent legacy field and absent fallback entry alike stay absent.
   const neither = ClaudeUsageResponseSchema.parse({
-    seven_day: null,
     limits: [
       {
-        kind: "weekly_scoped",
         group: "weekly",
+        is_active: false,
+        kind: "weekly_scoped",
         percent: 54,
-        severity: "normal",
         resets_at: null,
         scope: null,
-        is_active: false,
+        severity: "normal",
       },
     ],
+    seven_day: null,
   });
   assert.equal(neither.seven_day, null);
   assert.equal(neither.five_hour, null);
 
   const nullLimits = ClaudeUsageResponseSchema.parse({
-    five_hour: { utilization: 8, resets_at: null },
+    five_hour: { resets_at: null, utilization: 8 },
     limits: null,
   });
   assert.deepEqual(nullLimits.five_hour, {
@@ -223,26 +223,26 @@ test("provider ingress schemas strip unknown fields and bound normalized values"
   });
 
   const currentCodex = CodexUsageResponseSchema.parse({
-    rate_limit: {
-      primary_window: {
-        used_percent: 71,
-        limit_window_seconds: 10_080 * 60,
-        reset_at: 1_800_000_000,
-      },
-    },
     additional_rate_limits: [
       {
         limit_name: "GPT-5.3-Codex-Spark",
         metered_feature: "codex_bengalfox",
         rate_limit: {
           primary_window: {
-            used_percent: 37,
             limit_window_seconds: 300 * 60,
             reset_at: 1_700_000_000,
+            used_percent: 37,
           },
         },
       },
     ],
+    rate_limit: {
+      primary_window: {
+        limit_window_seconds: 10_080 * 60,
+        reset_at: 1_800_000_000,
+        used_percent: 71,
+      },
+    },
   });
   assert.equal(
     currentCodex.additional_rate_limits,
@@ -258,17 +258,17 @@ test("provider ingress schemas strip unknown fields and bound normalized values"
 
   // Unlimited / team-pooled plans report null limits; they must not reject.
   const unlimited = CursorUsageResponseSchema.parse({
-    membershipType: "enterprise",
     individualUsage: { onDemand: { limit: null, used: null } },
-    teamUsage: { onDemand: { limit: 500000, used: 33623 } },
+    membershipType: "enterprise",
+    teamUsage: { onDemand: { limit: 500_000, used: 33_623 } },
   });
   assert.equal(unlimited.individualUsage.onDemand?.limit, undefined);
-  assert.equal(unlimited.teamUsage.onDemand?.limit, 500000);
+  assert.equal(unlimited.teamUsage.onDemand?.limit, 500_000);
   assert.deepEqual(CursorUserResponseSchema.parse({ email: "a@example.com" }), {
     email: "a@example.com",
   });
   assert.equal(
-    CodexRefreshResponseSchema.safeParse({ access_token: "x".repeat(4_097) })
+    CodexRefreshResponseSchema.safeParse({ access_token: "x".repeat(4097) })
       .success,
     false
   );

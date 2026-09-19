@@ -6,13 +6,13 @@ import { raceWithTimeout } from "../src/runtime/deadline.js";
 test("raceWithTimeout returns the timeout value for a never-settling operation", async () => {
   const started = Date.now();
   const result = await raceWithTimeout(
-    new Promise<boolean>(() => undefined),
+    new Promise<boolean>(() => {}),
     10,
     false
   );
 
   assert.equal(result, false);
-  assert.ok(Date.now() - started < 1_000);
+  assert.ok(Date.now() - started < 1000);
 });
 
 test("raceWithTimeout preserves a completed operation", async () => {

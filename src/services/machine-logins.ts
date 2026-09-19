@@ -29,7 +29,7 @@ export interface MachineLogin {
 
 function readJson(file: string): unknown {
   try {
-    return JSON.parse(fs.readFileSync(file, "utf8"));
+    return JSON.parse(fs.readFileSync(file, "utf-8"));
   } catch {
     return null;
   }
@@ -54,7 +54,9 @@ function text(value: unknown): string | null {
  * leaves this function.
  */
 function emailFromJwt(token: string | null): string | null {
-  if (!token || token.split(".").length !== 3) return null;
+  if (!token || token.split(".").length !== 3) {
+    return null;
+  }
   try {
     const [, payload] = token.split(".");
     const padded = (payload ?? "").padEnd(
@@ -62,9 +64,11 @@ function emailFromJwt(token: string | null): string | null {
       "="
     );
     const claims = record(
-      JSON.parse(Buffer.from(padded, "base64url").toString("utf8"))
+      JSON.parse(Buffer.from(padded, "base64url").toString("utf-8"))
     );
-    if (!claims) return null;
+    if (!claims) {
+      return null;
+    }
     const profile = record(claims["https://api.openai.com/profile"]);
     return text(claims.email) ?? text(profile?.email);
   } catch {
@@ -76,7 +80,9 @@ function emailFromJwt(token: string | null): string | null {
 function claudeCodeLogin(home: string): MachineLogin | null {
   const file = path.join(home, ".claude.json");
   const oauth = record(record(readJson(file))?.oauthAccount);
-  if (!oauth) return null;
+  if (!oauth) {
+    return null;
+  }
   return {
     accountId: text(oauth.accountUuid),
     email: text(oauth.emailAddress),
@@ -96,7 +102,9 @@ function claudeCodeLogin(home: string): MachineLogin | null {
  * macOS path only. Absent elsewhere, which reads the same as not installed.
  */
 function claudeDesktopLogin(home: string): MachineLogin | null {
-  if (process.platform !== "darwin") return null;
+  if (process.platform !== "darwin") {
+    return null;
+  }
   const file = path.join(
     home,
     "Library",
@@ -105,7 +113,9 @@ function claudeDesktopLogin(home: string): MachineLogin | null {
     "cowork-enabled-cli-ops.json"
   );
   const owner = text(record(readJson(file))?.ownerAccountId);
-  if (!owner) return null;
+  if (!owner) {
+    return null;
+  }
   return {
     accountId: owner,
     email: null,
@@ -118,7 +128,9 @@ function claudeDesktopLogin(home: string): MachineLogin | null {
 function codexLogin(home: string): MachineLogin | null {
   const codexHome = process.env.CODEX_HOME ?? path.join(home, ".codex");
   const auth = record(readJson(path.join(codexHome, "auth.json")));
-  if (!auth) return null;
+  if (!auth) {
+    return null;
+  }
   const tokens = record(auth.tokens);
   return {
     accountId: text(tokens?.account_id),
@@ -170,7 +182,7 @@ export function claudeAccountNamesByUuid(dataDir: string): Map<string, string> {
     try {
       raw = fs.readFileSync(
         path.join(root, account, "storage-state.json"),
-        "utf8"
+        "utf-8"
       );
     } catch {
       continue;
@@ -179,7 +191,9 @@ export function claudeAccountNamesByUuid(dataDir: string): Map<string, string> {
       for (const match of raw.matchAll(pattern)) {
         const uuid = match[1]?.toLowerCase();
         // First writer wins: the account whose own state carries the id owns it.
-        if (uuid && !names.has(uuid)) names.set(uuid, account);
+        if (uuid && !names.has(uuid)) {
+          names.set(uuid, account);
+        }
       }
     }
   }

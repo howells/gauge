@@ -44,7 +44,7 @@ test("missing refresh/remove name points at the account list", () => {
 
 test("runAddCommand without a name guides instead of validating a schema", async () => {
   await assert.rejects(
-    () => runAddCommand(undefined, {}),
+    async () => await runAddCommand(undefined, {}),
     (error: unknown) =>
       error instanceof CLIError && error.code === "ACCOUNT_NAME_REQUIRED"
   );
@@ -53,7 +53,7 @@ test("runAddCommand without a name guides instead of validating a schema", async
 test("runAddCommand with a raw payload still defers to wire validation", async () => {
   // Agents pass --json; the friendly guard must not intercept that path.
   await assert.rejects(
-    () => runAddCommand(undefined, { json: "{}" }),
+    async () => await runAddCommand(undefined, { json: "{}" }),
     (error: unknown) =>
       error instanceof CLIError && error.code !== "ACCOUNT_NAME_REQUIRED"
   );

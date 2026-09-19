@@ -15,17 +15,18 @@ import {
 } from "./commands.js";
 import { runDoctorCommand } from "./commands/doctor-handler.js";
 import { runMigrateCommand } from "./commands/migrate-handler.js";
+import { runServeCommand } from "./commands/serve-handler.js";
 import { COMMAND_SPECS } from "./commands/specs.js";
 import type { Provider } from "./domain/account.js";
 import {
-  type CommandResult,
-  type OutputOptions,
   renderCommandResult,
   renderError,
   resolveOutputFormat,
 } from "./output.js";
+import type { CommandResult, OutputOptions } from "./output.js";
 import { getDataDir } from "./paths.js";
-import { type CommandHandlers, createProgram } from "./program.js";
+import { createProgram } from "./program.js";
+import type { CommandHandlers } from "./program.js";
 import { CLIError, redactDiagnosticValue } from "./security.js";
 import { assertStateCommandAllowed } from "./services/state-preflight.js";
 import { runTUI } from "./tui.js";
@@ -48,33 +49,6 @@ const resolvedFormat =
     : resolveOutputFormat(requestedFormat, isTTY);
 
 const handlers: CommandHandlers = {
-  status: async ({ options }) => {
-    assertStateCommandAllowed("status", getDataDir());
-    if (isTTY && !requestedFormat && !options.quick) {
-      await runTUI();
-      return;
-    }
-    await emitResult(
-      await runStatusCommand({
-        ...options,
-        quiet:
-          resolveOutputFormat(
-            typeof options.format === "string"
-              ? options.format
-              : requestedFormat,
-            isTTY
-          ) !== "human",
-      }),
-      options
-    );
-  },
-  list: ({ options }) => {
-    assertStateCommandAllowed("list", getDataDir());
-    emitResult(runListCommand(), options);
-  },
-  describe: ({ arguments: positional, options }) => {
-    emitResult(runDescribeCommand(positional.command), options);
-  },
   add: async ({ arguments: positional, options }) => {
     assertStateCommandAllowed("add", getDataDir());
     const target = resolveAccountTarget(
@@ -94,6 +68,24 @@ const handlers: CommandHandlers = {
             isTTY
           ) !== "human",
       }),
+      options
+    );
+  },
+  describe: ({ arguments: positional, options }) => {
+    emitResult(runDescribeCommand(positional.command), options);
+  },
+  doctor: ({ options }) => {
+    const outcome = runDoctorCommand(getDataDir());
+    emitResult(outcome.result, options);
+    process.exitCode = outcome.exitCode;
+  },
+  list: ({ options }) => {
+    assertStateCommandAllowed("list", getDataDir());
+    emitResult(runListCommand(), options);
+  },
+  migrate: ({ options }) => {
+    emitResult(
+      runMigrateCommand(getDataDir(), options.dryRun === true),
       options
     );
   },
@@ -134,14 +126,33 @@ const handlers: CommandHandlers = {
       options
     );
   },
-  doctor: ({ options }) => {
-    const outcome = runDoctorCommand(getDataDir());
-    emitResult(outcome.result, options);
-    process.exitCode = outcome.exitCode;
-  },
-  migrate: ({ options }) => {
+  serve: async ({ options }) => {
+    assertStateCommandAllowed("serve", getDataDir());
     emitResult(
-      runMigrateCommand(getDataDir(), options.dryRun === true),
+      await runServeCommand({
+        noCredentialRefresh: options.noCredentialRefresh === true,
+        port: typeof options.port === "number" ? options.port : undefined,
+      }),
+      options
+    );
+  },
+  status: async ({ options }) => {
+    assertStateCommandAllowed("status", getDataDir());
+    if (isTTY && !requestedFormat && !options.quick) {
+      await runTUI();
+      return;
+    }
+    await emitResult(
+      await runStatusCommand({
+        ...options,
+        quiet:
+          resolveOutputFormat(
+            typeof options.format === "string"
+              ? options.format
+              : requestedFormat,
+            isTTY
+          ) !== "human",
+      }),
       options
     );
   },
@@ -152,6 +163,11 @@ const program = createProgram({
   version: packageJson.version ?? "0.0.0",
 });
 program.configureOutput({
+  outputError: (str, write) => {
+    if (resolvedFormat === "human") {
+      write(str);
+    }
+  },
   writeErr: (str) => {
     if (resolvedFormat === "human") {
       process.stderr.write(str);
@@ -160,11 +176,6 @@ program.configureOutput({
   writeOut: (str) => {
     if (resolvedFormat === "human") {
       process.stdout.write(str);
-    }
-  },
-  outputError: (str, write) => {
-    if (resolvedFormat === "human") {
-      write(str);
     }
   },
 });
@@ -189,10 +200,10 @@ try {
           : String(redactDiagnosticValue(normalized.message, redactionContext)),
       },
       {
+        debug: argv.includes("--debug"),
         format: requestedFormat,
         outputFile: peekFlagValue(argv, "--output-file"),
         sanitize: !argv.includes("--no-sanitize"),
-        debug: argv.includes("--debug"),
       },
       {
         command: detectCommandName(argv),
@@ -303,7 +314,13 @@ function resolveAccountTarget(
 }
 
 function isProvider(value: string | undefined): value is Provider {
-  return value === "claude" || value === "codex" || value === "cursor";
+  return (
+    value === "claude" ||
+    value === "codex" ||
+    value === "cursor" ||
+    value === "zai" ||
+    value === "grok"
+  );
 }
 
 function normalizeOutputOptions(options: OutputOptions): OutputOptions {

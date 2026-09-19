@@ -3,20 +3,25 @@ import os from "node:os";
 import path from "node:path";
 
 import type { AccountDetails } from "../accounts.js";
-import { type AccountUsage, fetchAllUsage } from "../api.js";
+import { fetchAllUsage } from "../api.js";
+import type { AccountUsage } from "../api.js";
+import type { Provider } from "../domain/account.js";
 import type {
   AccountSource,
   PendingCredentialUpdate,
   UsageReading,
   UsageWindowKind,
 } from "../domain/snapshot.js";
+import { fetchCodexAccounts, fetchCursorAccounts } from "../provider-usage.js";
+import type { PendingCodexCredentialUpdate } from "../provider-usage.js";
 import {
-  fetchCodexAccounts,
-  fetchCursorAccounts,
-  type PendingCodexCredentialUpdate,
-} from "../provider-usage.js";
+  fetchGrokUsage,
+  liveGrokAccount,
+  readGrokAccounts,
+} from "./grok-usage.js";
 import { ProviderUsageReadingSchema } from "./schemas.js";
 import type { ProviderUsageResult, UsageProviderAdapter } from "./types.js";
+import { fetchZaiUsage, readZaiApiKey } from "./zai-usage.js";
 
 /** One window as a provider reports it, already named for the limit it meters. */
 interface NamedWindow {
@@ -70,9 +75,15 @@ function namedCodexWindows(account: {
   weekly: Omit<NamedWindow, "kind"> | null;
 }): NamedWindow[] {
   const windows: NamedWindow[] = [];
-  if (account.session) windows.push({ ...account.session, kind: "session" });
-  if (account.weekly) windows.push({ ...account.weekly, kind: "weekly" });
-  if (account.monthly) windows.push({ ...account.monthly, kind: "monthly" });
+  if (account.session) {
+    windows.push({ ...account.session, kind: "session" });
+  }
+  if (account.weekly) {
+    windows.push({ ...account.weekly, kind: "weekly" });
+  }
+  if (account.monthly) {
+    windows.push({ ...account.monthly, kind: "monthly" });
+  }
   return windows;
 }
 
@@ -88,12 +99,14 @@ export function buildLocalSources(
   const env = options.env ?? process.env;
   const home = options.home ?? os.homedir();
   const sources: AccountSource[] = configured.map((account, order) => ({
-    id: { provider: account.provider, name: account.name },
+    id: { name: account.name, provider: account.provider },
     order,
     provider: account.provider,
     source: "configured",
   }));
-  if (options.accountFiltered) return sources;
+  if (options.accountFiltered) {
+    return sources;
+  }
 
   if (options.providers.has("codex")) {
     const codexHome = env.CODEX_HOME ?? path.join(home, ".codex");
@@ -109,7 +122,7 @@ export function buildLocalSources(
       !configuredHomes.has(path.resolve(codexHome))
     ) {
       sources.push({
-        id: { provider: "codex", ambient: "default" },
+        id: { ambient: "default", provider: "codex" },
         order: sources.length,
         provider: "codex",
         source: "ambient",
@@ -126,9 +139,25 @@ export function buildLocalSources(
     )
   ) {
     sources.push({
-      id: { provider: "cursor", ambient: "environment" },
+      id: { ambient: "environment", provider: "cursor" },
       order: sources.length,
       provider: "cursor",
+      source: "ambient",
+    });
+  }
+  if (options.providers.has("zai") && readZaiApiKey(env) !== null) {
+    sources.push({
+      id: { ambient: "coding-plan", provider: "zai" },
+      order: sources.length,
+      provider: "zai",
+      source: "ambient",
+    });
+  }
+  if (options.providers.has("grok") && readGrokAccounts().length > 0) {
+    sources.push({
+      id: { ambient: "build", provider: "grok" },
+      order: sources.length,
+      provider: "grok",
       source: "ambient",
     });
   }
@@ -169,11 +198,11 @@ export function createLocalAdapters(
           {
             acquireBrowser: acquireClaudeBrowser,
             credentialRefresh,
-            quiet: true,
-            signal,
             onStorageStateUpdate: (_account, value) => {
               onStorageStateUpdate(value);
             },
+            quiet: true,
+            signal,
           }
         );
         const usage = result[0];
@@ -199,7 +228,9 @@ export function createLocalAdapters(
           signal,
         });
         const result = results[0];
-        if (!result) return null;
+        if (!result) {
+          return null;
+        }
         return {
           ...result,
           windows: namedCodexWindows(result),
@@ -223,7 +254,9 @@ export function createLocalAdapters(
           signal,
         });
         const result = results[0];
-        if (!result) return null;
+        if (!result) {
+          return null;
+        }
         // Cursor meters a monthly cycle, not a session and a week: the plan's
         // included usage, then anything bought on demand beyond it.
         return {
@@ -232,16 +265,60 @@ export function createLocalAdapters(
         };
       }
     ),
+    adapter("zai", async () => {
+      const reading = await fetchZaiUsage();
+      if (!reading) {
+        return null;
+      }
+      return {
+        plan: reading.plan,
+        windows: [
+          reading.session
+            ? { ...reading.session, kind: "session" as const }
+            : null,
+          reading.monthly
+            ? { ...reading.monthly, kind: "monthly" as const }
+            : null,
+        ].filter((entry): entry is NonNullable<typeof entry> => entry !== null),
+      };
+    }),
+    adapter("grok", async () => {
+      const accounts = readGrokAccounts();
+      if (accounts.length === 0) {
+        return null;
+      }
+      const live = liveGrokAccount(accounts);
+      if (!live) {
+        const newest = accounts.at(-1);
+        return {
+          plan: "Grok Build",
+          ...(newest?.email && { email: newest.email }),
+          error: "grok/token-expired: run the Grok CLI once to refresh login.",
+          windows: [],
+        };
+      }
+      const reading = await fetchGrokUsage(live);
+      if (!reading) {
+        return null;
+      }
+      return {
+        ...(reading.email && { email: reading.email }),
+        plan: reading.plan,
+        windows: reading.session
+          ? [{ ...reading.session, kind: "session" as const }]
+          : [],
+      };
+    }),
   ];
 }
 
 function normalizeClaudeUsage(account: AccountUsage): ProviderReading {
   const planLabels = {
     free: "Free",
-    pro: "Pro",
     max: "Max",
-    max_5x: "Max 5x",
     max_20x: "Max 20x",
+    max_5x: "Max 5x",
+    pro: "Pro",
     unknown: "",
   } as const;
   const window = (
@@ -253,13 +330,21 @@ function normalizeClaudeUsage(account: AccountUsage): ProviderReading {
   return {
     plan: planLabels[account.plan],
     renewsAt: account.renewsAt,
-    windows: namedWindows(
-      {
-        session: window(account.usage.five_hour),
-        weekly: window(account.usage.seven_day),
-      },
-      ["session", "weekly"]
-    ),
+    windows: [
+      ...namedWindows(
+        {
+          session: window(account.usage.five_hour),
+          weekly: window(account.usage.seven_day),
+        },
+        ["session", "weekly"]
+      ),
+      ...(account.usage.scoped ?? []).map((limit) => ({
+        kind: "scoped" as const,
+        label: limit.model,
+        resetsAt: limit.resets_at,
+        usedPercent: limit.utilization,
+      })),
+    ],
     ...(account.error !== undefined && { error: account.error }),
   };
 }
@@ -271,15 +356,15 @@ function createSerialAcquirer(): <T>(
   return async <T>(operation: () => Promise<T>): Promise<T> => {
     const current = tail.then(operation, operation);
     tail = current.then(
-      () => undefined,
-      () => undefined
+      () => {},
+      () => {}
     );
-    return current;
+    return await current;
   };
 }
 
 function adapter(
-  provider: "claude" | "codex" | "cursor",
+  provider: Provider,
   acquireOne: (
     source: AccountSource,
     credentialRefresh: "refresh-if-stale" | "never",
@@ -289,58 +374,64 @@ function adapter(
   ) => Promise<ProviderReading | null>
 ): UsageProviderAdapter {
   return {
-    provider,
     async acquire(sources, context) {
       const pendingCredentialUpdates: PendingCredentialUpdate[] = [];
       const results = await Promise.all(
-        sources.map((source) =>
-          context.acquireDirect(async (): Promise<ProviderUsageResult> => {
-            try {
-              const account = await acquireOne(
-                source,
-                context.credentialRefresh,
-                (update) => {
-                  pendingCredentialUpdates.push({
-                    kind: "external-credential",
-                    provider: "codex",
+        sources.map(
+          async (source) =>
+            await context.acquireDirect(
+              async (): Promise<ProviderUsageResult> => {
+                try {
+                  const account = await acquireOne(
+                    source,
+                    context.credentialRefresh,
+                    (update) => {
+                      pendingCredentialUpdates.push({
+                        kind: "external-credential",
+                        provider: "codex",
+                        sourceId: source.id,
+                        value: update,
+                      });
+                    },
+                    (value) => {
+                      pendingCredentialUpdates.push({
+                        kind: "storage-state",
+                        provider,
+                        sourceId: source.id,
+                        value,
+                      });
+                    },
+                    context.signal
+                  );
+                  if (!account) {
+                    return failure(
+                      source,
+                      "Provider returned no account result."
+                    );
+                  }
+                  if (account.error) {
+                    return failure(
+                      source,
+                      `Provider usage acquisition failed: ${reason(account.error)}`
+                    );
+                  }
+                  return {
                     sourceId: source.id,
-                    value: update,
-                  });
-                },
-                (value) => {
-                  pendingCredentialUpdates.push({
-                    kind: "storage-state",
-                    provider,
-                    sourceId: source.id,
-                    value,
-                  });
-                },
-                context.signal
-              );
-              if (!account) {
-                return failure(source, "Provider returned no account result.");
+                    usage: toUsageReading(account),
+                  };
+                } catch (error) {
+                  return failure(
+                    source,
+                    `Provider usage acquisition failed: ${reason(error)}`
+                  );
+                }
               }
-              if (account.error) {
-                return failure(
-                  source,
-                  `Provider usage acquisition failed: ${reason(account.error)}`
-                );
-              }
-              return {
-                sourceId: source.id,
-                usage: toUsageReading(account),
-              };
-            } catch (error) {
-              return failure(
-                source,
-                `Provider usage acquisition failed: ${reason(error)}`
-              );
-            }
-          })
+            )
         )
       );
       return { pendingCredentialUpdates, results };
     },
+    provider,
   };
 }
 
@@ -352,7 +443,9 @@ function configuredDetail(
     throw new Error("Ambient source has no configured account details.");
   }
   const detail = details.get(`${source.provider}:${source.id.name}`);
-  if (!detail) throw new Error("Configured account details are missing.");
+  if (!detail) {
+    throw new Error("Configured account details are missing.");
+  }
   return detail;
 }
 
@@ -378,10 +471,12 @@ function reason(cause: unknown): string {
       : typeof cause === "string"
         ? cause
         : typeof cause === "object" && cause !== null && "message" in cause
-          ? String((cause as { message: unknown }).message)
+          ? String(cause.message)
           : String(cause);
-  const line = text.replace(/\s+/gu, " ").trim();
-  if (line === "") return "no reason given";
+  const line = text.replaceAll(/\s+/gu, " ").trim();
+  if (line === "") {
+    return "no reason given";
+  }
   return line.length > 160 ? `${line.slice(0, 159)}…` : line;
 }
 

@@ -6,5 +6,5 @@ import { renderCommandExamplesMarkdown } from "../src/commands/specs.js";
 fs.writeFileSync(
   path.resolve("docs/command-examples.md"),
   renderCommandExamplesMarkdown(),
-  "utf8"
+  "utf-8"
 );

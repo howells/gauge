@@ -9,10 +9,14 @@ export async function raceWithTimeout<T>(
     return await Promise.race([
       operation,
       new Promise<T>((resolve) => {
-        timer = setTimeout(() => resolve(timeoutValue), timeoutMs);
+        timer = setTimeout(() => {
+          resolve(timeoutValue);
+        }, timeoutMs);
       }),
     ]);
   } finally {
-    if (timer) clearTimeout(timer);
+    if (timer) {
+      clearTimeout(timer);
+    }
   }
 }

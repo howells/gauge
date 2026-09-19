@@ -7,7 +7,7 @@ test("describeCommands returns runtime command schemas", () => {
   const description = describeCommands();
   assert.equal(Array.isArray(description.commands), true);
   assert.ok(
-    (description.commands as Array<{ command: string }>).some(
+    (description.commands as { command: string }[]).some(
       (command) => command.command === "describe"
     )
   );

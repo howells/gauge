@@ -82,7 +82,7 @@ function isRecord(value: unknown): value is Record<string, unknown> {
 }
 
 function readJson(filePath: string): unknown {
-  return JSON.parse(fs.readFileSync(filePath, "utf8"));
+  return JSON.parse(fs.readFileSync(filePath, "utf-8"));
 }
 
 function stringValue(value: unknown): string | undefined {
@@ -97,7 +97,9 @@ function numberValue(value: unknown): number | undefined {
 
 function dateValue(value: unknown): Date | undefined {
   const raw = stringValue(value);
-  if (!raw) return undefined;
+  if (!raw) {
+    return undefined;
+  }
   const timestamp = Date.parse(raw);
   return Number.isFinite(timestamp) ? new Date(timestamp) : undefined;
 }
@@ -113,7 +115,9 @@ function normalizeReset(value: unknown): string | null {
     return Number.isFinite(parsed) ? new Date(parsed).toISOString() : value;
   }
   const numeric = numberValue(value);
-  if (numeric === undefined) return null;
+  if (numeric === undefined) {
+    return null;
+  }
   const milliseconds = numeric > 1_000_000_000_000 ? numeric : numeric * 1000;
   return new Date(milliseconds).toISOString();
 }
@@ -127,14 +131,18 @@ function normalizeReset(value: unknown): string | null {
  * window dropped for want of a reset time would take its slot with it.
  */
 export function toRateWindow(value: unknown): RateWindow | null {
-  if (!isRecord(value)) return null;
+  if (!isRecord(value)) {
+    return null;
+  }
   const usedPercent = numberValue(
     value.used_percent ?? value.usedPercent ?? value.totalPercentUsed
   );
-  if (usedPercent === undefined) return null;
+  if (usedPercent === undefined) {
+    return null;
+  }
   return {
-    usedPercent,
     resetsAt: normalizeReset(value.reset_at ?? value.resetsAt),
+    usedPercent,
   };
 }
 
@@ -160,7 +168,9 @@ function classifyCodexWindow(
   fallback: "session" | "weekly"
 ): ClassifiedCodexWindow | null {
   const window = toRateWindow(value);
-  if (!window) return null;
+  if (!window) {
+    return null;
+  }
   const seconds = isRecord(value)
     ? numberValue(value.limit_window_seconds)
     : undefined;
@@ -179,7 +189,9 @@ function classifyCodexWindow(
 }
 
 function classifiedCodexWindows(rateLimit: unknown): ClassifiedCodexWindow[] {
-  if (!isRecord(rateLimit)) return [];
+  if (!isRecord(rateLimit)) {
+    return [];
+  }
   return [
     classifyCodexWindow(rateLimit.primary_window, "session"),
     classifyCodexWindow(rateLimit.secondary_window, "weekly"),
@@ -189,12 +201,16 @@ function classifiedCodexWindows(rateLimit: unknown): ClassifiedCodexWindow[] {
 export function decodeJwtPayload(
   token: string | undefined
 ): Record<string, unknown> {
-  if (!token) return {};
+  if (!token) {
+    return {};
+  }
   const part = token.split(".")[1];
-  if (!part) return {};
+  if (!part) {
+    return {};
+  }
   try {
     return JSON.parse(
-      Buffer.from(part, "base64url").toString("utf8")
+      Buffer.from(part, "base64url").toString("utf-8")
     ) as Record<string, unknown>;
   } catch {
     return {};
@@ -211,10 +227,15 @@ function titleCaseWords(raw: string): string {
 
 export function formatCodexPlan(raw: unknown): string {
   const value = stringValue(raw)?.toLowerCase();
-  if (!value) return "Pro";
-  if (value === "pro") return "Pro 20x";
-  if (["prolite", "pro_lite", "pro-lite", "pro lite"].includes(value))
+  if (!value) {
+    return "Pro";
+  }
+  if (value === "pro") {
+    return "Pro 20x";
+  }
+  if (["prolite", "pro_lite", "pro-lite", "pro lite"].includes(value)) {
     return "Pro 5x";
+  }
   return titleCaseWords(value);
 }
 
@@ -225,14 +246,14 @@ function errorAccount(
   email = ""
 ): UnifiedAccount {
   return {
-    provider,
-    label,
     email,
+    error: message,
+    label,
+    monthly: null,
     plan: "",
+    provider,
     session: null,
     weekly: null,
-    monthly: null,
-    error: message,
   };
 }
 
@@ -240,9 +261,12 @@ function discoverCodexSources(): CodexSource[] {
   const sources: CodexSource[] = [];
   const addSource = (source: CodexSource): void => {
     const authPath = path.join(source.homePath, "auth.json");
-    if (!fs.existsSync(authPath)) return;
-    if (sources.some((existing) => existing.homePath === source.homePath))
+    if (!fs.existsSync(authPath)) {
       return;
+    }
+    if (sources.some((existing) => existing.homePath === source.homePath)) {
+      return;
+    }
     sources.push(source);
   };
 
@@ -269,14 +293,20 @@ function codexSourcesFromAccounts(accounts: AccountDetails[]): CodexSource[] {
 function loadCodexCredentials(homePath: string): CodexCredentials {
   const authPath = path.join(homePath, "auth.json");
   const auth = readJson(authPath);
-  if (!isRecord(auth)) throw new Error("Invalid Codex auth.json");
+  if (!isRecord(auth)) {
+    throw new Error("Invalid Codex auth.json");
+  }
 
   const apiKey = stringValue(auth.OPENAI_API_KEY);
-  if (apiKey) return { accessToken: apiKey };
+  if (apiKey) {
+    return { accessToken: apiKey };
+  }
 
   const tokens = isRecord(auth.tokens) ? auth.tokens : {};
   const accessToken = stringValue(tokens.access_token ?? tokens.accessToken);
-  if (!accessToken) throw new Error("Codex access token missing");
+  if (!accessToken) {
+    throw new Error("Codex access token missing");
+  }
 
   return {
     accessToken,
@@ -288,10 +318,14 @@ function loadCodexCredentials(homePath: string): CodexCredentials {
 }
 
 function shouldRefreshCodex(credentials: CodexCredentials): boolean {
-  if (!credentials.refreshToken) return false;
+  if (!credentials.refreshToken) {
+    return false;
+  }
   // No last_refresh means the access token's age is unknown (e.g. homes
   // managed by external tools) — treat unknown age as stale.
-  if (!credentials.lastRefresh) return true;
+  if (!credentials.lastRefresh) {
+    return true;
+  }
   return (
     Date.now() - credentials.lastRefresh.getTime() >
     CODEX_TOKEN_REFRESH_AFTER_MS
@@ -304,7 +338,9 @@ async function refreshCodexCredentials(
   onCredentialUpdate?: (update: PendingCodexCredentialUpdate) => void,
   signal?: AbortSignal
 ): Promise<CodexCredentials> {
-  if (!credentials.refreshToken) return credentials;
+  if (!credentials.refreshToken) {
+    return credentials;
+  }
 
   const response = await fetch(CODEX_TOKEN_REFRESH_URL, {
     body: JSON.stringify({
@@ -358,7 +394,7 @@ function codexBaseUrl(homePath: string): string {
 
 function readFileIfExists(filePath: string): string | null {
   try {
-    return fs.readFileSync(filePath, "utf8");
+    return fs.readFileSync(filePath, "utf-8");
   } catch {
     return null;
   }
@@ -410,8 +446,10 @@ async function fetchJson(
     },
     signal,
   });
-  if (!response.ok) throw new ProviderHttpError(response.status);
-  return parseBoundedResponse(response);
+  if (!response.ok) {
+    throw new ProviderHttpError(response.status);
+  }
+  return await parseBoundedResponse(response);
 }
 
 async function parseBoundedResponse(response: Response): Promise<unknown> {
@@ -433,7 +471,7 @@ async function parseBoundedResponse(response: Response): Promise<unknown> {
 async function readBoundedResponseText(response: Response): Promise<string> {
   if (!response.body) {
     const text = await response.text();
-    if (Buffer.byteLength(text, "utf8") > MAX_PROVIDER_RESPONSE_BYTES) {
+    if (Buffer.byteLength(text, "utf-8") > MAX_PROVIDER_RESPONSE_BYTES) {
       throw new Error("Provider response exceeded the allowed size.");
     }
     return text;
@@ -445,7 +483,9 @@ async function readBoundedResponseText(response: Response): Promise<string> {
   try {
     while (true) {
       const { done, value } = await reader.read();
-      if (done) break;
+      if (done) {
+        break;
+      }
       total += value.byteLength;
       if (total > MAX_PROVIDER_RESPONSE_BYTES) {
         await reader.cancel();
@@ -456,7 +496,7 @@ async function readBoundedResponseText(response: Response): Promise<string> {
   } finally {
     reader.releaseLock();
   }
-  return Buffer.concat(chunks, total).toString("utf8");
+  return Buffer.concat(chunks, total).toString("utf-8");
 }
 
 function codexHeaders(credentials: CodexCredentials): Record<string, string> {
@@ -539,14 +579,14 @@ async function fetchCodexAccount(
   const resets = usage.rate_limit_reset_credits;
 
   return {
-    provider: "codex",
-    label,
     email,
+    label,
+    monthly,
     plan: formatCodexPlan(usage.plan_type),
+    provider: "codex",
     renewsAt: source.renewsAt,
     session,
     weekly,
-    monthly,
     ...(resets && {
       resetsApplicable: resets.applicable_available_count,
       resetsAvailable: resets.available_count,
@@ -587,14 +627,20 @@ export async function fetchCodexAccounts(
 }
 
 export function parseStorageStateCookies(value: unknown): string | null {
-  if (!isRecord(value) || !Array.isArray(value.cookies)) return null;
+  if (!isRecord(value) || !Array.isArray(value.cookies)) {
+    return null;
+  }
   const pairs: string[] = [];
   for (const cookie of value.cookies) {
-    if (!isRecord(cookie)) continue;
+    if (!isRecord(cookie)) {
+      continue;
+    }
     const name = stringValue(cookie.name);
     const cookieValue = stringValue(cookie.value);
     const domain = stringValue(cookie.domain) ?? "";
-    if (!name || !cookieValue || !isSafeCookiePair(name, cookieValue)) continue;
+    if (!name || !cookieValue || !isSafeCookiePair(name, cookieValue)) {
+      continue;
+    }
     const normalizedDomain = domain.replace(/^\./, "").toLowerCase();
     if (
       !["cursor.com", "cursor.sh"].some(
@@ -611,7 +657,9 @@ export function parseStorageStateCookies(value: unknown): string | null {
 
 export function parseStorageStateCookieFile(filePath: string): string | null {
   const text = readFileIfExists(filePath);
-  if (!text) return null;
+  if (!text) {
+    return null;
+  }
   try {
     return parseStorageStateCookies(JSON.parse(text));
   } catch {
@@ -629,7 +677,9 @@ function cursorSessionsFromAccounts(
 ): CursorSession[] {
   const sessions: CursorSession[] = [];
   for (const account of accounts) {
-    if (account.provider !== "cursor") continue;
+    if (account.provider !== "cursor") {
+      continue;
+    }
     sessions.push({
       cookieHeader: parseStorageStateCookieFile(account.storagePath) ?? "",
       label: account.name,
@@ -645,10 +695,16 @@ function discoverCursorSessions(): CursorSession[] {
     cookieHeader: string | null | undefined,
     label: string
   ): void => {
-    if (!cookieHeader) return;
+    if (!cookieHeader) {
+      return;
+    }
     const trimmed = cookieHeader.trim();
-    if (!trimmed) return;
-    if (sessions.some((session) => session.cookieHeader === trimmed)) return;
+    if (!trimmed) {
+      return;
+    }
+    if (sessions.some((session) => session.cookieHeader === trimmed)) {
+      return;
+    }
     sessions.push({ cookieHeader: trimmed, label });
   };
 
@@ -694,13 +750,17 @@ function isSafeCookiePair(name: string, value: string): boolean {
 }
 
 function normalizeRawCookieHeader(value: string | undefined): string | null {
-  if (!value || hasControlCharacters(value)) return null;
+  if (!value || hasControlCharacters(value)) {
+    return null;
+  }
   const pairs = value.split(";").map((pair) => pair.trim());
   if (
     pairs.length === 0 ||
     pairs.some((pair) => {
       const separator = pair.indexOf("=");
-      if (separator <= 0) return true;
+      if (separator <= 0) {
+        return true;
+      }
       return !isSafeCookiePair(
         pair.slice(0, separator),
         pair.slice(separator + 1)
@@ -715,7 +775,9 @@ function normalizeRawCookieHeader(value: string | undefined): string | null {
 function hasControlCharacters(value: string): boolean {
   for (const character of value) {
     const code = character.charCodeAt(0);
-    if (code <= 31 || code === 127) return true;
+    if (code <= 31 || code === 127) {
+      return true;
+    }
   }
   return false;
 }
@@ -796,18 +858,30 @@ function averagePercent(left: unknown, right: unknown): number | undefined {
   const values = [numberValue(left), numberValue(right)].filter(
     (value): value is number => value !== undefined
   );
-  if (values.length === 0) return undefined;
+  if (values.length === 0) {
+    return undefined;
+  }
   return values.reduce((sum, value) => sum + value, 0) / values.length;
 }
 
 function formatCursorPlan(raw: unknown): string {
   const value = stringValue(raw);
-  if (!value) return "Cursor";
+  if (!value) {
+    return "Cursor";
+  }
   const normalized = value.toLowerCase();
-  if (normalized.includes("enterprise")) return "Cursor Enterprise";
-  if (normalized.includes("team")) return "Cursor Team";
-  if (normalized.includes("pro")) return "Cursor Pro";
-  if (normalized.includes("hobby")) return "Cursor Hobby";
+  if (normalized.includes("enterprise")) {
+    return "Cursor Enterprise";
+  }
+  if (normalized.includes("team")) {
+    return "Cursor Team";
+  }
+  if (normalized.includes("pro")) {
+    return "Cursor Pro";
+  }
+  if (normalized.includes("hobby")) {
+    return "Cursor Hobby";
+  }
   return `Cursor ${titleCaseWords(value)}`;
 }
 
@@ -815,7 +889,7 @@ async function fetchCursorAccount(
   session: CursorSession,
   signal?: AbortSignal
 ): Promise<UnifiedAccount> {
-  const cookieHeader = session.cookieHeader;
+  const { cookieHeader } = session;
   if (!cookieHeader) {
     throw new Error(
       `No Cursor storage state. Run: gauge refresh cursor ${session.label}`
@@ -848,15 +922,15 @@ async function fetchCursorAccount(
     // Both windows reset with the billing cycle; a cycle end gauge could not
     // read costs the countdown, never the reading itself.
     session: {
-      usedPercent: cursorUsagePercent(validatedUsage),
       resetsAt: end,
+      usedPercent: cursorUsagePercent(validatedUsage),
     },
     weekly:
       secondaryPercent === undefined
         ? null
         : {
-            usedPercent: secondaryPercent,
             resetsAt: end,
+            usedPercent: secondaryPercent,
           },
     monthly: null,
   };
@@ -892,7 +966,9 @@ function uniquifyAccountLabels(accounts: UnifiedAccount[]): UnifiedAccount[] {
 
   const seen = new Map<string, number>();
   return accounts.map((account) => {
-    if ((totals.get(account.label) ?? 0) <= 1) return account;
+    if ((totals.get(account.label) ?? 0) <= 1) {
+      return account;
+    }
     const index = (seen.get(account.label) ?? 0) + 1;
     seen.set(account.label, index);
     return {

@@ -1,9 +1,7 @@
 import fs from "node:fs";
 
-import {
-  type PlaywrightStorageState,
-  PlaywrightStorageStateSchema,
-} from "./domain/storage-state-schema.js";
+import { PlaywrightStorageStateSchema } from "./domain/storage-state-schema.js";
+import type { PlaywrightStorageState } from "./domain/storage-state-schema.js";
 import { CLIError } from "./security.js";
 
 export type { PlaywrightStorageState };
@@ -26,7 +24,9 @@ export function parseStorageStateJsonValue(
   try {
     return parseStorageStateObject(JSON.parse(storageStateJson) as unknown);
   } catch (error) {
-    if (error instanceof CLIError) throw error;
+    if (error instanceof CLIError) {
+      throw error;
+    }
     throw invalidStorageState(error);
   }
 }
@@ -39,7 +39,7 @@ function parseStorageStateJson(storageStateJson: string): string {
 /** Read and validate a Playwright storage-state JSON file from disk. */
 export function readStorageStateFile(filePath: string): string {
   try {
-    return parseStorageStateJson(fs.readFileSync(filePath, "utf8"));
+    return parseStorageStateJson(fs.readFileSync(filePath, "utf-8"));
   } catch (error) {
     if (error instanceof CLIError) {
       throw error;
@@ -47,10 +47,10 @@ export function readStorageStateFile(filePath: string): string {
 
     throw new CLIError("Unable to read the requested storage state file.", {
       code: "INVALID_STORAGE_STATE",
-      exitCode: 2,
       details: {
         reason: "The file is missing, unreadable, or not a regular JSON file.",
       },
+      exitCode: 2,
     });
   }
 }
@@ -58,7 +58,7 @@ export function readStorageStateFile(filePath: string): string {
 function invalidStorageState(error: unknown): CLIError {
   return new CLIError("Storage state payload is not valid Playwright state.", {
     code: "INVALID_STORAGE_STATE",
-    exitCode: 2,
     details: error instanceof Error ? error.message : String(error),
+    exitCode: 2,
   });
 }

@@ -1,7 +1,5 @@
-import {
-  type RecommendationCandidate,
-  recommendUsage,
-} from "../domain/recommendation.js";
+import { recommendUsage } from "../domain/recommendation.js";
+import type { RecommendationCandidate } from "../domain/recommendation.js";
 import type { AccountSnapshot, UsageSnapshot } from "../domain/snapshot.js";
 import type { CommandResult } from "../output.js";
 import {
@@ -26,11 +24,11 @@ export function buildStatusResult(
   );
   const result = classifySnapshot(snapshot);
   const accounts = presented.map(({ account, name }) => ({
+    error: account.error,
     name,
     provider: account.source.provider,
     source: account.source.source,
     usage: account.usage,
-    error: account.error,
   }));
   const data = options.quick
     ? { recommendation, summary: snapshot.summary }
@@ -90,7 +88,9 @@ function presentAccounts(accounts: AccountSnapshot[]): PresentedAccount[] {
 }
 
 function displayName(account: AccountSnapshot): string {
-  if ("name" in account.source.id) return account.source.id.name;
+  if ("name" in account.source.id) {
+    return account.source.id.name;
+  }
   const email = account.usage?.email;
   if (email) {
     const domain = email.split("@")[1] ?? email;
@@ -105,8 +105,8 @@ function toRecommendationCandidate(
 ): RecommendationCandidate {
   return {
     id: {
-      provider: account.source.provider,
       name,
+      provider: account.source.provider,
     },
     order: index,
     // A labelled window is scoped to one provider-owned model pool. It belongs

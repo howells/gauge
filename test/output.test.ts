@@ -39,11 +39,11 @@ test("applyFieldMask keeps multiple fields from array items", () => {
     {
       accounts: [
         {
-          label: "work",
-          provider: "cursor",
-          plan: "Cursor Enterprise",
-          renewsAt: "2026-06-21T16:31:30.000Z",
           email: "hidden@example.com",
+          label: "work",
+          plan: "Cursor Enterprise",
+          provider: "cursor",
+          renewsAt: "2026-06-21T16:31:30.000Z",
         },
       ],
     },
@@ -54,8 +54,8 @@ test("applyFieldMask keeps multiple fields from array items", () => {
     accounts: [
       {
         label: "work",
-        provider: "cursor",
         plan: "Cursor Enterprise",
+        provider: "cursor",
         renewsAt: "2026-06-21T16:31:30.000Z",
       },
     ],

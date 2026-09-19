@@ -14,19 +14,21 @@ interface AddStep {
 }
 
 export const ADD_STEPS: readonly AddStep[] = [
-  { provider: "claude", label: "Claude", command: "gauge add <name>" },
+  { command: "gauge add <name>", label: "Claude", provider: "claude" },
   {
-    provider: "codex",
-    label: "Codex",
     command: "gauge add codex <name> --codex-home <path>",
+    label: "Codex",
+    provider: "codex",
   },
-  { provider: "cursor", label: "Cursor", command: "gauge add cursor <name>" },
+  { command: "gauge add cursor <name>", label: "Cursor", provider: "cursor" },
 ];
 
 const PROVIDER_LABEL: Record<Provider, string> = {
   claude: "Claude",
   codex: "Codex",
   cursor: "Cursor",
+  grok: "Grok",
+  zai: "Z.AI",
 };
 
 /** Aligned "how to add each provider" table, indented by `indent`. */
@@ -45,24 +47,41 @@ interface ProviderDetail {
 
 function providerDetail(provider: Provider): ProviderDetail {
   switch (provider) {
-    case "claude":
+    case "claude": {
       return {
         command: "gauge add <name>",
-        note: "Opens a browser so you can log in to Claude.",
         example: "gauge add personal",
+        note: "Opens a browser so you can log in to Claude.",
       };
-    case "cursor":
+    }
+    case "cursor": {
       return {
         command: "gauge add cursor <name>",
-        note: "Opens a browser so you can log in to Cursor.",
         example: "gauge add cursor work",
+        note: "Opens a browser so you can log in to Cursor.",
       };
-    case "codex":
+    }
+    case "codex": {
       return {
         command: "gauge add codex <name> --codex-home <path>",
-        note: "<path> is the folder holding the Codex CLI's auth.json (often ~/.codex).",
         example: "gauge add codex work --codex-home ~/.codex",
+        note: "<path> is the folder holding the Codex CLI's auth.json (often ~/.codex).",
       };
+    }
+    case "zai": {
+      return {
+        command: "gauge status",
+        example: "gauge status --provider zai",
+        note: "Z.AI usage is picked up automatically from the OpenCode auth store.",
+      };
+    }
+    case "grok": {
+      return {
+        command: "gauge status",
+        example: "gauge status --provider grok",
+        note: "Grok usage is picked up automatically from the Grok CLI's auth.json.",
+      };
+    }
   }
 }
 

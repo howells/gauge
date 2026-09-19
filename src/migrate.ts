@@ -4,21 +4,16 @@ import path from "node:path";
 
 import { z } from "zod";
 
-import {
-  type AccountId,
-  AccountIdSchema,
-  type Provider,
-} from "./domain/account.js";
+import { AccountIdSchema } from "./domain/account.js";
+import type { AccountId, Provider } from "./domain/account.js";
 import {
   AccountRepository,
   isMigratableProfileEntry,
 } from "./persistence/account-repository.js";
 import { atomicReplace } from "./persistence/atomic-replace.js";
 import { CLIError } from "./security.js";
-import {
-  type PlaywrightStorageState,
-  parseStorageStateJsonValue,
-} from "./storage-state.js";
+import { parseStorageStateJsonValue } from "./storage-state.js";
+import type { PlaywrightStorageState } from "./storage-state.js";
 
 const LegacyConfigSchema = z.strictObject({
   addedAt: z.iso.datetime(),
@@ -39,11 +34,11 @@ interface LegacyMigrationEntry {
 }
 
 export interface LegacyMigrationPlan {
-  accounts: Array<{
+  accounts: {
     destination: string;
     id: AccountId;
     source: string;
-  }>;
+  }[];
 }
 
 interface MigrationJournalEntry {
@@ -106,19 +101,21 @@ export function migrateLegacyAccounts(
   const entries = existingJournal
     ? buildJournalEntries(root, existingJournal)
     : buildEntries(root);
-  if (entries.length === 0 && !existingJournal) return { migrated: 0 };
+  if (entries.length === 0 && !existingJournal) {
+    return { migrated: 0 };
+  }
   const repository = new AccountRepository({
     dataRoot: root,
     randomId: options.randomId,
   });
   const journal: MigrationJournal = existingJournal ?? {
-    schema_version: 1,
     entries: entries.map((entry) => ({
       fingerprint: entryFingerprint(entry),
       id: entry.id,
       source: entry.source,
       status: "pending",
     })),
+    schema_version: 1,
   };
   assertJournalMatches(journal, entries);
 
@@ -160,8 +157,12 @@ export function migrateLegacyAccounts(
     }
     removeSourceIfExists(entry.source);
     options.afterSourceRemoval?.(entry.source);
-    if (entry.storageSource) removeSourceIfExists(entry.storageSource);
-    if (entry.profileSource) removeSourceIfExists(entry.profileSource);
+    if (entry.storageSource) {
+      removeSourceIfExists(entry.storageSource);
+    }
+    if (entry.profileSource) {
+      removeSourceIfExists(entry.profileSource);
+    }
     journalEntry.status = "cleaned";
     writeJournal(journalPath, journal);
   }
@@ -200,9 +201,11 @@ function buildJournalEntries(
       journalEntry.id.name
     );
     const configPath = path.join(destination, "config.json");
-    if (!fs.existsSync(configPath)) throw migrationConflict(source);
+    if (!fs.existsSync(configPath)) {
+      throw migrationConflict(source);
+    }
     const committedConfig = JSON.parse(
-      fs.readFileSync(configPath, "utf8")
+      fs.readFileSync(configPath, "utf-8")
     ) as Record<string, unknown>;
     const config = LegacyConfigSchema.parse({
       addedAt: committedConfig.addedAt,
@@ -247,10 +250,10 @@ function assertDestinationMatches(
 ): void {
   const existing = repository.get(entry.id);
   const expectedConfig = {
-    schema_version: 3,
-    provider: entry.id.provider,
-    name: entry.id.name,
     addedAt: entry.config.addedAt,
+    name: entry.id.name,
+    provider: entry.id.provider,
+    schema_version: 3,
     ...(entry.config.codexHome !== undefined && {
       codexHome: entry.config.codexHome,
     }),
@@ -262,18 +265,24 @@ function assertDestinationMatches(
     throw migrationConflict(entry.source);
   }
   if (entry.storageState === undefined) {
-    if (existing.hasStorageState) throw migrationConflict(entry.source);
+    if (existing.hasStorageState) {
+      throw migrationConflict(entry.source);
+    }
   } else {
-    if (!existing.hasStorageState) throw migrationConflict(entry.source);
+    if (!existing.hasStorageState) {
+      throw migrationConflict(entry.source);
+    }
     const actualStorage = parseStorageStateJsonValue(
-      fs.readFileSync(existing.paths.storageState, "utf8")
+      fs.readFileSync(existing.paths.storageState, "utf-8")
     );
     if (JSON.stringify(actualStorage) !== JSON.stringify(entry.storageState)) {
       throw migrationConflict(entry.source);
     }
   }
   if (entry.profileSource === undefined) {
-    if (existing.hasProfile) throw migrationConflict(entry.source);
+    if (existing.hasProfile) {
+      throw migrationConflict(entry.source);
+    }
   } else if (
     !existing.hasProfile ||
     !directoriesMatch(entry.profileSource, existing.paths.profile)
@@ -319,7 +328,7 @@ function destinationFingerprint(
       : null,
     storage: account.hasStorageState
       ? parseStorageStateJsonValue(
-          fs.readFileSync(account.paths.storageState, "utf8")
+          fs.readFileSync(account.paths.storageState, "utf-8")
         )
       : null,
   });
@@ -327,10 +336,10 @@ function destinationFingerprint(
 
 function expectedConfig(entry: LegacyMigrationEntry): Record<string, unknown> {
   return {
-    schema_version: 3,
-    provider: entry.id.provider,
-    name: entry.id.name,
     addedAt: entry.config.addedAt,
+    name: entry.id.name,
+    provider: entry.id.provider,
+    schema_version: 3,
     ...(entry.config.codexHome !== undefined && {
       codexHome: entry.config.codexHome,
     }),
@@ -350,7 +359,9 @@ function directoryManifest(directory: string, relative = ""): string[] {
       const status = fs.lstatSync(absolute);
       // Skip transient Chrome singleton locks/sockets — they are not copied,
       // so they must not contribute to the fingerprint either.
-      if (!isMigratableProfileEntry(status)) return [];
+      if (!isMigratableProfileEntry(status)) {
+        return [];
+      }
       if (status.isDirectory()) {
         return [`directory:${child}`, ...directoryManifest(absolute, child)];
       }
@@ -378,7 +389,9 @@ function directoriesMatch(left: string, right: string): boolean {
   // never copied, so a committed profile legitimately lacks them.
   const leftNames = migratableNames(left);
   const rightNames = migratableNames(right);
-  if (JSON.stringify(leftNames) !== JSON.stringify(rightNames)) return false;
+  if (JSON.stringify(leftNames) !== JSON.stringify(rightNames)) {
+    return false;
+  }
   return leftNames.every((name) => {
     const leftPath = path.join(left, name);
     const rightPath = path.join(right, name);
@@ -404,13 +417,13 @@ function buildEntry(root: string, filename: string): LegacyMigrationEntry {
   let config: z.infer<typeof LegacyConfigSchema>;
   try {
     config = LegacyConfigSchema.parse(
-      JSON.parse(fs.readFileSync(source, "utf8")) as unknown
+      JSON.parse(fs.readFileSync(source, "utf-8")) as unknown
     );
   } catch (error) {
     throw migrationConflict(source, error);
   }
   const provider: Provider = config.provider ?? "claude";
-  const id = AccountIdSchema.parse({ provider, name: config.name });
+  const id = AccountIdSchema.parse({ name: config.name, provider });
   const legacyKey = provider === "claude" ? id.name : `${provider}-${id.name}`;
   if (filename !== `${legacyKey}.json`) {
     throw migrationConflict(source);
@@ -424,7 +437,7 @@ function buildEntry(root: string, filename: string): LegacyMigrationEntry {
       throw migrationConflict(storageSource);
     }
     storageState = parseStorageStateJsonValue(
-      fs.readFileSync(storageSource, "utf8")
+      fs.readFileSync(storageSource, "utf-8")
     );
   }
   if (fs.existsSync(profileSource)) {
@@ -485,10 +498,11 @@ function writeJournal(journalPath: string, journal: MigrationJournal): void {
 }
 
 function readJournal(journalPath: string): MigrationJournal | null {
-  if (!fs.existsSync(journalPath)) return null;
-  const value = JSON.parse(fs.readFileSync(journalPath, "utf8")) as unknown;
+  if (!fs.existsSync(journalPath)) {
+    return null;
+  }
+  const value = JSON.parse(fs.readFileSync(journalPath, "utf-8")) as unknown;
   const schema = z.strictObject({
-    schema_version: z.literal(1),
     entries: z.array(
       z.strictObject({
         fingerprint: z.string().length(64).optional(),
@@ -497,6 +511,7 @@ function readJournal(journalPath: string): MigrationJournal | null {
         status: z.enum(["pending", "committed", "cleaned"]),
       })
     ),
+    schema_version: z.literal(1),
   });
   return schema.parse(value);
 }
@@ -529,7 +544,9 @@ function findJournalEntry(
   const entry = journal.entries.find(
     (candidate) => identityKey(candidate.id) === identityKey(id)
   );
-  if (!entry) throw migrationConflict("migration-v3.json");
+  if (!entry) {
+    throw migrationConflict("migration-v3.json");
+  }
   return entry;
 }
 
@@ -547,7 +564,9 @@ function removeSource(source: string): void {
 }
 
 function removeSourceIfExists(source: string): void {
-  if (fs.existsSync(source)) removeSource(source);
+  if (fs.existsSync(source)) {
+    removeSource(source);
+  }
 }
 
 function assertRealDirectory(root: string): void {
@@ -571,11 +590,15 @@ function migrationConflict(source: string, cause?: unknown): CLIError {
 }
 
 function findTombstones(accountsRoot: string): string[] {
-  if (!fs.existsSync(accountsRoot)) return [];
+  if (!fs.existsSync(accountsRoot)) {
+    return [];
+  }
   const results: string[] = [];
   for (const provider of fs.readdirSync(accountsRoot)) {
     const providerPath = path.join(accountsRoot, provider);
-    if (!fs.lstatSync(providerPath).isDirectory()) continue;
+    if (!fs.lstatSync(providerPath).isDirectory()) {
+      continue;
+    }
     for (const name of fs.readdirSync(providerPath)) {
       if (name.includes(".tombstone-")) {
         results.push(path.join(providerPath, name));

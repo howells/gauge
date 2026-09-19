@@ -5,8 +5,8 @@ import { test } from "node:test";
 import { fileURLToPath } from "node:url";
 
 test("TUI depends on the shared command service rather than providers or account files", () => {
-  const root = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..");
-  const source = fs.readFileSync(path.join(root, "src", "tui.ts"), "utf8");
+  const root = path.resolve(import.meta.dirname, "..");
+  const source = fs.readFileSync(path.join(root, "src", "tui.ts"), "utf-8");
 
   assert.match(source, /runStatusCommand/);
   assert.doesNotMatch(source, /provider-usage|\.\/api|\.\/accounts/);
@@ -15,11 +15,11 @@ test("TUI depends on the shared command service rather than providers or account
 });
 
 test("domain and service layers preserve the declared dependency direction", () => {
-  const root = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..");
+  const root = path.resolve(import.meta.dirname, "..");
   for (const file of fs.readdirSync(path.join(root, "src", "domain"))) {
     const source = fs.readFileSync(
       path.join(root, "src", "domain", file),
-      "utf8"
+      "utf-8"
     );
     assert.doesNotMatch(
       source,
@@ -30,7 +30,7 @@ test("domain and service layers preserve the declared dependency direction", () 
   for (const file of fs.readdirSync(path.join(root, "src", "services"))) {
     const source = fs.readFileSync(
       path.join(root, "src", "services", file),
-      "utf8"
+      "utf-8"
     );
     assert.doesNotMatch(
       source,
@@ -40,13 +40,13 @@ test("domain and service layers preserve the declared dependency direction", () 
   }
   const adapters = fs.readFileSync(
     path.join(root, "src", "providers", "local-adapters.ts"),
-    "utf8"
+    "utf-8"
   );
   assert.doesNotMatch(adapters, /\.\.\/(?:display|types)\.js/);
 
   for (const file of walkTypeScript(path.join(root, "src"))) {
     assert.doesNotMatch(
-      fs.readFileSync(file, "utf8"),
+      fs.readFileSync(file, "utf-8"),
       /(?:export\s+)?(?:const|function)\s+__test/,
       `${path.relative(root, file)} exposes a production __test hook`
     );

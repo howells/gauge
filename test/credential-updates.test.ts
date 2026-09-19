@@ -10,7 +10,7 @@ import { applyPendingCredentialUpdates } from "../src/services/credential-update
 test("pending Claude storage state is atomically applied through the account repository", () => {
   const dataRoot = fs.mkdtempSync(path.join(os.tmpdir(), "gauge-updates-"));
   const repository = new AccountRepository({ dataRoot });
-  const id = { provider: "claude", name: "work" } as const;
+  const id = { name: "work", provider: "claude" } as const;
   repository.add(id, { storageState: { cookies: [], origins: [] } });
 
   applyPendingCredentialUpdates(
@@ -22,14 +22,14 @@ test("pending Claude storage state is atomically applied through the account rep
         value: {
           cookies: [
             {
-              name: "session",
-              value: "new",
               domain: ".claude.ai",
-              path: "/",
               expires: -1,
               httpOnly: true,
-              secure: true,
+              name: "session",
+              path: "/",
               sameSite: "Lax",
+              secure: true,
+              value: "new",
             },
           ],
           origins: [],
@@ -44,18 +44,18 @@ test("pending Claude storage state is atomically applied through the account rep
   );
 
   const stored = JSON.parse(
-    fs.readFileSync(repository.pathsFor(id).storageState, "utf8")
-  ) as { cookies: Array<{ value: string }> };
+    fs.readFileSync(repository.pathsFor(id).storageState, "utf-8")
+  ) as { cookies: { value: string }[] };
   assert.equal(stored.cookies[0]?.value, "new");
 });
 
 test("never policy discards pending storage-state writes", () => {
   const dataRoot = fs.mkdtempSync(path.join(os.tmpdir(), "gauge-updates-"));
   const repository = new AccountRepository({ dataRoot });
-  const id = { provider: "claude", name: "work" } as const;
+  const id = { name: "work", provider: "claude" } as const;
   repository.add(id, { storageState: { cookies: [], origins: [] } });
   const storagePath = repository.pathsFor(id).storageState;
-  const before = fs.readFileSync(storagePath, "utf8");
+  const before = fs.readFileSync(storagePath, "utf-8");
 
   applyPendingCredentialUpdates(
     [
@@ -69,5 +69,5 @@ test("never policy discards pending storage-state writes", () => {
     { allowedCodexHomes: [], dataRoot, policy: "never" }
   );
 
-  assert.equal(fs.readFileSync(storagePath, "utf8"), before);
+  assert.equal(fs.readFileSync(storagePath, "utf-8"), before);
 });

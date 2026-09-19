@@ -11,7 +11,7 @@ function snapshot(overrides: Partial<UsageSnapshot>): UsageSnapshot {
     accounts: [],
     generatedAt: now.toISOString(),
     pendingCredentialUpdates: [],
-    summary: { total: 0, succeeded: 0, failed: 0, timed_out: 0 },
+    summary: { failed: 0, succeeded: 0, timed_out: 0, total: 0 },
     ...overrides,
   };
 }
@@ -23,7 +23,7 @@ test("complete status snapshots are ok and recommend with one shared policy", ()
         {
           error: null,
           source: {
-            id: { provider: "codex", name: "work" },
+            id: { name: "work", provider: "codex" },
             order: 0,
             provider: "codex",
             source: "configured",
@@ -33,14 +33,14 @@ test("complete status snapshots are ok and recommend with one shared policy", ()
             windows: [
               {
                 kind: "session",
-                usedPercent: 20,
                 resetsAt: "2026-07-11T13:00:00.000Z",
+                usedPercent: 20,
               },
             ],
           },
         },
       ],
-      summary: { total: 1, succeeded: 1, failed: 0, timed_out: 0 },
+      summary: { failed: 0, succeeded: 1, timed_out: 0, total: 1 },
     }),
     { now, quick: false }
   );
@@ -50,15 +50,15 @@ test("complete status snapshots are ok and recommend with one shared policy", ()
   assert.equal(result.exitCode, 0);
   assert.equal(result.paginated?.itemName, "accounts");
   assert.deepEqual((result.data as { summary: unknown }).summary, {
-    total: 1,
-    succeeded: 1,
     failed: 0,
+    succeeded: 1,
     timed_out: 0,
+    total: 1,
   });
   assert.deepEqual(
     (result.data as { recommendation: { account: unknown } }).recommendation
       .account,
-    { provider: "codex", name: "work" }
+    { name: "work", provider: "codex" }
   );
 });
 
@@ -69,33 +69,33 @@ test("a blocked account with an applicable reset is recommended as usable via re
         {
           error: null,
           source: {
-            id: { provider: "codex", name: "full" },
+            id: { name: "full", provider: "codex" },
             order: 0,
             provider: "codex",
             source: "configured",
           },
           usage: {
             plan: "Pro 20x",
-            resetsAvailable: 2,
             resetsApplicable: 1,
+            resetsAvailable: 2,
             windows: [
               {
                 kind: "weekly",
-                usedPercent: 100,
                 resetsAt: "2026-07-13T12:00:00.000Z",
+                usedPercent: 100,
               },
             ],
           },
         },
       ],
-      summary: { total: 1, succeeded: 1, failed: 0, timed_out: 0 },
+      summary: { failed: 0, succeeded: 1, timed_out: 0, total: 1 },
     }),
     { now, quick: false }
   );
 
-  const recommendation = (
-    result.data as { recommendation: { status: string; viaReset?: true } }
-  ).recommendation;
+  const { recommendation } = result.data as {
+    recommendation: { status: string; viaReset?: true };
+  };
   assert.equal(recommendation.status, "use_now");
   assert.equal(recommendation.viaReset, true);
   assert.match(result.human, /ready now · via reset/);
@@ -108,7 +108,7 @@ test("partial snapshots stay ok and account failures use typed errors", () => {
         {
           error: null,
           source: {
-            id: { provider: "claude", name: "ok" },
+            id: { name: "ok", provider: "claude" },
             order: 0,
             provider: "claude",
             source: "configured",
@@ -122,7 +122,7 @@ test("partial snapshots stay ok and account failures use typed errors", () => {
             retryable: true,
           },
           source: {
-            id: { provider: "cursor", name: "slow" },
+            id: { name: "slow", provider: "cursor" },
             order: 1,
             provider: "cursor",
             source: "configured",
@@ -130,7 +130,7 @@ test("partial snapshots stay ok and account failures use typed errors", () => {
           usage: null,
         },
       ],
-      summary: { total: 2, succeeded: 1, failed: 1, timed_out: 1 },
+      summary: { failed: 1, succeeded: 1, timed_out: 1, total: 2 },
     }),
     { now, quick: false }
   );
@@ -139,7 +139,7 @@ test("partial snapshots stay ok and account failures use typed errors", () => {
   assert.equal(result.result, "partial");
   assert.equal(result.exitCode, 0);
   assert.deepEqual(
-    (result.data as { accounts: Array<{ error: unknown }> }).accounts[1]?.error,
+    (result.data as { accounts: { error: unknown }[] }).accounts[1]?.error,
     {
       code: "provider/timeout",
       message: "Provider request timed out.",
@@ -159,7 +159,7 @@ test("all-failed snapshots emit data with ok false and exit one", () => {
             retryable: true,
           },
           source: {
-            id: { provider: "codex", name: "work" },
+            id: { name: "work", provider: "codex" },
             order: 0,
             provider: "codex",
             source: "configured",
@@ -167,7 +167,7 @@ test("all-failed snapshots emit data with ok false and exit one", () => {
           usage: null,
         },
       ],
-      summary: { total: 1, succeeded: 0, failed: 1, timed_out: 1 },
+      summary: { failed: 1, succeeded: 0, timed_out: 1, total: 1 },
     }),
     { now, quick: false }
   );
@@ -185,7 +185,7 @@ test("quick mode contains only recommendation and summary with one human line", 
         {
           error: null,
           source: {
-            id: { provider: "cursor", name: "personal" },
+            id: { name: "personal", provider: "cursor" },
             order: 0,
             provider: "cursor",
             source: "configured",
@@ -195,14 +195,14 @@ test("quick mode contains only recommendation and summary with one human line", 
             windows: [
               {
                 kind: "included",
-                usedPercent: 10,
                 resetsAt: "2026-07-11T13:00:00.000Z",
+                usedPercent: 10,
               },
             ],
           },
         },
       ],
-      summary: { total: 1, succeeded: 1, failed: 0, timed_out: 0 },
+      summary: { failed: 0, succeeded: 1, timed_out: 0, total: 1 },
     }),
     { now, quick: true }
   );
@@ -212,7 +212,7 @@ test("quick mode contains only recommendation and summary with one human line", 
     "summary",
   ]);
   // Rendered with ANSI styling; assert on the visible content.
-  const plainHuman = result.human.replace(/\x1b\[[0-9;]*m/g, "");
+  const plainHuman = result.human.replaceAll(/\u001B\[[0-9;]*m/g, "");
   assert.equal(plainHuman, "→ cursor:personal  ready now\n");
   assert.equal(result.paginated, undefined);
 });
@@ -229,7 +229,7 @@ test("an idle session keeps its slot instead of letting the week be drawn as it"
         {
           error: null,
           source: {
-            id: { provider: "claude", name: "siteinspire" },
+            id: { name: "siteinspire", provider: "claude" },
             order: 0,
             provider: "claude",
             source: "configured",
@@ -237,22 +237,22 @@ test("an idle session keeps its slot instead of letting the week be drawn as it"
           usage: {
             plan: "Max 20x",
             windows: [
-              { kind: "session", usedPercent: 0, resetsAt: null },
+              { kind: "session", resetsAt: null, usedPercent: 0 },
               {
                 kind: "weekly",
-                usedPercent: 99,
                 resetsAt: "2026-07-13T12:00:00.000Z",
+                usedPercent: 99,
               },
             ],
           },
         },
       ],
-      summary: { total: 1, succeeded: 1, failed: 0, timed_out: 0 },
+      summary: { failed: 0, succeeded: 1, timed_out: 0, total: 1 },
     }),
     { now, quick: false }
   );
 
-  const plain = result.human.replace(/\x1b\[[0-9;]*m/g, "");
+  const plain = result.human.replaceAll(/\u001B\[[0-9;]*m/g, "");
   const [meterLine, detailLine] = plain
     .split("\n")
     .filter((line) => line.includes("siteinspire") || line.includes("wk "));
@@ -280,7 +280,7 @@ test("a full account says which of its limits filled", () => {
         {
           error: null,
           source: {
-            id: { provider: "claude", name: "gmail" },
+            id: { name: "gmail", provider: "claude" },
             order: 0,
             provider: "claude",
             source: "configured",
@@ -288,22 +288,22 @@ test("a full account says which of its limits filled", () => {
           usage: {
             plan: "Max 20x",
             windows: [
-              { kind: "session", usedPercent: 0, resetsAt: null },
+              { kind: "session", resetsAt: null, usedPercent: 0 },
               {
                 kind: "weekly",
-                usedPercent: 100,
                 resetsAt: "2026-07-12T12:00:00.000Z",
+                usedPercent: 100,
               },
             ],
           },
         },
       ],
-      summary: { total: 1, succeeded: 1, failed: 0, timed_out: 0 },
+      summary: { failed: 0, succeeded: 1, timed_out: 0, total: 1 },
     }),
     { now, quick: false }
   );
 
-  const plain = result.human.replace(/\x1b\[[0-9;]*m/g, "");
+  const plain = result.human.replaceAll(/\u001B\[[0-9;]*m/g, "");
   assert.match(plain, /gmail\s+█+ full · 1d/u);
   assert.match(plain, /Max 20x · wk 100% · 1d/u);
 });
@@ -317,7 +317,7 @@ test("a narrow cell drops the plan label before it drops a usage reading", () =>
         {
           error: null,
           source: {
-            id: { provider: "cursor", name: "howellsstudio" },
+            id: { name: "howellsstudio", provider: "cursor" },
             order: 0,
             provider: "cursor",
             source: "configured",
@@ -328,24 +328,24 @@ test("a narrow cell drops the plan label before it drops a usage reading", () =>
             windows: [
               {
                 kind: "included",
-                usedPercent: 0,
                 resetsAt: "2026-07-26T12:00:00.000Z",
+                usedPercent: 0,
               },
               {
                 kind: "on_demand",
-                usedPercent: 58.68,
                 resetsAt: "2026-07-26T12:00:00.000Z",
+                usedPercent: 58.68,
               },
             ],
           },
         },
       ],
-      summary: { total: 1, succeeded: 1, failed: 0, timed_out: 0 },
+      summary: { failed: 0, succeeded: 1, timed_out: 0, total: 1 },
     }),
     { now, quick: false }
   );
 
-  const plain = result.human.replace(/\x1b\[[0-9;]*m/g, "");
+  const plain = result.human.replaceAll(/\u001B\[[0-9;]*m/g, "");
   assert.match(plain, /on-demand 59% · 15d/u);
   assert.doesNotMatch(plain, /Cursor Enterprise · on-demand/u);
 });
@@ -361,7 +361,7 @@ test("an account idle on every window is still recommendable", () => {
         {
           error: null,
           source: {
-            id: { provider: "claude", name: "untouched" },
+            id: { name: "untouched", provider: "claude" },
             order: 0,
             provider: "claude",
             source: "configured",
@@ -369,15 +369,15 @@ test("an account idle on every window is still recommendable", () => {
           usage: {
             plan: "Pro",
             windows: [
-              { kind: "session", usedPercent: 0, resetsAt: null },
-              { kind: "weekly", usedPercent: 0, resetsAt: null },
+              { kind: "session", resetsAt: null, usedPercent: 0 },
+              { kind: "weekly", resetsAt: null, usedPercent: 0 },
             ],
           },
         },
         {
           error: null,
           source: {
-            id: { provider: "codex", name: "busy" },
+            id: { name: "busy", provider: "codex" },
             order: 1,
             provider: "codex",
             source: "configured",
@@ -387,26 +387,24 @@ test("an account idle on every window is still recommendable", () => {
             windows: [
               {
                 kind: "session",
-                usedPercent: 80,
                 resetsAt: "2026-07-11T13:00:00.000Z",
+                usedPercent: 80,
               },
             ],
           },
         },
       ],
-      summary: { total: 2, succeeded: 2, failed: 0, timed_out: 0 },
+      summary: { failed: 0, succeeded: 2, timed_out: 0, total: 2 },
     }),
     { now, quick: false }
   );
 
-  const recommendation = (
-    result.data as {
-      recommendation: { account: unknown; maximumUtilization: number };
-    }
-  ).recommendation;
+  const { recommendation } = result.data as {
+    recommendation: { account: unknown; maximumUtilization: number };
+  };
   assert.deepEqual(recommendation.account, {
-    provider: "claude",
     name: "untouched",
+    provider: "claude",
   });
   assert.equal(recommendation.maximumUtilization, 0);
 });
@@ -418,7 +416,7 @@ test("a model-scoped Codex session is shown without blocking the whole account",
         {
           error: null,
           source: {
-            id: { provider: "codex", name: "gmail" },
+            id: { name: "gmail", provider: "codex" },
             order: 0,
             provider: "codex",
             source: "configured",
@@ -429,24 +427,24 @@ test("a model-scoped Codex session is shown without blocking the whole account",
               {
                 kind: "session",
                 label: "GPT-5.3-Codex-Spark",
-                usedPercent: 100,
                 resetsAt: "2026-07-11T13:00:00.000Z",
+                usedPercent: 100,
               },
               {
                 kind: "weekly",
-                usedPercent: 71,
                 resetsAt: "2026-07-16T12:00:00.000Z",
+                usedPercent: 71,
               },
             ],
           },
         },
       ],
-      summary: { total: 1, succeeded: 1, failed: 0, timed_out: 0 },
+      summary: { failed: 0, succeeded: 1, timed_out: 0, total: 1 },
     }),
     { now, quick: false }
   );
 
-  const plain = result.human.replace(/\x1b\[[0-9;]*m/g, "");
+  const plain = result.human.replaceAll(/\u001B\[[0-9;]*m/g, "");
   assert.match(plain, /gmail\s+█+ 100%/u);
   assert.match(plain, /Spark session · wk 71% · 5d/u);
   assert.doesNotMatch(plain, /gmail\s+█+ full/u);

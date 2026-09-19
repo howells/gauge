@@ -21,44 +21,44 @@ const IndexedDBRecordSchema = z.looseObject({
 });
 
 const IndexedDBIndexSchema = z.looseObject({
-  name: z.string(),
   keyPath: z.string().optional(),
   keyPathArray: z.array(z.string()).optional(),
   multiEntry: z.boolean(),
+  name: z.string(),
   unique: z.boolean(),
 });
 
 const IndexedDBObjectStoreSchema = z.looseObject({
-  name: z.string(),
   autoIncrement: z.boolean(),
+  indexes: z.array(IndexedDBIndexSchema),
   keyPath: z.string().optional(),
   keyPathArray: z.array(z.string()).optional(),
+  name: z.string(),
   records: z.array(IndexedDBRecordSchema),
-  indexes: z.array(IndexedDBIndexSchema),
 });
 
 const IndexedDBDatabaseSchema = z.looseObject({
   name: z.string(),
-  version: z.int(),
   stores: z.array(IndexedDBObjectStoreSchema),
+  version: z.int(),
 });
 
 const StorageStateCookieSchema = z.looseObject({
-  name: z.string(),
-  value: z.string(),
   domain: z.string(),
-  path: z.string(),
   expires: z.number(),
   httpOnly: z.boolean(),
-  secure: z.boolean(),
-  sameSite: z.enum(["Strict", "Lax", "None"]),
+  name: z.string(),
   partitionKey: z.string().optional(),
+  path: z.string(),
+  sameSite: z.enum(["Strict", "Lax", "None"]),
+  secure: z.boolean(),
+  value: z.string(),
 });
 
 const StorageStateOriginSchema = z.looseObject({
-  origin: z.string().url(),
-  localStorage: z.array(NameValueSchema),
   indexedDB: z.array(IndexedDBDatabaseSchema).optional(),
+  localStorage: z.array(NameValueSchema),
+  origin: z.string().url(),
 });
 
 /** The strict serializable shape accepted by Playwright's storageState option. */

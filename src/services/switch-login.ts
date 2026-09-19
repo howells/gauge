@@ -75,7 +75,7 @@ export function switchCodexLogin(
   }
 
   const source = path.join(target.home, "auth.json");
-  const contents = fs.readFileSync(source, "utf8");
+  const contents = fs.readFileSync(source, "utf-8");
   // Parsed, not merely read: writing an unparseable auth.json over a working one
   // trades a wrong account for no account.
   JSON.parse(contents);

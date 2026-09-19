@@ -31,14 +31,14 @@ const version = run(bin, ["--version"], smokeRoot);
 // first bump after it was written, which is the one moment a packaging gate
 // most needs to be trusted.
 const expectedVersion = JSON.parse(
-  fs.readFileSync(path.join(root, "package.json"), "utf8")
+  fs.readFileSync(path.join(root, "package.json"), "utf-8")
 ).version;
 assert.equal(version.stdout.trim(), expectedVersion);
 
 const deepImport = spawnSync(
   process.execPath,
   ["--input-type=module", "--eval", "import('@howells/gauge/dist/cli.js')"],
-  { cwd: smokeRoot, encoding: "utf8" }
+  { cwd: smokeRoot, encoding: "utf-8" }
 );
 assert.notEqual(deepImport.status, 0);
 assert.match(
@@ -52,7 +52,7 @@ assert.doesNotMatch(entries, /\.(?:d\.ts|map)$/m);
 fs.rmSync(smokeRoot, { force: true, recursive: true });
 
 function run(command, args, cwd) {
-  const result = spawnSync(command, args, { cwd, encoding: "utf8" });
+  const result = spawnSync(command, args, { cwd, encoding: "utf-8" });
   assert.equal(
     result.status,
     0,

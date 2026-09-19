@@ -18,7 +18,9 @@ test("assertSafeIdentifier rejects encoded traversal and query fragments", () =>
     "account?admin=true",
     "account#fragment",
   ]) {
-    assert.throws(() => assertSafeIdentifier(value, "Account name"));
+    assert.throws(() => {
+      assertSafeIdentifier(value, "Account name");
+    });
   }
 });
 
@@ -43,8 +45,8 @@ test("redactDiagnosticValue removes arbitrary absolute paths and secret-key valu
       accessToken: "plain-opaque-secret",
       apiKey: "another-opaque-secret",
       error: "Unable to read /var/tmp/gauge-missing-secret.json",
-      quoted: 'Unable to read "/var/tmp/secret dir/file.json"',
       nested: { cookie: "session=plain-secret" },
+      quoted: 'Unable to read "/var/tmp/secret dir/file.json"',
     },
     { cwd: "/workspace", home: "/home/example" }
   );
@@ -53,8 +55,8 @@ test("redactDiagnosticValue removes arbitrary absolute paths and secret-key valu
     accessToken: "<redacted-secret>",
     apiKey: "<redacted-secret>",
     error: "Unable to read <redacted-path>",
-    quoted: 'Unable to read "<redacted-path>"',
     nested: { cookie: "<redacted-secret>" },
+    quoted: 'Unable to read "<redacted-path>"',
   });
 });
 
@@ -105,7 +107,7 @@ test("output replacement preserves the destination mode", () => {
 
   writeSandboxedOutput(cwd, "result.json", "new");
 
-  assert.equal(fs.readFileSync(destination, "utf8"), "new");
+  assert.equal(fs.readFileSync(destination, "utf-8"), "new");
   assert.equal(fs.statSync(destination).mode & 0o777, 0o640);
 });
 
@@ -116,7 +118,7 @@ test("writeSandboxedOutput writes relative files", () => {
     "./out/result.json",
     '{"ok":true}'
   );
-  assert.equal(fs.readFileSync(outputPath, "utf8"), '{"ok":true}');
+  assert.equal(fs.readFileSync(outputPath, "utf-8"), '{"ok":true}');
 });
 
 test("writeSandboxedOutput rejects a symlinked output ancestor", () => {
@@ -148,7 +150,7 @@ test("writeSandboxedOutput rejects a symlinked destination", () => {
       error instanceof Error &&
       error.message.includes("symlinked output destination")
   );
-  assert.equal(fs.readFileSync(outside, "utf8"), "unchanged");
+  assert.equal(fs.readFileSync(outside, "utf-8"), "unchanged");
 });
 
 test("writeSandboxedOutput rejects a non-regular destination", () => {
@@ -179,7 +181,7 @@ test("writeSandboxedOutput confines writes to the canonical cwd", () => {
     outputPath,
     path.join(fs.realpathSync(canonicalCwd), "artifacts", "result.json")
   );
-  assert.equal(fs.readFileSync(outputPath, "utf8"), '{"ok":true}');
+  assert.equal(fs.readFileSync(outputPath, "utf-8"), '{"ok":true}');
   assert.throws(() =>
     writeSandboxedOutput(linkedCwd, "../escaped.json", '{"ok":true}')
   );

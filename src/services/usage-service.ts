@@ -1,10 +1,10 @@
 import type { Provider } from "../domain/account.js";
-import {
-  type AccountSnapshot,
-  type AccountSource,
-  accountSourceIdKey,
-  type PendingCredentialUpdate,
-  type UsageSnapshot,
+import { accountSourceIdKey } from "../domain/snapshot.js";
+import type {
+  AccountSnapshot,
+  AccountSource,
+  PendingCredentialUpdate,
+  UsageSnapshot,
 } from "../domain/snapshot.js";
 import type {
   CredentialRefreshPolicy,
@@ -13,7 +13,7 @@ import type {
   UsageProviderAdapter,
 } from "../providers/types.js";
 
-const PROVIDER_ORDER: Provider[] = ["claude", "codex", "cursor"];
+const PROVIDER_ORDER: Provider[] = ["claude", "codex", "cursor", "zai", "grok"];
 
 interface UsageServiceOptions {
   adapters: UsageProviderAdapter[];
@@ -67,8 +67,8 @@ export class UsageService {
         }
         const controller = new AbortController();
         const context: ProviderAcquisitionContext = {
-          acquireDirect: (operation) =>
-            directAcquisitions.run(operation, controller.signal),
+          acquireDirect: async (operation) =>
+            await directAcquisitions.run(operation, controller.signal),
           credentialRefresh: options.credentialRefresh,
           deadline: this.#now() + this.#deadlineMs,
           signal: controller.signal,
@@ -88,7 +88,7 @@ export class UsageService {
         cancelTimeout();
         if (outcome.kind === "timeout") {
           await Promise.race([
-            acquisition.then(() => undefined),
+            acquisition.then(() => {}),
             new Promise<void>((resolve) =>
               setTimeout(resolve, this.#cleanupGraceMs)
             ),
@@ -127,11 +127,13 @@ export class UsageService {
           };
         }
         const entry = result.results[0];
-        if (!entry) throw new Error("Provider returned no result.");
+        if (!entry) {
+          throw new Error("Provider returned no result.");
+        }
         return {
           account: entry.error
-            ? { source, usage: null, error: entry.error }
-            : { source, usage: entry.usage, error: null },
+            ? { error: entry.error, source, usage: null }
+            : { error: null, source, usage: entry.usage },
           pendingCredentialUpdates: result.pendingCredentialUpdates,
         };
       })
@@ -150,10 +152,10 @@ export class UsageService {
       generatedAt: new Date(this.#now()).toISOString(),
       pendingCredentialUpdates,
       summary: {
-        total: accounts.length,
-        succeeded: accounts.length - failed,
         failed,
+        succeeded: accounts.length - failed,
         timed_out: timedOut,
+        total: accounts.length,
       },
     };
   }
@@ -166,33 +168,39 @@ function failureSnapshot(
   retryable: boolean
 ): AccountSnapshot {
   return {
+    error: { code, message, retryable },
     source,
     usage: null,
-    error: { code, message, retryable },
   };
 }
 
 function scheduleTimeout(callback: () => void, delayMs: number): () => void {
   const timer = setTimeout(callback, delayMs);
-  return () => clearTimeout(timer);
+  return () => {
+    clearTimeout(timer);
+  };
 }
 
 class DirectAcquisitionLimiter {
   #active = 0;
   readonly #limit: number;
-  readonly #queue: Array<() => void> = [];
+  readonly #queue: (() => void)[] = [];
 
   constructor(limit: number) {
     this.#limit = limit;
   }
 
-  run<T>(operation: () => Promise<T>, signal: AbortSignal): Promise<T> {
-    return new Promise<T>((resolve, reject) => {
+  async run<T>(operation: () => Promise<T>, signal: AbortSignal): Promise<T> {
+    return await new Promise<T>((resolve, reject) => {
       let queued = true;
       const abort = (): void => {
-        if (!queued) return;
+        if (!queued) {
+          return;
+        }
         const index = this.#queue.indexOf(start);
-        if (index >= 0) this.#queue.splice(index, 1);
+        if (index !== -1) {
+          this.#queue.splice(index, 1);
+        }
         queued = false;
         reject(abortError());
       };
@@ -227,7 +235,9 @@ class DirectAcquisitionLimiter {
   #drain(): void {
     while (this.#active < this.#limit) {
       const start = this.#queue.shift();
-      if (!start) return;
+      if (!start) {
+        return;
+      }
       start();
     }
   }
@@ -243,9 +253,12 @@ function compareSources(left: AccountSource, right: AccountSource): number {
   const providerOrder =
     PROVIDER_ORDER.indexOf(left.provider) -
     PROVIDER_ORDER.indexOf(right.provider);
-  if (providerOrder !== 0) return providerOrder;
-  if (left.source !== right.source)
+  if (providerOrder !== 0) {
+    return providerOrder;
+  }
+  if (left.source !== right.source) {
     return left.source === "configured" ? -1 : 1;
+  }
   return left.order - right.order;
 }
 

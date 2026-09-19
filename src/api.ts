@@ -1,11 +1,7 @@
 import fs from "node:fs";
 
-import {
-  type APIResponse,
-  chromium,
-  type Page,
-  request,
-} from "playwright-core";
+import { chromium, request } from "playwright-core";
+import type { APIResponse, Page } from "playwright-core";
 
 import { assertChromeInstalled } from "./chrome.js";
 import { getDataDir, getProfileDir, getStorageStatePath } from "./paths.js";
@@ -33,6 +29,11 @@ interface UsageResponse {
   extra_usage: unknown;
   five_hour: UsageLimit | null;
   iguana_necktie: UsageLimit | null;
+  scoped?: {
+    model: string;
+    resets_at: string | null;
+    utilization: number;
+  }[];
   seven_day: UsageLimit | null;
   seven_day_cowork: UsageLimit | null;
   seven_day_oauth_apps: UsageLimit | null;
@@ -123,7 +124,7 @@ const CLAUDE_URL = "https://claude.ai";
 const CURSOR_URL = "https://cursor.com";
 const LOGIN_URL_RE = /claude\.ai\/(new|recents|chat|settings)/;
 const LOGIN_TIMEOUT_MS = 300_000;
-const LOGIN_PROBE_TIMEOUT_MS = 5_000;
+const LOGIN_PROBE_TIMEOUT_MS = 5000;
 const MAX_PROVIDER_RESPONSE_BYTES = 1024 * 1024;
 const USER_AGENT =
   "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/121.0.0.0 Safari/537.36";
@@ -155,17 +156,17 @@ export async function addAccount(
   }
 
   const context = await runtime.launchPersistentContext(profileDir, {
-    headless: false,
-    channel: "chrome", // Use installed Chrome instead of Playwright's Chromium
     args: [
       "--disable-blink-features=AutomationControlled",
       "--no-first-run",
       "--no-default-browser-check",
       "--disable-extensions",
     ],
-    viewport: { width: 1280, height: 800 },
-    locale: "en-US",
+    channel: "chrome", // Use installed Chrome instead of Playwright's Chromium
+    headless: false,
     ignoreDefaultArgs: ["--enable-automation"],
+    locale: "en-US",
+    viewport: { height: 800, width: 1280 },
   });
 
   try {
@@ -177,10 +178,14 @@ export async function addAccount(
       runtime.now
     );
     if (!loginDetected) {
-      if (!quiet) console.error("Login timed out. Please try again.");
+      if (!quiet) {
+        console.error("Login timed out. Please try again.");
+      }
       return null;
     }
-    if (!quiet) console.log("Login detected, verifying...");
+    if (!quiet) {
+      console.log("Login detected, verifying...");
+    }
     await page.waitForTimeout(2000);
     await assertLoggedIn(page);
     return await context.storageState();
@@ -218,17 +223,17 @@ export async function addCursorAccount(
   }
 
   const context = await runtime.launchPersistentContext(profileDir, {
-    headless: false,
-    channel: "chrome",
     args: [
       "--disable-blink-features=AutomationControlled",
       "--no-first-run",
       "--no-default-browser-check",
       "--disable-extensions",
     ],
-    viewport: { width: 1280, height: 800 },
-    locale: "en-US",
+    channel: "chrome",
+    headless: false,
     ignoreDefaultArgs: ["--enable-automation"],
+    locale: "en-US",
+    viewport: { height: 800, width: 1280 },
   });
 
   try {
@@ -240,7 +245,9 @@ export async function addCursorAccount(
       runtime.now
     );
     if (!loginDetected) {
-      if (!quiet) console.error("Cursor login timed out. Please try again.");
+      if (!quiet) {
+        console.error("Cursor login timed out. Please try again.");
+      }
       return null;
     }
     await page.waitForTimeout(1000);
@@ -274,16 +281,18 @@ export async function fetchUsageForAccount(
 
   if (!(fs.existsSync(profileDir) || fs.existsSync(storagePath))) {
     return {
+      error: `No saved session. Run: gauge add ${name}`,
       name,
+      orgUuid: "",
       plan: "unknown",
       renewsAt,
-      orgUuid: "",
       usage: {} as UsageResponse,
-      error: `No saved session. Run: gauge add ${name}`,
     };
   }
 
-  if (options.signal?.aborted) throw options.signal.reason;
+  if (options.signal?.aborted) {
+    throw options.signal.reason;
+  }
 
   // The token first, the cookies second. An account signed into Claude Code
   // carries an OAuth credential the Anthropic API accepts, and reading usage
@@ -326,26 +335,28 @@ export async function fetchUsageForAccount(
 
   if (options.credentialRefresh === "never") {
     return {
-      name,
-      plan: "unknown",
-      renewsAt,
-      orgUuid: "",
-      usage: {} as UsageResponse,
       error:
         "Existing credentials were rejected; credential refresh is disabled.",
+      name,
+      orgUuid: "",
+      plan: "unknown",
+      renewsAt,
+      usage: {} as UsageResponse,
     };
   }
 
-  const acquireBrowser = options.acquireBrowser ?? ((operation) => operation());
-  return acquireBrowser(() =>
-    fetchUsageViaBrowser(
-      name,
-      profileDir,
-      renewsAt,
-      options,
-      runtime,
-      options.signal
-    )
+  const acquireBrowser =
+    options.acquireBrowser ?? (async (operation) => await operation());
+  return await acquireBrowser(
+    async () =>
+      await fetchUsageViaBrowser(
+        name,
+        profileDir,
+        renewsAt,
+        options,
+        runtime,
+        options.signal
+      )
   );
 }
 
@@ -362,18 +373,20 @@ async function fetchUsageViaBrowser(
   runtime.assertChromeInstalled();
   const context = await acquireAbortableResource(
     runtime.launchPersistentContext(profileDir, {
-      headless: false, // Must be visible to bypass Cloudflare
-      channel: "chrome",
       args: [
         "--disable-blink-features=AutomationControlled",
         "--disable-extensions",
         "--window-size=800,600",
       ],
+      channel: "chrome",
+      headless: false, // Must be visible to bypass Cloudflare
       ignoreDefaultArgs: ["--enable-automation"],
-      viewport: { width: 800, height: 600 },
+      viewport: { height: 600, width: 800 },
     }),
     signal,
-    (lateContext) => lateContext.close()
+    async (lateContext) => {
+      await lateContext.close();
+    }
   );
 
   try {
@@ -420,10 +433,10 @@ async function fetchUsageViaBrowser(
 
     return {
       name,
+      orgUuid: org.uuid,
       plan,
       renewsAt: fetchedRenewsAt ?? renewsAt,
-      orgUuid: org.uuid,
-      usage: usageResponse as UsageResponse,
+      usage: usageResponse,
     };
   } catch (error) {
     const message = error instanceof Error ? error.message : String(error);
@@ -433,12 +446,12 @@ async function fetchUsageViaBrowser(
     }
 
     return {
+      error: message,
       name,
+      orgUuid: "",
       plan: "unknown",
       renewsAt,
-      orgUuid: "",
       usage: {} as UsageResponse,
-      error: message,
     };
   } finally {
     await context.close();
@@ -466,9 +479,13 @@ async function fetchUsageViaOAuth(
         ? claudeAccountNamesByUuid(dataDir).get(liveUuid)
         : undefined;
     const token = claudeAccessTokenFor(name, dataDir, liveName);
-    if (!token) return null;
+    if (!token) {
+      return null;
+    }
     const reading = await fetchOAuthUsage(token);
-    if (!reading) return null;
+    if (!reading) {
+      return null;
+    }
     const limit = (
       window: { resetsAt: string | null; usedPercent: number } | null
     ): UsageLimit | null =>
@@ -477,13 +494,18 @@ async function fetchUsageViaOAuth(
         : null;
     return {
       name,
+      orgUuid: "",
       plan: (reading.plan ?? "unknown") as AccountUsage["plan"],
       renewsAt,
-      orgUuid: "",
       usage: {
         extra_usage: null,
         five_hour: limit(reading.session),
         iguana_necktie: null,
+        scoped: reading.scoped.map((window) => ({
+          model: window.model,
+          resets_at: window.resetsAt,
+          utilization: window.usedPercent,
+        })),
         seven_day: limit(reading.weekly),
         seven_day_cowork: null,
         seven_day_oauth_apps: null,
@@ -509,39 +531,47 @@ export async function fetchRenewalOnly(
   runtime: ApiRuntime = defaultRuntime,
   signal?: AbortSignal
 ): Promise<string | null> {
-  if (!fs.existsSync(storagePath)) return null;
+  if (!fs.existsSync(storagePath)) {
+    return null;
+  }
   let api: Awaited<ReturnType<ApiRuntime["newRequestContext"]>> | null = null;
   try {
     api = await acquireAbortableResource(
       runtime.newRequestContext({
         baseURL: CLAUDE_URL,
-        storageState: storagePath,
         extraHTTPHeaders: {
-          "User-Agent": USER_AGENT,
           Accept: "application/json",
+          "User-Agent": USER_AGENT,
         },
+        storageState: storagePath,
       }),
       signal,
-      (lateApi) => lateApi.dispose()
+      async (lateApi) => {
+        await lateApi.dispose();
+      }
     );
     const orgsRes = await abortable(api.get("/api/organizations"), signal);
-    if (!orgsRes.ok()) return null;
+    if (!orgsRes.ok()) {
+      return null;
+    }
     const orgs = ClaudeOrganizationListSchema.safeParse(
       await parseBoundedApiResponse(orgsRes, signal)
     );
     const org = orgs.success ? orgs.data[0] : undefined;
-    if (!org) return null;
+    if (!org) {
+      return null;
+    }
     return await fetchRenewalViaRequest(api, org.uuid, signal);
   } catch {
     return null;
   } finally {
-    await api?.dispose().catch(() => undefined);
+    await api?.dispose().catch(() => {});
   }
 }
 
 /** Fetch usage data for multiple accounts sequentially. */
 export async function fetchAllUsage(
-  accounts: Array<string | AccountRef>,
+  accounts: (string | AccountRef)[],
   options: {
     credentialRefresh?: "refresh-if-stale" | "never";
     acquireBrowser?: BrowserAcquirer;
@@ -560,12 +590,12 @@ export async function fetchAllUsage(
       process.stdout.write(`  Checking ${accountRef.name}...`);
     }
     const usage = await fetchUsageForAccount(accountRef, {
-      credentialRefresh: options.credentialRefresh,
       acquireBrowser: options.acquireBrowser,
-      signal: options.signal,
-      runtime: options.runtime,
+      credentialRefresh: options.credentialRefresh,
       onStorageStateUpdate: (value) =>
         options.onStorageStateUpdate?.(accountRef, value),
+      runtime: options.runtime,
+      signal: options.signal,
     });
     if (!quiet) {
       if (usage.error) {
@@ -631,7 +661,9 @@ async function waitForCursorLoginSignal(
               const res = await fetch("/api/auth/me", {
                 headers: { Accept: "application/json" },
               });
-              if (!res.ok) return false;
+              if (!res.ok) {
+                return false;
+              }
               const data = (await res.json()) as Record<string, unknown>;
               return Boolean(data.email || data.name || data.sub || data.id);
             } catch {
@@ -641,7 +673,9 @@ async function waitForCursorLoginSignal(
           LOGIN_PROBE_TIMEOUT_MS,
           false
         );
-        if (ok) return true;
+        if (ok) {
+          return true;
+        }
       } catch {
         // Ignore transient navigation errors while the user is logging in.
       }
@@ -702,21 +736,27 @@ async function fetchBoundedJsonFromPage(
   url: string,
   nullOnHttpError = false
 ): Promise<unknown> {
-  return page.evaluate(
+  return await page.evaluate(
     async ({ requestUrl, returnNullOnHttpError }) => {
       const response = await fetch(requestUrl);
       if (!response.ok) {
-        if (returnNullOnHttpError) return null;
+        if (returnNullOnHttpError) {
+          return null;
+        }
         throw new Error(`HTTP ${response.status}`);
       }
-      if (!response.body) throw new Error("Provider response has no body.");
+      if (!response.body) {
+        throw new Error("Provider response has no body.");
+      }
       const reader = response.body.getReader();
       const chunks: Uint8Array[] = [];
       let total = 0;
       try {
         while (true) {
           const { done, value } = await reader.read();
-          if (done) break;
+          if (done) {
+            break;
+          }
           total += value.byteLength;
           if (total > 1024 * 1024) {
             await reader.cancel();
@@ -741,7 +781,9 @@ async function fetchBoundedJsonFromPage(
 
 export function extractClaudeRenewal(value: unknown): string | null {
   const parsed = ClaudeRenewalSchema.safeParse(value);
-  if (!parsed.success) return null;
+  if (!parsed.success) {
+    return null;
+  }
   return (
     normalizeDate(parsed.data.next_charge_at) ??
     normalizeDate(parsed.data.next_charge_date)
@@ -749,19 +791,21 @@ export function extractClaudeRenewal(value: unknown): string | null {
 }
 
 export function normalizeDate(value: unknown): string | null {
-  if (typeof value !== "string" || value.length === 0) return null;
+  if (typeof value !== "string" || value.length === 0) {
+    return null;
+  }
   const timestamp = Date.parse(value);
   return Number.isFinite(timestamp) ? new Date(timestamp).toISOString() : null;
 }
 
 function expiredError(name: string, renewsAt?: string | null): AccountUsage {
   return {
+    error: `Session expired. Run: gauge refresh ${name}`,
     name,
+    orgUuid: "",
     plan: "unknown",
     renewsAt,
-    orgUuid: "",
     usage: {} as UsageResponse,
-    error: `Session expired. Run: gauge refresh ${name}`,
   };
 }
 
@@ -798,14 +842,16 @@ async function fetchUsageViaRequest(
   const api = await acquireAbortableResource(
     runtime.newRequestContext({
       baseURL: CLAUDE_URL,
-      storageState: storagePath,
       extraHTTPHeaders: {
-        "User-Agent": USER_AGENT,
         Accept: "application/json",
+        "User-Agent": USER_AGENT,
       },
+      storageState: storagePath,
     }),
     signal,
-    (lateApi) => lateApi.dispose()
+    async (lateApi) => {
+      await lateApi.dispose();
+    }
   );
 
   try {
@@ -821,12 +867,12 @@ async function fetchUsageViaRequest(
     const org = orgs?.[0];
     if (!org) {
       return {
+        error: "No organizations found",
         name,
+        orgUuid: "",
         plan: "unknown",
         renewsAt,
-        orgUuid: "",
         usage: {} as UsageResponse,
-        error: "No organizations found",
       };
     }
 
@@ -854,9 +900,9 @@ async function fetchUsageViaRequest(
 
     return {
       name,
+      orgUuid: org.uuid,
       plan,
       renewsAt: fetchedRenewsAt ?? renewsAt,
-      orgUuid: org.uuid,
       usage,
     };
   } catch (error) {
@@ -882,20 +928,33 @@ async function fetchRenewalViaRequest(
       ),
       signal
     );
-    if (!res.ok()) return null;
+    if (!res.ok()) {
+      return null;
+    }
     const contentType = res.headers()["content-type"] ?? "";
-    if (!contentType.includes("application/json")) return null;
+    if (!contentType.includes("application/json")) {
+      return null;
+    }
     return extractClaudeRenewal(await parseBoundedApiResponse(res, signal));
   } catch {
     return null;
   }
 }
 
-function abortable<T>(promise: Promise<T>, signal?: AbortSignal): Promise<T> {
-  if (!signal) return promise;
-  if (signal.aborted) return Promise.reject(signal.reason ?? abortError());
-  return new Promise<T>((resolve, reject) => {
-    const abort = (): void => reject(signal.reason ?? abortError());
+async function abortable<T>(
+  promise: Promise<T>,
+  signal?: AbortSignal
+): Promise<T> {
+  if (!signal) {
+    return await promise;
+  }
+  if (signal.aborted) {
+    throw signal.reason ?? abortError();
+  }
+  return await new Promise<T>((resolve, reject) => {
+    const abort = (): void => {
+      reject(signal.reason ?? abortError());
+    };
     signal.addEventListener("abort", abort, { once: true });
     promise.then(
       (value) => {
@@ -910,17 +969,19 @@ function abortable<T>(promise: Promise<T>, signal?: AbortSignal): Promise<T> {
   });
 }
 
-function acquireAbortableResource<T>(
+async function acquireAbortableResource<T>(
   promise: Promise<T>,
   signal: AbortSignal | undefined,
   dispose: (resource: T) => Promise<unknown>
 ): Promise<T> {
-  if (!signal) return promise;
-  if (signal.aborted) {
-    void promise.then(dispose, () => undefined).catch(() => undefined);
-    return Promise.reject(signal.reason ?? abortError());
+  if (!signal) {
+    return await promise;
   }
-  return new Promise<T>((resolve, reject) => {
+  if (signal.aborted) {
+    void promise.then(dispose, () => {}).catch(() => {});
+    throw signal.reason ?? abortError();
+  }
+  return await new Promise<T>((resolve, reject) => {
     let aborted = false;
     const abort = (): void => {
       aborted = true;
@@ -931,14 +992,16 @@ function acquireAbortableResource<T>(
       (resource) => {
         signal.removeEventListener("abort", abort);
         if (aborted || signal.aborted) {
-          void dispose(resource).catch(() => undefined);
+          void dispose(resource).catch(() => {});
           return;
         }
         resolve(resource);
       },
       (error: unknown) => {
         signal.removeEventListener("abort", abort);
-        if (!aborted) reject(error);
+        if (!aborted) {
+          reject(error);
+        }
       }
     );
   });
@@ -963,7 +1026,7 @@ async function parseBoundedApiResponse(
     throw new Error("Provider response exceeded the allowed size.");
   }
   try {
-    return JSON.parse(body.toString("utf8")) as unknown;
+    return JSON.parse(body.toString("utf-8")) as unknown;
   } catch {
     throw new Error("Provider returned invalid JSON.");
   }
@@ -971,7 +1034,7 @@ async function parseBoundedApiResponse(
 
 function assertBoundedValue(value: unknown): void {
   if (
-    Buffer.byteLength(JSON.stringify(value), "utf8") >
+    Buffer.byteLength(JSON.stringify(value), "utf-8") >
     MAX_PROVIDER_RESPONSE_BYTES
   ) {
     throw new Error("Provider response exceeded the allowed size.");

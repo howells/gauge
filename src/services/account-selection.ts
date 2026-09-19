@@ -32,12 +32,12 @@ export function selectConfiguredAccounts<T extends ConfiguredAccount>(
   if (matches.length > 1) {
     throw new CLIError(`Account name "${filter.account}" is ambiguous.`, {
       code: "AMBIGUOUS_ACCOUNT",
-      exitCode: 2,
       details: {
         candidates: matches.map(
           (account) => `${account.id.provider}:${account.id.name}`
         ),
       },
+      exitCode: 2,
     });
   }
   throw new CLIError(`Configured account "${filter.account}" was not found.`, {

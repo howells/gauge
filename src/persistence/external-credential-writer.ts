@@ -2,7 +2,8 @@ import fs from "node:fs";
 import path from "node:path";
 
 import { CLIError } from "../security.js";
-import { type AtomicReplaceOptions, atomicReplace } from "./atomic-replace.js";
+import { atomicReplace } from "./atomic-replace.js";
+import type { AtomicReplaceOptions } from "./atomic-replace.js";
 
 export type CredentialRefreshPolicy = "never" | "refresh-if-stale";
 
@@ -91,7 +92,7 @@ export class ExternalCredentialWriter {
         exitCode: 1,
       });
     }
-    const auth = parseAuth(fs.readFileSync(authPath, "utf8"));
+    const auth = parseAuth(fs.readFileSync(authPath, "utf-8"));
     const existingTokens = isRecord(auth.tokens) ? auth.tokens : {};
     auth.tokens = {
       ...existingTokens,
@@ -127,7 +128,9 @@ export function validateCodexHome(homePath: string): {
       exitCode: 2,
     });
   }
-  if (homeStatus.isSymbolicLink()) throw homeSymlinkError();
+  if (homeStatus.isSymbolicLink()) {
+    throw homeSymlinkError();
+  }
   if (!homeStatus.isDirectory()) {
     throw new CLIError("Codex home must be an existing directory.", {
       code: "INVALID_CODEX_HOME",
@@ -157,7 +160,7 @@ export function validateCodexHome(homePath: string): {
       exitCode: 2,
     });
   }
-  const auth = parseAuth(fs.readFileSync(authPath, "utf8"));
+  const auth = parseAuth(fs.readFileSync(authPath, "utf-8"));
   const tokens = isRecord(auth.tokens) ? auth.tokens : {};
   if (
     !(

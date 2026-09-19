@@ -1,6 +1,7 @@
 import type { z } from "zod";
 
-import { COMMAND_WIRE_SCHEMAS, type CommandName } from "./wire-schemas.js";
+import { COMMAND_WIRE_SCHEMAS } from "./wire-schemas.js";
+import type { CommandName } from "./wire-schemas.js";
 
 type CommandSideEffect =
   | "browser"
@@ -373,17 +374,50 @@ export const COMMAND_SPECS = [
     summary: "Migrate legacy account artifacts to the current storage format.",
     wireSchema: COMMAND_WIRE_SCHEMAS.migrate,
   },
+  {
+    aliases: [],
+    arguments: [],
+    examples: [
+      "gauge serve --format json",
+      "gauge serve --port 4517 --format json",
+      "gauge serve --no-credential-refresh --format json",
+    ],
+    name: "serve",
+    options: [
+      FORMAT_OPTION,
+      {
+        description: "Port for the local dashboard server.",
+        key: "port",
+        long: "--port",
+        type: "integer",
+        valueName: "number",
+      },
+      {
+        description: "Prohibit every credential write during acquisition.",
+        key: "noCredentialRefresh",
+        long: "--no-credential-refresh",
+        type: "boolean",
+      },
+    ],
+    output: readOutput(false),
+    rootAlias: false,
+    safety: safety(false),
+    sideEffects: ["reads_local_state", "network", "writes_credentials"],
+    summary: "Serve the local usage dashboard at 127.0.0.1.",
+    wireSchema: COMMAND_WIRE_SCHEMAS.serve,
+  },
 ] as const satisfies readonly CommandSpec[];
 
 export const COMMAND_SPECS_BY_NAME = {
-  status: COMMAND_SPECS[0],
-  list: COMMAND_SPECS[1],
-  describe: COMMAND_SPECS[2],
   add: COMMAND_SPECS[3],
+  describe: COMMAND_SPECS[2],
+  doctor: COMMAND_SPECS[6],
+  list: COMMAND_SPECS[1],
+  migrate: COMMAND_SPECS[7],
   refresh: COMMAND_SPECS[4],
   remove: COMMAND_SPECS[5],
-  doctor: COMMAND_SPECS[6],
-  migrate: COMMAND_SPECS[7],
+  serve: COMMAND_SPECS[8],
+  status: COMMAND_SPECS[0],
 } satisfies Record<CommandName, CommandSpec>;
 
 /** Render the checked-in command example reference from canonical metadata. */

@@ -43,7 +43,7 @@ test("switchCodexLogin writes the account's credentials into the active home", (
   const result = switchCodexLogin("gmail", dataDir, home);
 
   const written = JSON.parse(
-    fs.readFileSync(path.join(home, ".codex", "auth.json"), "utf8")
+    fs.readFileSync(path.join(home, ".codex", "auth.json"), "utf-8")
   );
   assert.equal(written.tokens.access_token, "gmail-token");
   assert.equal(result.name, "gmail");
@@ -62,7 +62,7 @@ test("switchCodexLogin keeps the credentials it replaces", () => {
   const result = switchCodexLogin("gmail", dataDir, home);
 
   assert.ok(result.backedUp);
-  const kept = JSON.parse(fs.readFileSync(result.backedUp, "utf8"));
+  const kept = JSON.parse(fs.readFileSync(result.backedUp, "utf-8"));
   // A switch must be reversible even when the account left behind was the only
   // one signed in anywhere.
   assert.equal(kept.tokens.access_token, "previous");
@@ -82,7 +82,7 @@ test("switchCodexLogin refuses unparseable credentials without touching the live
   assert.throws(() => switchCodexLogin("broken", dataDir, home));
 
   const live = JSON.parse(
-    fs.readFileSync(path.join(home, ".codex", "auth.json"), "utf8")
+    fs.readFileSync(path.join(home, ".codex", "auth.json"), "utf-8")
   );
   // Trading a wrong account for no account is the one outcome worth refusing.
   assert.equal(live.tokens.access_token, "working");
@@ -192,7 +192,7 @@ if (args[0] === "find-generic-password" && args.includes("-w")) {
   assert.equal(result.backedUp, expectedBackup);
   assert.equal(fs.statSync(expectedBackup).mode & 0o777, 0o600);
   assert.equal(
-    JSON.parse(fs.readFileSync(expectedBackup, "utf8")).profile.emailAddress,
+    JSON.parse(fs.readFileSync(expectedBackup, "utf-8")).profile.emailAddress,
     "previous@example.com"
   );
   assert.equal(

@@ -52,8 +52,8 @@ export function assertSafeIdentifier(
   if (containsControlCharacters(value)) {
     throw new CLIError(`${label} contains control characters.`, {
       code: "INVALID_IDENTIFIER",
-      exitCode: 2,
       details: { label, value },
+      exitCode: 2,
     });
   }
 
@@ -67,8 +67,8 @@ export function assertSafeIdentifier(
       `${label} contains invalid characters or traversal sequences.`,
       {
         code: "INVALID_IDENTIFIER",
-        exitCode: 2,
         details: { label, value },
+        exitCode: 2,
       }
     );
   }
@@ -78,8 +78,8 @@ export function assertSafeIdentifier(
       `${label} must not contain percent-encoded path or query segments.`,
       {
         code: "INVALID_IDENTIFIER",
-        exitCode: 2,
         details: { label, value },
+        exitCode: 2,
       }
     );
   }
@@ -89,8 +89,8 @@ export function assertSafeIdentifier(
       `${label} must not contain embedded query or fragment characters.`,
       {
         code: "INVALID_IDENTIFIER",
-        exitCode: 2,
         details: { label, value },
+        exitCode: 2,
       }
     );
   }
@@ -100,8 +100,8 @@ export function assertSafeIdentifier(
       `${label} contains invalid characters. Use letters, numbers, hyphens, or underscores only.`,
       {
         code: "INVALID_IDENTIFIER",
-        exitCode: 2,
         details: { label, value },
+        exitCode: 2,
       }
     );
   }
@@ -149,18 +149,21 @@ export function redactDiagnosticValue<T>(
       }
     }
     redacted = redacted
-      .replace(
+      .replaceAll(
         /(["'])(?:\/[^"'\r\n]+|[A-Za-z]:\\[^"'\r\n]+)\1/g,
         "$1<redacted-path>$1"
       )
-      .replace(/\bBearer\s+\S+/gi, "Bearer <redacted-token>")
-      .replace(/\bsk-[A-Za-z0-9_-]{16,}\b/g, "<redacted-token>")
-      .replace(
+      .replaceAll(/\bBearer\s+\S+/gi, "Bearer <redacted-token>")
+      .replaceAll(/\bsk-[A-Za-z0-9_-]{16,}\b/g, "<redacted-token>")
+      .replaceAll(
         /\b[A-Za-z0-9_-]{12,}\.[A-Za-z0-9_-]{12,}\.[A-Za-z0-9_-]{12,}\b/g,
         "<redacted-token>"
       )
-      .replace(/(?<![A-Za-z0-9_.>])\/(?:[^\s"'<>:]+\/?)+/g, "<redacted-path>")
-      .replace(
+      .replaceAll(
+        /(?<![A-Za-z0-9_.>])\/(?:[^\s"'<>:]+\/?)+/g,
+        "<redacted-path>"
+      )
+      .replaceAll(
         /(?<![A-Za-z0-9_.])[A-Za-z]:\\(?:[^\s"'<>]+\\?)+/g,
         "<redacted-path>"
       );
@@ -222,8 +225,8 @@ function mapOutputPathViolation<T>(
     }
     throw new CLIError(error.message, {
       code: "INVALID_OUTPUT_PATH",
-      exitCode: 2,
       details: { cwd, requestedPath },
+      exitCode: 2,
     });
   }
 }

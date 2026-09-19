@@ -19,13 +19,13 @@ export function assertStateCommandAllowed(
     "Gauge account state must be migrated before this command can run.",
     {
       code: "MIGRATION_REQUIRED",
-      exitCode: 2,
       details: {
         next_steps: [
           "gauge migrate --dry-run --format json",
           "gauge migrate --format json",
         ],
       },
+      exitCode: 2,
     }
   );
 }

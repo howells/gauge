@@ -185,7 +185,7 @@ function buildPage(
   const pageItems = items.slice(start, start + pageSize);
   return {
     data: {
-      ...(summary ?? {}),
+      ...summary,
       [itemName]: pageItems,
     },
     page_info: {
@@ -259,10 +259,10 @@ export function renderCommandResult(
           structuredPages.length === 1
             ? structuredPages[0]
             : {
-                ok: result.ok ?? true,
                 command: result.command,
                 data: { pages: structuredPages.map((page) => page.data) },
                 meta: structuredPages[0]?.meta,
+                ok: result.ok ?? true,
               },
           null,
           2
@@ -289,7 +289,6 @@ export function renderError(
   }
 
   const payload = {
-    ok: false,
     command: context.command,
     error: {
       code: error.code ?? "CLI_ERROR",
@@ -306,6 +305,7 @@ export function renderError(
       generated_at: new Date().toISOString(),
       sanitized: options.sanitize ?? true,
     },
+    ok: false,
   };
   const content =
     format === "json"
@@ -324,7 +324,6 @@ function buildEnvelope(
   result?: "complete" | "failed" | "partial"
 ): Record<string, unknown> {
   return {
-    ok,
     command,
     data,
     meta: {
@@ -335,6 +334,7 @@ function buildEnvelope(
       ...(result !== undefined && { result }),
       sanitized,
     },
+    ok,
   };
 }
 

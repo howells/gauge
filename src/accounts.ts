@@ -1,16 +1,10 @@
 import fs from "node:fs";
 
-import {
-  type AccountConfigV3,
-  type AccountId,
-  encodeAccountId,
-  type Provider,
-} from "./domain/account.js";
+import { encodeAccountId } from "./domain/account.js";
+import type { AccountConfigV3, AccountId, Provider } from "./domain/account.js";
 import { getDataDir } from "./paths.js";
-import {
-  type AccountPaths,
-  AccountRepository,
-} from "./persistence/account-repository.js";
+import { AccountRepository } from "./persistence/account-repository.js";
+import type { AccountPaths } from "./persistence/account-repository.js";
 import type { PlaywrightStorageState } from "./storage-state.js";
 import {
   parseStorageStateJsonValue,
@@ -83,8 +77,8 @@ export function createAccount(
 ): void {
   accountRepository().add(accountId(name, options.provider), {
     codexHome: options.codexHome,
-    renewsAt: options.renewsAt,
     profileSource: options.profileSource,
+    renewsAt: options.renewsAt,
     storageState: options.storageState,
   });
 }

@@ -77,7 +77,10 @@ test("account facade delegates every mutation to provider-scoped v3 storage", ()
     assert.equal(removeAccount("work", "claude"), true);
     assert.equal(removeAccount("work", "claude"), false);
   } finally {
-    if (previousHome === undefined) delete process.env.HOME;
-    else process.env.HOME = previousHome;
+    if (previousHome === undefined) {
+      delete process.env.HOME;
+    } else {
+      process.env.HOME = previousHome;
+    }
   }
 });
