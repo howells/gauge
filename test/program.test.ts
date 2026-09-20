@@ -43,3 +43,12 @@ test("root command exposes the status root-alias options", () => {
     status.options.map((option) => option.long)
   );
 });
+
+test("integer option values are validated through the metadata arg parsers", async () => {
+  const program = createProgram({ handlers: handlers(), version: "test" });
+  program.configureOutput({ writeErr: () => {} });
+  await assert.rejects(
+    program.parseAsync(["status", "--page-size", "0"], { from: "user" }),
+    /positive integer/
+  );
+});

@@ -584,3 +584,58 @@ test("migration rejects a journal fingerprint that differs from its source", () 
   );
   assert.equal(fs.existsSync(path.join(root, "work.json")), true);
 });
+
+test("migration rejects a destination profile holding different files", () => {
+  const root = dataRoot();
+  const profile = path.join(root, "profile-work");
+  fs.mkdirSync(profile, { recursive: true });
+  fs.writeFileSync(path.join(profile, "cache"), "same-profile");
+  writeLegacy(root, "work", {
+    addedAt: "2026-01-01T00:00:00.000Z",
+    name: "work",
+  });
+  const storageState = { cookies: [], origins: [] };
+  fs.writeFileSync(
+    path.join(root, "work-storage.json"),
+    JSON.stringify(storageState)
+  );
+  const repository = new AccountRepository({ dataRoot: root });
+  repository.add(
+    { name: "work", provider: "claude" },
+    {
+      addedAt: "2026-01-01T00:00:00.000Z",
+      profileSource: profile,
+      storageState,
+    }
+  );
+  // The committed destination drifted: same config, different profile files.
+  fs.writeFileSync(
+    path.join(root, "accounts", "v3", "claude", "work", "profile", "drift"),
+    "different-file"
+  );
+
+  assert.throws(
+    () => migrateLegacyAccounts(root),
+    (error: unknown) =>
+      error instanceof CLIError && error.code === "MIGRATION_CONFLICT"
+  );
+  assert.equal(fs.existsSync(path.join(root, "work.json")), true);
+});
+
+test("preflight reports tombstoned accounts alongside legacy state", () => {
+  const root = dataRoot();
+  writeLegacy(root, "work", {
+    addedAt: "2026-01-01T00:00:00.000Z",
+    name: "work",
+  });
+  const v3root = path.join(root, "accounts", "v3");
+  const providerDir = path.join(v3root, "claude");
+  fs.mkdirSync(providerDir, { recursive: true });
+  fs.writeFileSync(path.join(v3root, "notes.txt"), "not a provider");
+  const tombstone = path.join(providerDir, "old.tombstone-20260918T000000Z");
+  fs.writeFileSync(tombstone, "{}");
+
+  const report = inspectLegacyState(root);
+  assert.equal(report.legacy, true);
+  assert.deepEqual(report.tombstones, [tombstone]);
+});

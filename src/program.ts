@@ -41,9 +41,6 @@ export function createProgram(options: ProgramOptions): Command {
     const command = program
       .command(commandSyntax(spec))
       .description(spec.summary);
-    for (const alias of spec.aliases) {
-      command.alias(alias);
-    }
     addOptions(command, spec.options);
     command.action((...args: unknown[]) =>
       options.handlers[spec.name](invocation(spec, args))

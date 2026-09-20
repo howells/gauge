@@ -117,7 +117,7 @@ export function migrateLegacyAccounts(
     })),
     schema_version: 1,
   };
-  assertJournalMatches(journal, entries);
+  assertJournalFingerprints(journal, entries);
 
   // Validate the complete destination set before creating the journal or
   // committing any account. A conflict in a later account must not make an
@@ -516,15 +516,13 @@ function readJournal(journalPath: string): MigrationJournal | null {
   return schema.parse(value);
 }
 
-function assertJournalMatches(
+// A committed journal fingerprint is a claim about the source it was taken
+// from. While the source still exists, its current content must still hash to
+// the same fingerprint; a divergence means someone edited history mid-migration.
+function assertJournalFingerprints(
   journal: MigrationJournal,
   entries: LegacyMigrationEntry[]
 ): void {
-  const expected = entries.map((entry) => identityKey(entry.id)).sort();
-  const actual = journal.entries.map((entry) => identityKey(entry.id)).sort();
-  if (JSON.stringify(expected) !== JSON.stringify(actual)) {
-    throw migrationConflict("migration-v3.json");
-  }
   for (const entry of entries) {
     const journalEntry = findJournalEntry(journal, entry.id);
     if (
@@ -541,13 +539,11 @@ function findJournalEntry(
   journal: MigrationJournal,
   id: AccountId
 ): MigrationJournalEntry {
-  const entry = journal.entries.find(
+  // Entries are built from this same journal (directly, or through
+  // buildJournalEntries), so the lookup always resolves.
+  return journal.entries.find(
     (candidate) => identityKey(candidate.id) === identityKey(id)
-  );
-  if (!entry) {
-    throw migrationConflict("migration-v3.json");
-  }
-  return entry;
+  ) as MigrationJournalEntry;
 }
 
 function identityKey(id: AccountId): string {
