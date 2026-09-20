@@ -40,7 +40,9 @@ test("package ships dist through deterministic prepack gates", () => {
   // Semver, not a fixed number: this test is about the packaging shape, and
   // pinning the version here only guarantees a failure on the next release.
   assert.match(pkg.version, /^\d+\.\d+\.\d+(?:-[\w.]+)?$/);
-  assert.equal(pkg.scripts?.prepare, undefined);
+  // The house git hooks install through prepare on local installs; pin the
+  // exact script so nothing else can sneak into the install lifecycle.
+  assert.equal(pkg.scripts?.prepare, "howells-husky");
   assert.match(pkg.scripts?.prepack, /build/);
   assert.match(pkg.scripts?.prepack, /schema:check/);
   assert.deepEqual(pkg.exports, { "./package.json": "./package.json" });
