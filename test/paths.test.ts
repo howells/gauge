@@ -12,9 +12,9 @@ import {
 } from "../src/paths.js";
 
 const expectedDir = path.join(os.homedir(), ".gauge");
-const RE_DIRNAME = /__dirname/;
-const RE_DIST = /\/dist\//;
-const RE_NODE_MODULES = /node_modules/;
+const RE_DIRNAME = /__dirname/u;
+const RE_DIST = /\/dist\//u;
+const RE_NODE_MODULES = /node_modules/u;
 
 test("getDataDir returns ~/.gauge", () => {
   assert.equal(getDataDir(), expectedDir);
@@ -48,9 +48,9 @@ test("rejects path traversal in account names", () => {
     "",
   ];
   for (const name of bad) {
-    assert.throws(() => getAccountPath(name), /invalid characters/);
-    assert.throws(() => getStorageStatePath(name), /invalid characters/);
-    assert.throws(() => getProfileDir(name), /invalid characters/);
+    assert.throws(() => getAccountPath(name), /invalid characters/u);
+    assert.throws(() => getStorageStatePath(name), /invalid characters/u);
+    assert.throws(() => getProfileDir(name), /invalid characters/u);
   }
 });
 

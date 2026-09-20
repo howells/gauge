@@ -269,7 +269,7 @@ function validateExample(
       const value = tokens[++index];
       assert.ok(value && !value.startsWith("-"), `${token} needs a value`);
       if (option.type === "integer") {
-        assert.match(value, /^\d+$/, `${token} needs an integer`);
+        assert.match(value, /^\d+$/u, `${token} needs an integer`);
       }
       if (option.choices) {
         assert.ok(
@@ -288,7 +288,7 @@ function validateExample(
 
 function tokenizeShell(command: string): string[] {
   const tokens: string[] = [];
-  const expression = /"([^"\\]*(?:\\.[^"\\]*)*)"|'([^']*)'|[^\s]+/g;
+  const expression = /"([^"\\]*(?:\\.[^"\\]*)*)"|'([^']*)'|[^\s]+/gu;
   for (const match of command.matchAll(expression)) {
     tokens.push(match[1] ?? match[2] ?? match[0]);
   }

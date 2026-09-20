@@ -27,7 +27,121 @@ interface CollectOptions {
   credentialRefresh: CredentialRefreshPolicy;
 }
 
-/** Coordinate provider adapters into one deterministic usage snapshot. */
+const failureSnapshot = (
+  source: AccountSource,
+  code: string,
+  message: string,
+  retryable: boolean
+): AccountSnapshot => ({
+  error: { code, message, retryable },
+  source,
+  usage: null,
+});
+
+const scheduleTimeout = (
+  callback: () => void,
+  delayMs: number
+): (() => void) => {
+  const timer = setTimeout(callback, delayMs);
+  return () => {
+    clearTimeout(timer);
+  };
+};
+
+const abortError = (): Error => {
+  const error = new Error("Provider acquisition was aborted.");
+  error.name = "AbortError";
+  return error;
+};
+
+class DirectAcquisitionLimiter {
+  #active = 0;
+  readonly #limit: number;
+  readonly #queue: (() => void)[] = [];
+
+  constructor(limit: number) {
+    this.#limit = limit;
+  }
+
+  async run<T>(operation: () => Promise<T>, signal: AbortSignal): Promise<T> {
+    return await new Promise<T>((resolve, reject) => {
+      let queued = true;
+      const abort = (): void => {
+        if (!queued) {
+          return;
+        }
+        const index = this.#queue.indexOf(start);
+        if (index !== -1) {
+          this.#queue.splice(index, 1);
+        }
+        queued = false;
+        reject(abortError());
+      };
+      const start = (): void => {
+        queued = false;
+        signal.removeEventListener("abort", abort);
+        if (signal.aborted) {
+          reject(abortError());
+          this.#drain();
+          return;
+        }
+        this.#active += 1;
+        Promise.resolve()
+          .then(operation)
+          .then(resolve, reject)
+          .finally(() => {
+            this.#active -= 1;
+            this.#drain();
+          });
+      };
+
+      if (signal.aborted) {
+        reject(abortError());
+        return;
+      }
+      signal.addEventListener("abort", abort, { once: true });
+      this.#queue.push(start);
+      this.#drain();
+    });
+  }
+
+  #drain(): void {
+    while (this.#active < this.#limit) {
+      const start = this.#queue.shift();
+      if (!start) {
+        return;
+      }
+      start();
+    }
+  }
+}
+
+const compareSources = (left: AccountSource, right: AccountSource): number => {
+  const providerOrder =
+    PROVIDER_ORDER.indexOf(left.provider) -
+    PROVIDER_ORDER.indexOf(right.provider);
+  if (providerOrder !== 0) {
+    return providerOrder;
+  }
+  if (left.source !== right.source) {
+    return left.source === "configured" ? -1 : 1;
+  }
+  return left.order - right.order;
+};
+
+const isValidAdapterResult = (
+  sources: readonly AccountSource[],
+  result: ProviderAcquisitionResult
+): boolean =>
+  result.results.length === sources.length &&
+  result.results.every((entry, index) => {
+    const source = sources[index];
+    return (
+      source !== undefined &&
+      accountSourceIdKey(entry.sourceId) === accountSourceIdKey(source.id)
+    );
+  });
+
 export class UsageService {
   readonly #adapters: Map<Provider, UsageProviderAdapter>;
   readonly #cleanupGraceMs: number;
@@ -159,121 +273,4 @@ export class UsageService {
       },
     };
   }
-}
-
-function failureSnapshot(
-  source: AccountSource,
-  code: string,
-  message: string,
-  retryable: boolean
-): AccountSnapshot {
-  return {
-    error: { code, message, retryable },
-    source,
-    usage: null,
-  };
-}
-
-function scheduleTimeout(callback: () => void, delayMs: number): () => void {
-  const timer = setTimeout(callback, delayMs);
-  return () => {
-    clearTimeout(timer);
-  };
-}
-
-class DirectAcquisitionLimiter {
-  #active = 0;
-  readonly #limit: number;
-  readonly #queue: (() => void)[] = [];
-
-  constructor(limit: number) {
-    this.#limit = limit;
-  }
-
-  async run<T>(operation: () => Promise<T>, signal: AbortSignal): Promise<T> {
-    return await new Promise<T>((resolve, reject) => {
-      let queued = true;
-      const abort = (): void => {
-        if (!queued) {
-          return;
-        }
-        const index = this.#queue.indexOf(start);
-        if (index !== -1) {
-          this.#queue.splice(index, 1);
-        }
-        queued = false;
-        reject(abortError());
-      };
-      const start = (): void => {
-        queued = false;
-        signal.removeEventListener("abort", abort);
-        if (signal.aborted) {
-          reject(abortError());
-          this.#drain();
-          return;
-        }
-        this.#active += 1;
-        Promise.resolve()
-          .then(operation)
-          .then(resolve, reject)
-          .finally(() => {
-            this.#active -= 1;
-            this.#drain();
-          });
-      };
-
-      if (signal.aborted) {
-        reject(abortError());
-        return;
-      }
-      signal.addEventListener("abort", abort, { once: true });
-      this.#queue.push(start);
-      this.#drain();
-    });
-  }
-
-  #drain(): void {
-    while (this.#active < this.#limit) {
-      const start = this.#queue.shift();
-      if (!start) {
-        return;
-      }
-      start();
-    }
-  }
-}
-
-function abortError(): Error {
-  const error = new Error("Provider acquisition was aborted.");
-  error.name = "AbortError";
-  return error;
-}
-
-function compareSources(left: AccountSource, right: AccountSource): number {
-  const providerOrder =
-    PROVIDER_ORDER.indexOf(left.provider) -
-    PROVIDER_ORDER.indexOf(right.provider);
-  if (providerOrder !== 0) {
-    return providerOrder;
-  }
-  if (left.source !== right.source) {
-    return left.source === "configured" ? -1 : 1;
-  }
-  return left.order - right.order;
-}
-
-function isValidAdapterResult(
-  sources: readonly AccountSource[],
-  result: ProviderAcquisitionResult
-): boolean {
-  return (
-    result.results.length === sources.length &&
-    result.results.every((entry, index) => {
-      const source = sources[index];
-      return (
-        source !== undefined &&
-        accountSourceIdKey(entry.sourceId) === accountSourceIdKey(source.id)
-      );
-    })
-  );
 }

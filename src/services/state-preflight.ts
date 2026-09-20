@@ -3,11 +3,10 @@ import { CLIError } from "../security.js";
 
 const MIGRATION_COMMANDS = new Set<string>(["describe", "doctor", "migrate"]);
 
-/** Refuse account-dependent commands until legacy state is explicitly migrated. */
-export function assertStateCommandAllowed(
+export const assertStateCommandAllowed = (
   command: string,
   dataRoot: string
-): void {
+): void => {
   if (MIGRATION_COMMANDS.has(command)) {
     return;
   }
@@ -28,4 +27,4 @@ export function assertStateCommandAllowed(
       exitCode: 2,
     }
   );
-}
+};

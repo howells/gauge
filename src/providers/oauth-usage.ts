@@ -6,30 +6,8 @@ import {
   windowFromLimits,
 } from "./upstream-schemas.js";
 
-/**
- * Read a Claude account's usage from its Claude Code OAuth token.
- *
- * The browser dance exists to obtain claude.ai session cookies, because that is
- * what `claude.ai/api/*` authenticates with — a Bearer token is refused there
- * with 403. But the account is *already* signed in on this machine through the
- * Claude Code CLI, and that login carries an OAuth token which the Anthropic API
- * accepts:
- *
- * ```
- * GET https://api.anthropic.com/api/oauth/usage
- * → { five_hour: { utilization, resets_at }, seven_day: { … } }
- * ```
- *
- * Which is the same pair of windows the dashboard draws. So for any account
- * signed into Claude Code there is no browser, no separate Chrome profile with
- * extensions disabled, no Cloudflare, and no login to sit through — the session
- * you already have is the credential.
- *
- * It does not replace the cookie path. An account used only on the web has no
- * Claude Code token to borrow, and a token that has expired needs the refresh
- * exchange this does not yet implement, so both fall back.
- */
 const OAUTH_BASE = "https://api.anthropic.com";
+
 const OAUTH_BETA = "oauth-2025-04-20";
 
 const Window = z
@@ -64,13 +42,6 @@ interface OAuthUsageWindow {
   usedPercent: number;
 }
 
-/**
- * Named windows, never an array.
- *
- * A `[session, weekly]` array has to be destructured positionally by every
- * caller, and one absent window silently promotes the other into its slot. The
- * names cost nothing and make that mistake unspellable.
- */
 export interface OAuthUsageReading {
   email: string | null;
   plan: string | null;
@@ -84,16 +55,7 @@ export interface OAuthUsageReading {
   weekly: OAuthUsageWindow | null;
 }
 
-/**
- * Turn `default_claude_max_20x` into the plan *code* the pipeline uses.
- *
- * A code, not the label. `local-adapters` owns the one map from code to the
- * words on screen, and returning "Max 20x" from here instead of "max_20x" put a
- * value through that map which it had no key for — the reading validated away
- * to an empty account with no plan and no windows, on data that was correct all
- * the way up to the last step.
- */
-export function planFromRateLimitTier(tier: string | null): string | null {
+export const planFromRateLimitTier = (tier: string | null): string | null => {
   if (!tier) {
     return null;
   }
@@ -113,16 +75,9 @@ export function planFromRateLimitTier(tier: string | null): string | null {
     return "free";
   }
   return null;
-}
+};
 
-/**
- * One window, or null when the API reported none.
- *
- * An idle window arrives as `resets_at: null` with a real utilization, and that
- * is a reading worth keeping: the limit exists and is wholly free. Only an
- * unreadable utilization means there is nothing here to report.
- */
-function toWindow(
+const toWindow = (
   value:
     | {
         resets_at?: string | null;
@@ -130,12 +85,12 @@ function toWindow(
       }
     | null
     | undefined
-): OAuthUsageWindow | null {
+): OAuthUsageWindow | null => {
   if (!value || typeof value.utilization !== "number") {
     return null;
   }
   return { resetsAt: value.resets_at ?? null, usedPercent: value.utilization };
-}
+};
 
 export type OAuthFetch = (
   url: string,
@@ -146,17 +101,10 @@ export type OAuthFetch = (
   status: number;
 }>;
 
-/**
- * Fetch usage for one access token, or null when the token cannot serve it.
- *
- * Null rather than throwing on any refusal, because this is an optimisation over
- * a path that still works: a 401 from an expired token has to fall through to
- * the cookies quietly, not surface as a failed account.
- */
-export async function fetchOAuthUsage(
+export const fetchOAuthUsage = async (
   accessToken: string,
   fetchImpl: OAuthFetch = globalThis.fetch
-): Promise<OAuthUsageReading | null> {
+): Promise<OAuthUsageReading | null> => {
   const headers = {
     Accept: "application/json",
     Authorization: `Bearer ${accessToken}`,
@@ -214,4 +162,4 @@ export async function fetchOAuthUsage(
   } catch {
     return null;
   }
-}
+};

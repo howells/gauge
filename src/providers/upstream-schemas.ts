@@ -1,16 +1,20 @@
 import { z } from "zod";
 
 const BoundedString = z.string().max(4096);
+
 const ShortString = z.string().max(320);
+
 const NormalizedDate = z
   .string()
   .max(64)
   .refine((value) => Number.isFinite(Date.parse(value)), "Invalid date.")
   .transform((value) => new Date(value).toISOString());
+
 const Percentage = z
   .number()
   .finite()
   .transform((value) => Math.min(100, Math.max(0, value)));
+
 const ResetValue = z.union([BoundedString, z.number().finite()]);
 
 const ClaudeWindow = z
@@ -47,15 +51,6 @@ export const ClaudeOrganizationListSchema = z
   )
   .max(100);
 
-/**
- * One entry of the `limits` array that now ships beside the legacy windows.
- *
- * The named windows (`five_hour`, `seven_day`, …) still carry the readings, so
- * the array is parsed only as the fallback they will need when the legacy
- * fields stop being populated. `weekly_scoped` — a model-scoped sub-limit — is
- * deliberately not mapped onto anything yet: it meters a slice of the week, not
- * the week, and drawing it as the weekly figure would understate usage.
- */
 export const ClaudeLimitSchema = z.object({
   is_active: z
     .boolean()
@@ -69,23 +64,27 @@ export const ClaudeLimitSchema = z.object({
 
 export type ClaudeLimit = z.infer<typeof ClaudeLimitSchema>;
 
-/**
- * Model-scoped sub-limits from the `limits` array.
- *
- * A `weekly_scoped` entry meters one named model pool (Fable, for instance)
- * inside the week. It is not the week: drawing it as the weekly figure would
- * understate usage, so it is carried beside the named windows under its own
- * label instead.
- */
 export interface ScopedClaudeLimit {
   model: string;
   resets_at: string | null;
   utilization: number;
 }
 
-export function scopedClaudeLimits(
+const scopedModelName = (scope: unknown): string | null => {
+  if (typeof scope !== "object" || scope === null) {
+    return null;
+  }
+  const { model } = scope as { model?: unknown };
+  if (typeof model !== "object" || model === null) {
+    return null;
+  }
+  const name = (model as { display_name?: unknown }).display_name;
+  return typeof name === "string" && name.trim().length > 0 ? name : null;
+};
+
+export const scopedClaudeLimits = (
   limits: ClaudeLimit[] | undefined
-): ScopedClaudeLimit[] {
+): ScopedClaudeLimit[] => {
   const scoped: ScopedClaudeLimit[] = [];
   for (const limit of limits ?? []) {
     if (limit.kind !== "weekly_scoped") {
@@ -102,34 +101,18 @@ export function scopedClaudeLimits(
     });
   }
   return scoped;
-}
+};
 
-function scopedModelName(scope: unknown): string | null {
-  if (typeof scope !== "object" || scope === null) {
-    return null;
-  }
-  const { model } = scope as { model?: unknown };
-  if (typeof model !== "object" || model === null) {
-    return null;
-  }
-  const name = (model as { display_name?: unknown }).display_name;
-  return typeof name === "string" && name.trim().length > 0 ? name : null;
-}
-
-/**
- * The named limit a window falls back to, or null when the array is absent or
- * does not carry that kind.
- */
-export function windowFromLimits(
+export const windowFromLimits = (
   limits: ClaudeLimit[] | undefined,
   kind: "session" | "weekly_all"
-): { resets_at: string | null; utilization: number } | null {
+): { resets_at: string | null; utilization: number } | null => {
   const limit = limits?.find((entry) => entry.kind === kind);
   if (!limit) {
     return null;
   }
   return { resets_at: limit.resets_at, utilization: limit.percent };
-}
+};
 
 export const ClaudeUsageResponseSchema = z
   .object({
@@ -185,7 +168,6 @@ const CodexRateLimitSchema = z
   })
   .default({});
 
-/** Usage-limit resets an account holds: redeeming one clears the spent limits. */
 const CodexResetCreditsSchema = z.object({
   applicable_available_count: z.number().finite().int().nonnegative(),
   available_count: z.number().finite().int().nonnegative(),
@@ -207,8 +189,6 @@ export const CodexRefreshResponseSchema = z.object({
   refresh_token: BoundedString.optional(),
 });
 
-// `limit`/`used` come back null on unlimited or team-pooled plans; treat null
-// as "not reported" rather than rejecting the whole usage response.
 const CursorCount = z
   .number()
   .finite()

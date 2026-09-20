@@ -23,7 +23,6 @@ import { ProviderUsageReadingSchema } from "./schemas.js";
 import type { ProviderUsageResult, UsageProviderAdapter } from "./types.js";
 import { fetchZaiUsage, readZaiApiKey } from "./zai-usage.js";
 
-/** One window as a provider reports it, already named for the limit it meters. */
 interface NamedWindow {
   kind: UsageWindowKind;
   label?: string;
@@ -31,14 +30,6 @@ interface NamedWindow {
   usedPercent: number;
 }
 
-/**
- * What every provider adapter hands back.
- *
- * `windows` replaced a `session`/`weekly` pair that was flattened into a
- * positional array one step later. Each window now carries its own name, so a
- * provider reporting only one of the two can no longer have it read as the
- * other.
- */
 interface ProviderReading {
   email?: string;
   error?: string;
@@ -49,31 +40,23 @@ interface ProviderReading {
   windows: NamedWindow[];
 }
 
-/**
- * Name the two windows a Codex or Cursor account reports.
- *
- * A window absent from the provider's response is left out; one that is merely
- * idle is kept, because "nothing spent here" is a reading and the recommender
- * needs it to see a wholly free account.
- */
-function namedWindows(
+const namedWindows = (
   account: {
     session: { resetsAt: string | null; usedPercent: number } | null;
     weekly: { resetsAt: string | null; usedPercent: number } | null;
   },
   [first, second]: readonly [UsageWindowKind, UsageWindowKind]
-): NamedWindow[] {
-  return [
+): NamedWindow[] =>
+  [
     account.session ? { ...account.session, kind: first } : null,
     account.weekly ? { ...account.weekly, kind: second } : null,
   ].filter((window): window is NamedWindow => window !== null);
-}
 
-function namedCodexWindows(account: {
+const namedCodexWindows = (account: {
   monthly: Omit<NamedWindow, "kind"> | null;
   session: Omit<NamedWindow, "kind"> | null;
   weekly: Omit<NamedWindow, "kind"> | null;
-}): NamedWindow[] {
+}): NamedWindow[] => {
   const windows: NamedWindow[] = [];
   if (account.session) {
     windows.push({ ...account.session, kind: "session" });
@@ -85,9 +68,9 @@ function namedCodexWindows(account: {
     windows.push({ ...account.monthly, kind: "monthly" });
   }
   return windows;
-}
+};
 
-export function buildLocalSources(
+export const buildLocalSources = (
   configured: AccountDetails[],
   options: {
     accountFiltered: boolean;
@@ -95,7 +78,7 @@ export function buildLocalSources(
     home?: string;
     providers: ReadonlySet<string>;
   }
-): AccountSource[] {
+): AccountSource[] => {
   const env = options.env ?? process.env;
   const home = options.home ?? os.homedir();
   const sources: AccountSource[] = configured.map((account, order) => ({
@@ -162,11 +145,184 @@ export function buildLocalSources(
     });
   }
   return sources;
-}
+};
 
-export function createLocalAdapters(
+const normalizeClaudeUsage = (account: AccountUsage): ProviderReading => {
+  const planLabels = {
+    free: "Free",
+    max: "Max",
+    max_20x: "Max 20x",
+    max_5x: "Max 5x",
+    pro: "Pro",
+    unknown: "",
+  } as const;
+  const window = (
+    limit: { resets_at: string | null; utilization: number } | null
+  ): { resetsAt: string | null; usedPercent: number } | null =>
+    limit
+      ? { resetsAt: limit.resets_at, usedPercent: limit.utilization }
+      : null;
+  return {
+    plan: planLabels[account.plan],
+    renewsAt: account.renewsAt,
+    windows: [
+      ...namedWindows(
+        {
+          session: window(account.usage.five_hour),
+          weekly: window(account.usage.seven_day),
+        },
+        ["session", "weekly"]
+      ),
+      ...(account.usage.scoped ?? []).map((limit) => ({
+        kind: "scoped" as const,
+        label: limit.model,
+        resetsAt: limit.resets_at,
+        usedPercent: limit.utilization,
+      })),
+    ],
+    ...(account.error !== undefined && { error: account.error }),
+  };
+};
+
+const createSerialAcquirer = (): (<T>(
+  operation: () => Promise<T>
+) => Promise<T>) => {
+  let tail: Promise<unknown> = Promise.resolve();
+  return async <T>(operation: () => Promise<T>): Promise<T> => {
+    const current = tail.then(operation, operation);
+    tail = current.then(
+      () => {},
+      () => {}
+    );
+    return await current;
+  };
+};
+
+const configuredDetail = (
+  source: AccountSource,
+  details: Map<string, AccountDetails>
+): AccountDetails => {
+  if (!("name" in source.id)) {
+    throw new Error("Ambient source has no configured account details.");
+  }
+  const detail = details.get(`${source.provider}:${source.id.name}`);
+  if (!detail) {
+    throw new Error("Configured account details are missing.");
+  }
+  return detail;
+};
+
+const reason = (cause: unknown): string => {
+  const text =
+    cause instanceof Error
+      ? cause.message
+      : typeof cause === "string"
+        ? cause
+        : typeof cause === "object" && cause !== null && "message" in cause
+          ? String(cause.message)
+          : String(cause);
+  const line = text.replaceAll(/\s+/gu, " ").trim();
+  if (line === "") {
+    return "no reason given";
+  }
+  return line.length > 160 ? `${line.slice(0, 159)}…` : line;
+};
+
+const failure = (
+  source: AccountSource,
+  message: string
+): ProviderUsageResult => ({
+  error: { code: "provider/failure", message, retryable: true },
+  sourceId: source.id,
+});
+
+const toUsageReading = (account: ProviderReading): UsageReading =>
+  ProviderUsageReadingSchema.parse({
+    plan: account.plan,
+    windows: account.windows,
+    ...(account.email && { email: account.email }),
+    ...(account.resetsApplicable !== undefined && {
+      resetsApplicable: account.resetsApplicable,
+    }),
+    ...(account.resetsAvailable !== undefined && {
+      resetsAvailable: account.resetsAvailable,
+    }),
+    ...(account.renewsAt !== undefined && { renewsAt: account.renewsAt }),
+  });
+
+const adapter = (
+  provider: Provider,
+  acquireOne: (
+    source: AccountSource,
+    credentialRefresh: "refresh-if-stale" | "never",
+    onCredentialUpdate: (update: PendingCodexCredentialUpdate) => void,
+    onStorageStateUpdate: (value: unknown) => void,
+    signal: AbortSignal
+  ) => Promise<ProviderReading | null>
+): UsageProviderAdapter => ({
+  async acquire(sources, context) {
+    const pendingCredentialUpdates: PendingCredentialUpdate[] = [];
+    const results = await Promise.all(
+      sources.map(
+        async (source) =>
+          await context.acquireDirect(
+            async (): Promise<ProviderUsageResult> => {
+              try {
+                const account = await acquireOne(
+                  source,
+                  context.credentialRefresh,
+                  (update) => {
+                    pendingCredentialUpdates.push({
+                      kind: "external-credential",
+                      provider: "codex",
+                      sourceId: source.id,
+                      value: update,
+                    });
+                  },
+                  (value) => {
+                    pendingCredentialUpdates.push({
+                      kind: "storage-state",
+                      provider,
+                      sourceId: source.id,
+                      value,
+                    });
+                  },
+                  context.signal
+                );
+                if (!account) {
+                  return failure(
+                    source,
+                    "Provider returned no account result."
+                  );
+                }
+                if (account.error) {
+                  return failure(
+                    source,
+                    `Provider usage acquisition failed: ${reason(account.error)}`
+                  );
+                }
+                return {
+                  sourceId: source.id,
+                  usage: toUsageReading(account),
+                };
+              } catch (error) {
+                return failure(
+                  source,
+                  `Provider usage acquisition failed: ${reason(error)}`
+                );
+              }
+            }
+          )
+      )
+    );
+    return { pendingCredentialUpdates, results };
+  },
+  provider,
+});
+
+export const createLocalAdapters = (
   configured: AccountDetails[]
-): UsageProviderAdapter[] {
+): UsageProviderAdapter[] => {
   const acquireClaudeBrowser = createSerialAcquirer();
   const details = new Map(
     configured.map((account) => [
@@ -310,194 +466,4 @@ export function createLocalAdapters(
       };
     }),
   ];
-}
-
-function normalizeClaudeUsage(account: AccountUsage): ProviderReading {
-  const planLabels = {
-    free: "Free",
-    max: "Max",
-    max_20x: "Max 20x",
-    max_5x: "Max 5x",
-    pro: "Pro",
-    unknown: "",
-  } as const;
-  const window = (
-    limit: { resets_at: string | null; utilization: number } | null
-  ): { resetsAt: string | null; usedPercent: number } | null =>
-    limit
-      ? { resetsAt: limit.resets_at, usedPercent: limit.utilization }
-      : null;
-  return {
-    plan: planLabels[account.plan],
-    renewsAt: account.renewsAt,
-    windows: [
-      ...namedWindows(
-        {
-          session: window(account.usage.five_hour),
-          weekly: window(account.usage.seven_day),
-        },
-        ["session", "weekly"]
-      ),
-      ...(account.usage.scoped ?? []).map((limit) => ({
-        kind: "scoped" as const,
-        label: limit.model,
-        resetsAt: limit.resets_at,
-        usedPercent: limit.utilization,
-      })),
-    ],
-    ...(account.error !== undefined && { error: account.error }),
-  };
-}
-
-function createSerialAcquirer(): <T>(
-  operation: () => Promise<T>
-) => Promise<T> {
-  let tail: Promise<unknown> = Promise.resolve();
-  return async <T>(operation: () => Promise<T>): Promise<T> => {
-    const current = tail.then(operation, operation);
-    tail = current.then(
-      () => {},
-      () => {}
-    );
-    return await current;
-  };
-}
-
-function adapter(
-  provider: Provider,
-  acquireOne: (
-    source: AccountSource,
-    credentialRefresh: "refresh-if-stale" | "never",
-    onCredentialUpdate: (update: PendingCodexCredentialUpdate) => void,
-    onStorageStateUpdate: (value: unknown) => void,
-    signal: AbortSignal
-  ) => Promise<ProviderReading | null>
-): UsageProviderAdapter {
-  return {
-    async acquire(sources, context) {
-      const pendingCredentialUpdates: PendingCredentialUpdate[] = [];
-      const results = await Promise.all(
-        sources.map(
-          async (source) =>
-            await context.acquireDirect(
-              async (): Promise<ProviderUsageResult> => {
-                try {
-                  const account = await acquireOne(
-                    source,
-                    context.credentialRefresh,
-                    (update) => {
-                      pendingCredentialUpdates.push({
-                        kind: "external-credential",
-                        provider: "codex",
-                        sourceId: source.id,
-                        value: update,
-                      });
-                    },
-                    (value) => {
-                      pendingCredentialUpdates.push({
-                        kind: "storage-state",
-                        provider,
-                        sourceId: source.id,
-                        value,
-                      });
-                    },
-                    context.signal
-                  );
-                  if (!account) {
-                    return failure(
-                      source,
-                      "Provider returned no account result."
-                    );
-                  }
-                  if (account.error) {
-                    return failure(
-                      source,
-                      `Provider usage acquisition failed: ${reason(account.error)}`
-                    );
-                  }
-                  return {
-                    sourceId: source.id,
-                    usage: toUsageReading(account),
-                  };
-                } catch (error) {
-                  return failure(
-                    source,
-                    `Provider usage acquisition failed: ${reason(error)}`
-                  );
-                }
-              }
-            )
-        )
-      );
-      return { pendingCredentialUpdates, results };
-    },
-    provider,
-  };
-}
-
-function configuredDetail(
-  source: AccountSource,
-  details: Map<string, AccountDetails>
-): AccountDetails {
-  if (!("name" in source.id)) {
-    throw new Error("Ambient source has no configured account details.");
-  }
-  const detail = details.get(`${source.provider}:${source.id.name}`);
-  if (!detail) {
-    throw new Error("Configured account details are missing.");
-  }
-  return detail;
-}
-
-/**
- * A short, safe reason for a provider failure.
- *
- * Both failure paths above used to discard what they knew: one dropped
- * `account.error` on the floor and the other caught with no binding at all, so
- * every provider fault in the product arrived as the same eleven words. That is
- * a dead end for the reader — the dashboard's own remedy for a broken account is
- * a `gauge refresh`, and when the fault is upstream of gauge that command
- * succeeds and changes nothing, leaving no way to find out why.
- *
- * Trimmed to a single line and capped, because this reaches human output and a
- * provider is free to answer with an entire HTML page. Sanitization still runs
- * over the result; this only makes sure there is something in it worth
- * sanitizing.
- */
-function reason(cause: unknown): string {
-  const text =
-    cause instanceof Error
-      ? cause.message
-      : typeof cause === "string"
-        ? cause
-        : typeof cause === "object" && cause !== null && "message" in cause
-          ? String(cause.message)
-          : String(cause);
-  const line = text.replaceAll(/\s+/gu, " ").trim();
-  if (line === "") {
-    return "no reason given";
-  }
-  return line.length > 160 ? `${line.slice(0, 159)}…` : line;
-}
-
-function failure(source: AccountSource, message: string): ProviderUsageResult {
-  return {
-    error: { code: "provider/failure", message, retryable: true },
-    sourceId: source.id,
-  };
-}
-
-function toUsageReading(account: ProviderReading): UsageReading {
-  return ProviderUsageReadingSchema.parse({
-    plan: account.plan,
-    windows: account.windows,
-    ...(account.email && { email: account.email }),
-    ...(account.resetsApplicable !== undefined && {
-      resetsApplicable: account.resetsApplicable,
-    }),
-    ...(account.resetsAvailable !== undefined && {
-      resetsAvailable: account.resetsAvailable,
-    }),
-    ...(account.renewsAt !== undefined && { renewsAt: account.renewsAt }),
-  });
-}
+};

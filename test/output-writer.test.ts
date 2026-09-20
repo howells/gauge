@@ -32,6 +32,6 @@ test("output writer propagates unexpected path metadata failures", () => {
           throw failure;
         },
       }),
-    /metadata unavailable/
+    /metadata unavailable/u
   );
 });

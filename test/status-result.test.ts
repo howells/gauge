@@ -98,7 +98,7 @@ test("a blocked account with an applicable reset is recommended as usable via re
   };
   assert.equal(recommendation.status, "use_now");
   assert.equal(recommendation.viaReset, true);
-  assert.match(result.human, /ready now · via reset/);
+  assert.match(result.human, /ready now · via reset/u);
 });
 
 test("partial snapshots stay ok and account failures use typed errors", () => {
@@ -212,7 +212,7 @@ test("quick mode contains only recommendation and summary with one human line", 
     "summary",
   ]);
   // Rendered with ANSI styling; assert on the visible content.
-  const plainHuman = result.human.replaceAll(/\u001B\[[0-9;]*m/g, "");
+  const plainHuman = result.human.replaceAll(/\u001B\[[0-9;]*m/gu, "");
   assert.equal(plainHuman, "→ cursor:personal  ready now\n");
   assert.equal(result.paginated, undefined);
 });
@@ -252,7 +252,7 @@ test("an idle session keeps its slot instead of letting the week be drawn as it"
     { now, quick: false }
   );
 
-  const plain = result.human.replaceAll(/\u001B\[[0-9;]*m/g, "");
+  const plain = result.human.replaceAll(/\u001B\[[0-9;]*m/gu, "");
   const [meterLine, detailLine] = plain
     .split("\n")
     .filter((line) => line.includes("siteinspire") || line.includes("wk "));
@@ -303,7 +303,7 @@ test("a full account says which of its limits filled", () => {
     { now, quick: false }
   );
 
-  const plain = result.human.replaceAll(/\u001B\[[0-9;]*m/g, "");
+  const plain = result.human.replaceAll(/\u001B\[[0-9;]*m/gu, "");
   assert.match(plain, /gmail\s+█+ full · 1d/u);
   assert.match(plain, /Max 20x · wk 100% · 1d/u);
 });
@@ -345,7 +345,7 @@ test("a narrow cell drops the plan label before it drops a usage reading", () =>
     { now, quick: false }
   );
 
-  const plain = result.human.replaceAll(/\u001B\[[0-9;]*m/g, "");
+  const plain = result.human.replaceAll(/\u001B\[[0-9;]*m/gu, "");
   assert.match(plain, /on-demand 59% · 15d/u);
   assert.doesNotMatch(plain, /Cursor Enterprise · on-demand/u);
 });
@@ -444,7 +444,7 @@ test("a model-scoped Codex session is shown without blocking the whole account",
     { now, quick: false }
   );
 
-  const plain = result.human.replaceAll(/\u001B\[[0-9;]*m/g, "");
+  const plain = result.human.replaceAll(/\u001B\[[0-9;]*m/gu, "");
   assert.match(plain, /gmail\s+█+ 100%/u);
   assert.match(plain, /Spark session · wk 71% · 5d/u);
   assert.doesNotMatch(plain, /gmail\s+█+ full/u);

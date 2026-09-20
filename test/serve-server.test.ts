@@ -56,10 +56,10 @@ test("GET / serves the dashboard page", async () => {
   await withServer(cacheWith(statusResult()), async (port) => {
     const response = await fetch(`http://127.0.0.1:${port}/`);
     assert.equal(response.status, 200);
-    assert.match(response.headers.get("content-type") ?? "", /text\/html/);
+    assert.match(response.headers.get("content-type") ?? "", /text\/html/u);
     const body = await response.text();
-    assert.match(body, /<!doctype html>/);
-    assert.match(body, /\/api\/status/);
+    assert.match(body, /<!doctype html>/u);
+    assert.match(body, /\/api\/status/u);
   });
 });
 
@@ -70,7 +70,7 @@ test("GET /api/status serves the cached status payload", async () => {
     assert.equal(response.status, 200);
     assert.match(
       response.headers.get("content-type") ?? "",
-      /application\/json/
+      /application\/json/u
     );
     const body = (await response.json()) as {
       ok: boolean;

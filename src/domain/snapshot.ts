@@ -27,21 +27,6 @@ export interface ProviderError {
   retryable: boolean;
 }
 
-/**
- * Which limit a usage window measures.
- *
- * Carried on the window itself rather than inferred from its position in the
- * array. Position was the old contract and it could not survive an absent
- * window: drop one and every later window inherits a meaning that belongs to
- * its neighbour — which is how a seven-day figure came to be drawn as a
- * five-hour session. A name cannot slide.
- *
- * `session`, `weekly`, and `monthly` are time horizons declared by the
- * provider. Cursor's monthly readings are named for what they meter instead:
- * the plan's included usage, and anything bought on demand beyond it. `scoped`
- * is a model pool carved out of a longer horizon — Claude's Fable allowance —
- * and always carries a `label`.
- */
 export const USAGE_WINDOW_KINDS = [
   "session",
   "weekly",
@@ -110,8 +95,7 @@ export interface UsageSnapshot {
   summary: SnapshotSummary;
 }
 
-export function accountSourceIdKey(id: AccountSourceId): string {
-  return "name" in id
+export const accountSourceIdKey = (id: AccountSourceId): string =>
+  "name" in id
     ? `configured:${id.provider}:${id.name}`
     : `ambient:${id.provider}:${id.ambient}`;
-}

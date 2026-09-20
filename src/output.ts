@@ -46,11 +46,10 @@ interface RenderedOutput {
   outputPath?: string;
 }
 
-/** Determine the output format, defaulting to JSON for non-TTY and human for TTY. */
-export function resolveOutputFormat(
+export const resolveOutputFormat = (
   requestedFormat: string | undefined,
   isTTY = process.stdout.isTTY ?? false
-): OutputFormat {
+): OutputFormat => {
   if (
     requestedFormat === "human" ||
     requestedFormat === "json" ||
@@ -60,10 +59,9 @@ export function resolveOutputFormat(
   }
 
   return isTTY ? "human" : "json";
-}
+};
 
-/** Parse a comma-separated field mask string into path segments. */
-function parseFieldMask(fields: string | undefined): string[][] {
+const parseFieldMask = (fields: string | undefined): string[][] => {
   if (!fields || fields.trim().length === 0 || fields.trim() === "*") {
     return [];
   }
@@ -73,39 +71,13 @@ function parseFieldMask(fields: string | undefined): string[][] {
     .map((field) => field.trim())
     .filter(Boolean)
     .map((field) => field.split(".").filter(Boolean));
-}
+};
 
-/** Project a value down to only the paths specified by the field mask. */
-export function applyFieldMask<T>(value: T, fields: string | undefined): T {
-  const mask = parseFieldMask(fields);
-  if (mask.length === 0) {
-    return value;
-  }
-
-  return maskValue(value, mask) as T;
-}
-
-function maskValue(value: unknown, mask: string[][]): unknown {
-  if (Array.isArray(value)) {
-    return value.map((item) => maskValue(item, mask));
-  }
-
-  if (!value || typeof value !== "object") {
-    return value;
-  }
-
-  const result: Record<string, unknown> = {};
-  for (const path of mask) {
-    assignPath(result, value as Record<string, unknown>, path);
-  }
-  return result;
-}
-
-function assignPath(
+const assignPath = (
   target: Record<string, unknown>,
   source: Record<string, unknown>,
   path: string[]
-): void {
+): void => {
   if (path.length === 0) {
     return;
   }
@@ -151,36 +123,41 @@ function assignPath(
       : {};
   assignPath(nestedTarget, sourceValue as Record<string, unknown>, rest);
   target[segment] = nestedTarget;
-}
+};
 
-/** Split items into page payloads for structured output. */
-export function paginateItems(
-  items: unknown[],
-  options: { page?: number; pageAll?: boolean; pageSize?: number },
-  itemName: string,
-  summary?: Record<string, unknown>
-): PagePayload[] {
-  const pageSize = Math.max(1, options.pageSize ?? items.length ?? 1);
-  const totalPages = Math.max(1, Math.ceil(items.length / pageSize));
-
-  if (options.pageAll) {
-    return Array.from({ length: totalPages }, (_, index) =>
-      buildPage(items, itemName, summary, index + 1, pageSize, totalPages)
-    );
+const maskValue = (value: unknown, mask: string[][]): unknown => {
+  if (Array.isArray(value)) {
+    return value.map((item) => maskValue(item, mask));
   }
 
-  const page = Math.min(Math.max(1, options.page ?? 1), totalPages);
-  return [buildPage(items, itemName, summary, page, pageSize, totalPages)];
-}
+  if (!value || typeof value !== "object") {
+    return value;
+  }
 
-function buildPage(
+  const result: Record<string, unknown> = {};
+  for (const path of mask) {
+    assignPath(result, value as Record<string, unknown>, path);
+  }
+  return result;
+};
+
+export const applyFieldMask = <T>(value: T, fields: string | undefined): T => {
+  const mask = parseFieldMask(fields);
+  if (mask.length === 0) {
+    return value;
+  }
+
+  return maskValue(value, mask) as T;
+};
+
+const buildPage = (
   items: unknown[],
   itemName: string,
   summary: Record<string, unknown> | undefined,
   page: number,
   pageSize: number,
   totalPages: number
-): PagePayload {
+): PagePayload => {
   const start = (page - 1) * pageSize;
   const pageItems = items.slice(start, start + pageSize);
   return {
@@ -195,14 +172,68 @@ function buildPage(
       total_pages: totalPages,
     },
   };
-}
+};
 
-/** Render a command result to the appropriate format with optional file output. */
-export function renderCommandResult(
+export const paginateItems = (
+  items: unknown[],
+  options: { page?: number; pageAll?: boolean; pageSize?: number },
+  itemName: string,
+  summary?: Record<string, unknown>
+): PagePayload[] => {
+  const pageSize = Math.max(1, options.pageSize ?? items.length ?? 1);
+  const totalPages = Math.max(1, Math.ceil(items.length / pageSize));
+
+  if (options.pageAll) {
+    return Array.from({ length: totalPages }, (_, index) =>
+      buildPage(items, itemName, summary, index + 1, pageSize, totalPages)
+    );
+  }
+
+  const page = Math.min(Math.max(1, options.page ?? 1), totalPages);
+  return [buildPage(items, itemName, summary, page, pageSize, totalPages)];
+};
+
+const buildEnvelope = (
+  command: string,
+  data: unknown,
+  pageInfo: PagePayload["page_info"],
+  dryRun: boolean,
+  sanitized: boolean,
+  ok: boolean,
+  result?: "complete" | "failed" | "partial"
+): Record<string, unknown> => ({
+  command,
+  data,
+  meta: {
+    dry_run: dryRun,
+    format: "structured",
+    generated_at: new Date().toISOString(),
+    page_info: pageInfo,
+    ...(result !== undefined && { result }),
+    sanitized,
+  },
+  ok,
+});
+
+const writeMaybeToFile = (
+  content: string,
+  format: OutputFormat,
+  outputFile: string | undefined,
+  cwd: string
+): RenderedOutput => {
+  if (!outputFile) {
+    return { content, format };
+  }
+
+  const outputPath = writeSandboxedOutput(cwd, outputFile, content);
+  return { content, format, outputPath };
+};
+
+export const renderCommandResult = (
   result: CommandResult,
   options: OutputOptions,
   context: { cwd: string; isTTY?: boolean }
-): RenderedOutput {
+): RenderedOutput => {
   const format = resolveOutputFormat(options.format, context.isTTY);
   const sanitize = options.sanitize ?? true;
 
@@ -270,14 +301,13 @@ export function renderCommandResult(
       : `${structuredPages.map((page) => JSON.stringify(page)).join("\n")}\n`;
 
   return writeMaybeToFile(content, format, options.outputFile, context.cwd);
-}
+};
 
-/** Render an error to the appropriate format with optional file output. */
-export function renderError(
+export const renderError = (
   error: { code?: string; message: string; details?: unknown },
   options: OutputOptions,
   context: { cwd: string; isTTY?: boolean; command: string }
-): RenderedOutput {
+): RenderedOutput => {
   const format = resolveOutputFormat(options.format, context.isTTY);
   if (format === "human") {
     return writeMaybeToFile(
@@ -312,42 +342,4 @@ export function renderError(
       ? `${JSON.stringify(payload, null, 2)}\n`
       : `${JSON.stringify(payload)}\n`;
   return writeMaybeToFile(content, format, options.outputFile, context.cwd);
-}
-
-function buildEnvelope(
-  command: string,
-  data: unknown,
-  pageInfo: PagePayload["page_info"],
-  dryRun: boolean,
-  sanitized: boolean,
-  ok: boolean,
-  result?: "complete" | "failed" | "partial"
-): Record<string, unknown> {
-  return {
-    command,
-    data,
-    meta: {
-      dry_run: dryRun,
-      format: "structured",
-      generated_at: new Date().toISOString(),
-      page_info: pageInfo,
-      ...(result !== undefined && { result }),
-      sanitized,
-    },
-    ok,
-  };
-}
-
-function writeMaybeToFile(
-  content: string,
-  format: OutputFormat,
-  outputFile: string | undefined,
-  cwd: string
-): RenderedOutput {
-  if (!outputFile) {
-    return { content, format };
-  }
-
-  const outputPath = writeSandboxedOutput(cwd, outputFile, content);
-  return { content, format, outputPath };
-}
+};

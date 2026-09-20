@@ -70,7 +70,7 @@ test("account facade delegates every mutation to provider-scoped v3 storage", ()
     const artifacts = getAccountArtifacts("work", "claude");
     assert.match(
       artifacts.accountPath,
-      /accounts\/v3\/claude\/work\/config\.json$/
+      /accounts\/v3\/claude\/work\/config\.json$/u
     );
     assert.equal(listAccountDetails("claude")[0]?.hasStorageState, true);
 

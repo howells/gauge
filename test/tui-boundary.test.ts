@@ -8,10 +8,10 @@ test("TUI depends on the shared command service rather than providers or account
   const root = path.resolve(import.meta.dirname, "..");
   const source = fs.readFileSync(path.join(root, "src", "tui.ts"), "utf-8");
 
-  assert.match(source, /runStatusCommand/);
-  assert.doesNotMatch(source, /provider-usage|\.\/api|\.\/accounts/);
-  assert.match(source, /finally/);
-  assert.match(source, /setRawMode\(false\)/);
+  assert.match(source, /runStatusCommand/u);
+  assert.doesNotMatch(source, /provider-usage|\.\/api|\.\/accounts/u);
+  assert.match(source, /finally/u);
+  assert.match(source, /setRawMode\(false\)/u);
 });
 
 test("domain and service layers preserve the declared dependency direction", () => {
@@ -23,7 +23,7 @@ test("domain and service layers preserve the declared dependency direction", () 
     );
     assert.doesNotMatch(
       source,
-      /from\s+["'][^"']*(?:providers|persistence|services|commands|cli|tui|accounts|api)/,
+      /from\s+["'][^"']*(?:providers|persistence|services|commands|cli|tui|accounts|api)/u,
       `domain/${file} imports an operational layer`
     );
   }
@@ -34,7 +34,7 @@ test("domain and service layers preserve the declared dependency direction", () 
     );
     assert.doesNotMatch(
       source,
-      /(?:\.\.\/commands|\.\.\/cli|\.\.\/tui)/,
+      /(?:\.\.\/commands|\.\.\/cli|\.\.\/tui)/u,
       `services/${file} imports a presentation layer`
     );
   }
@@ -42,12 +42,12 @@ test("domain and service layers preserve the declared dependency direction", () 
     path.join(root, "src", "providers", "local-adapters.ts"),
     "utf-8"
   );
-  assert.doesNotMatch(adapters, /\.\.\/(?:display|types)\.js/);
+  assert.doesNotMatch(adapters, /\.\.\/(?:display|types)\.js/u);
 
   for (const file of walkTypeScript(path.join(root, "src"))) {
     assert.doesNotMatch(
       fs.readFileSync(file, "utf-8"),
-      /(?:export\s+)?(?:const|function)\s+__test/,
+      /(?:export\s+)?(?:const|function)\s+__test/u,
       `${path.relative(root, file)} exposes a production __test hook`
     );
   }

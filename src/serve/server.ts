@@ -5,7 +5,7 @@ import { sanitizeForAgent } from "../security.js";
 import { DASHBOARD_HTML } from "./dashboard.js";
 import type { ServedSnapshot, StatusSnapshotCache } from "./snapshot.js";
 
-export const DEFAULT_SERVE_PORT = 42_843;
+const DEFAULT_SERVE_PORT = 42_843;
 
 export interface ServeServerOptions {
   cache: Pick<StatusSnapshotCache, "get">;
@@ -19,69 +19,23 @@ export interface ServeServer {
   listen: () => Promise<{ host: string; port: number; url: string }>;
 }
 
-/**
- * Loopback-only dashboard server.
- *
- * The status payload carries account names, emails, and plan details, so the
- * socket binds to 127.0.0.1 and nothing else. Two routes only: the page and
- * its JSON feed.
- */
-export function createServeServer(options: ServeServerOptions): ServeServer {
-  const host = options.host ?? "127.0.0.1";
-  const server = http.createServer((request, response) => {
-    void dispatch(request, response, options.cache);
+const respondJson = (
+  response: http.ServerResponse,
+  status: number,
+  body: unknown
+): void => {
+  response.writeHead(status, {
+    "content-type": "application/json; charset=utf-8",
+    "x-content-type-options": "nosniff",
   });
+  response.end(JSON.stringify(body));
+};
 
-  return {
-    close: async (): Promise<void> => {
-      server.close();
-      try {
-        await once(server, "close");
-      } catch {
-        // A socket that never finished binding has nothing left to close.
-      }
-    },
-    listen: async (): Promise<{ host: string; port: number; url: string }> => {
-      const port = options.port ?? DEFAULT_SERVE_PORT;
-      server.listen(port, host);
-      try {
-        await once(server, "listening");
-      } catch (error) {
-        server.close();
-        throw error;
-      }
-      const address = server.address();
-      const boundPort =
-        typeof address === "object" && address !== null ? address.port : port;
-      return { host, port: boundPort, url: `http://${host}:${boundPort}` };
-    },
-  };
-}
-
-async function dispatch(
+const handle = async (
   request: http.IncomingMessage,
   response: http.ServerResponse,
   cache: Pick<StatusSnapshotCache, "get">
-): Promise<void> {
-  try {
-    await handle(request, response, cache);
-  } catch {
-    if (response.headersSent) {
-      response.end();
-      return;
-    }
-    respondJson(response, 500, {
-      error: { code: "serve/internal", message: "Request failed." },
-      ok: false,
-    });
-  }
-}
-
-async function handle(
-  request: http.IncomingMessage,
-  response: http.ServerResponse,
-  cache: Pick<StatusSnapshotCache, "get">
-): Promise<void> {
+): Promise<void> => {
   const url = new URL(request.url ?? "/", "http://localhost");
   const route = `${request.method ?? "GET"} ${url.pathname}`;
 
@@ -123,16 +77,55 @@ async function handle(
     error: { code: "serve/not-found", message: `No route: ${route}` },
     ok: false,
   });
-}
+};
 
-function respondJson(
+const dispatch = async (
+  request: http.IncomingMessage,
   response: http.ServerResponse,
-  status: number,
-  body: unknown
-): void {
-  response.writeHead(status, {
-    "content-type": "application/json; charset=utf-8",
-    "x-content-type-options": "nosniff",
+  cache: Pick<StatusSnapshotCache, "get">
+): Promise<void> => {
+  try {
+    await handle(request, response, cache);
+  } catch {
+    if (response.headersSent) {
+      response.end();
+      return;
+    }
+    respondJson(response, 500, {
+      error: { code: "serve/internal", message: "Request failed." },
+      ok: false,
+    });
+  }
+};
+
+export const createServeServer = (options: ServeServerOptions): ServeServer => {
+  const host = options.host ?? "127.0.0.1";
+  const server = http.createServer((request, response) => {
+    void dispatch(request, response, options.cache);
   });
-  response.end(JSON.stringify(body));
-}
+
+  return {
+    close: async (): Promise<void> => {
+      server.close();
+      try {
+        await once(server, "close");
+      } catch {
+        // A socket that never finished binding has nothing left to close.
+      }
+    },
+    listen: async (): Promise<{ host: string; port: number; url: string }> => {
+      const port = options.port ?? DEFAULT_SERVE_PORT;
+      server.listen(port, host);
+      try {
+        await once(server, "listening");
+      } catch (error) {
+        server.close();
+        throw error;
+      }
+      const address = server.address();
+      const boundPort =
+        typeof address === "object" && address !== null ? address.port : port;
+      return { host, port: boundPort, url: `http://${host}:${boundPort}` };
+    },
+  };
+};

@@ -122,6 +122,6 @@ test("a failed first collection propagates and leaves nothing cached", async () 
       throw new Error("collection down");
     },
   });
-  await assert.rejects(cache.get(), /collection down/);
+  await assert.rejects(cache.get(), /collection down/u);
   assert.equal(cache.peek(), null);
 });

@@ -4,10 +4,10 @@ import {
   writeConfinedOutput,
 } from "./persistence/output-writer.js";
 
-const SAFE_IDENTIFIER_RE = /^[a-zA-Z0-9_-]+$/;
-const ENCODED_SEGMENT_RE = /%(?:2e|2f|5c|3f|23)/i;
+const SAFE_IDENTIFIER_RE = /^[a-zA-Z0-9_-]+$/u;
 
-/** Structured error with machine-readable code and exit code for CLI output. */
+const ENCODED_SEGMENT_RE = /%(?:2e|2f|5c|3f|23)/iu;
+
 export class CLIError extends Error {
   code: string;
   exitCode: number;
@@ -37,11 +37,112 @@ export class CLIError extends Error {
   }
 }
 
-/** Throw if the value contains path traversal, control chars, or unsafe characters. */
-export function assertSafeIdentifier(
+const isSensitiveDiagnosticKey = (key: string): boolean =>
+  /(?:apiKey|authKey|authorization|cookie|credential|password|secret|token)/iu.test(
+    key
+  );
+
+export const redactDiagnosticValue = <T>(
+  value: T,
+  context: { cwd: string; home?: string }
+): T => {
+  if (typeof value === "string") {
+    let redacted: string = value;
+    for (const [pathValue, label] of [
+      [context.cwd, "<cwd>"],
+      [context.home, "<home>"],
+    ] as const) {
+      if (pathValue !== undefined && pathValue !== "") {
+        redacted = redacted.split(pathValue).join(label);
+      }
+    }
+    redacted = redacted
+      .replaceAll(
+        /(["'])(?:\/[^"'\r\n]+|[A-Za-z]:\\[^"'\r\n]+)\1/gu,
+        "$1<redacted-path>$1"
+      )
+      .replaceAll(/\bBearer\s+\S+/giu, "Bearer <redacted-token>")
+      .replaceAll(/\bsk-[A-Za-z0-9_-]{16,}\b/gu, "<redacted-token>")
+      .replaceAll(
+        /\b[A-Za-z0-9_-]{12,}\.[A-Za-z0-9_-]{12,}\.[A-Za-z0-9_-]{12,}\b/gu,
+        "<redacted-token>"
+      )
+      .replaceAll(
+        /(?<![A-Za-z0-9_.>])\/(?:[^\s"'<>:]+\/?)+/gu,
+        "<redacted-path>"
+      )
+      .replaceAll(
+        /(?<![A-Za-z0-9_.])[A-Za-z]:\\(?:[^\s"'<>]+\\?)+/gu,
+        "<redacted-path>"
+      );
+    return redacted as T;
+  }
+  if (Array.isArray(value)) {
+    return value.map((item) => redactDiagnosticValue(item, context)) as T;
+  }
+  if (value && typeof value === "object") {
+    return Object.fromEntries(
+      Object.entries(value).map(([key, nested]) =>
+        isSensitiveDiagnosticKey(key)
+          ? [key, "<redacted-secret>"]
+          : [key, redactDiagnosticValue(nested, context)]
+      )
+    ) as T;
+  }
+  return value;
+};
+
+const mapOutputPathViolation = <T>(
+  operation: () => T,
+  cwd: string,
+  requestedPath: string
+): T => {
+  try {
+    return operation();
+  } catch (error) {
+    if (!(error instanceof OutputPathViolation)) {
+      throw error;
+    }
+    throw new CLIError(error.message, {
+      code: "INVALID_OUTPUT_PATH",
+      details: { cwd, requestedPath },
+      exitCode: 2,
+    });
+  }
+};
+
+export const resolveOutputPath = (cwd: string, requestedPath: string): string =>
+  mapOutputPathViolation(
+    () => resolveConfinedOutputPath(cwd, requestedPath),
+    cwd,
+    requestedPath
+  );
+
+export const writeSandboxedOutput = (
+  cwd: string,
+  requestedPath: string,
+  content: string
+): string =>
+  mapOutputPathViolation(
+    () => writeConfinedOutput(cwd, requestedPath, content),
+    cwd,
+    requestedPath
+  );
+
+const containsControlCharacters = (value: string): boolean => {
+  for (const character of value) {
+    const code = character.charCodeAt(0);
+    if (code <= 31 || code === 127) {
+      return true;
+    }
+  }
+  return false;
+};
+
+export const assertSafeIdentifier = (
   value: string,
   label = "identifier"
-): void {
+): void => {
   if (value.length === 0) {
     throw new CLIError(`${label} contains invalid characters or is empty.`, {
       code: "INVALID_IDENTIFIER",
@@ -105,15 +206,23 @@ export function assertSafeIdentifier(
       }
     );
   }
-}
+};
 
-/** Strip control characters from text crossing a structured-output boundary. */
-export function sanitizeAgentText(value: string): string {
-  return stripControlCharacters(value).trim();
-}
+const stripControlCharacters = (value: string): string => {
+  let output = "";
+  for (const character of value) {
+    const code = character.charCodeAt(0);
+    if (code > 31 && code !== 127) {
+      output += character;
+    }
+  }
+  return output;
+};
 
-/** Recursively sanitize all strings in a value for safe agent consumption. */
-export function sanitizeForAgent<T>(value: T): T {
+export const sanitizeAgentText = (value: string): string =>
+  stripControlCharacters(value).trim();
+
+export const sanitizeForAgent = <T>(value: T): T => {
   if (typeof value === "string") {
     return sanitizeAgentText(value) as T;
   }
@@ -131,123 +240,4 @@ export function sanitizeForAgent<T>(value: T): T {
   }
 
   return value;
-}
-
-/** Redact local paths and token-shaped values from trusted diagnostics. */
-export function redactDiagnosticValue<T>(
-  value: T,
-  context: { cwd: string; home?: string }
-): T {
-  if (typeof value === "string") {
-    let redacted: string = value;
-    for (const [pathValue, label] of [
-      [context.cwd, "<cwd>"],
-      [context.home, "<home>"],
-    ] as const) {
-      if (pathValue) {
-        redacted = redacted.split(pathValue).join(label);
-      }
-    }
-    redacted = redacted
-      .replaceAll(
-        /(["'])(?:\/[^"'\r\n]+|[A-Za-z]:\\[^"'\r\n]+)\1/g,
-        "$1<redacted-path>$1"
-      )
-      .replaceAll(/\bBearer\s+\S+/gi, "Bearer <redacted-token>")
-      .replaceAll(/\bsk-[A-Za-z0-9_-]{16,}\b/g, "<redacted-token>")
-      .replaceAll(
-        /\b[A-Za-z0-9_-]{12,}\.[A-Za-z0-9_-]{12,}\.[A-Za-z0-9_-]{12,}\b/g,
-        "<redacted-token>"
-      )
-      .replaceAll(
-        /(?<![A-Za-z0-9_.>])\/(?:[^\s"'<>:]+\/?)+/g,
-        "<redacted-path>"
-      )
-      .replaceAll(
-        /(?<![A-Za-z0-9_.])[A-Za-z]:\\(?:[^\s"'<>]+\\?)+/g,
-        "<redacted-path>"
-      );
-    return redacted as T;
-  }
-  if (Array.isArray(value)) {
-    return value.map((item) => redactDiagnosticValue(item, context)) as T;
-  }
-  if (value && typeof value === "object") {
-    return Object.fromEntries(
-      Object.entries(value).map(([key, nested]) =>
-        isSensitiveDiagnosticKey(key)
-          ? [key, "<redacted-secret>"]
-          : [key, redactDiagnosticValue(nested, context)]
-      )
-    ) as T;
-  }
-  return value;
-}
-
-function isSensitiveDiagnosticKey(key: string): boolean {
-  return /(?:apiKey|authKey|authorization|cookie|credential|password|secret|token)/i.test(
-    key
-  );
-}
-
-/** Resolve an output path, throwing if it escapes the working directory. */
-export function resolveOutputPath(cwd: string, requestedPath: string): string {
-  return mapOutputPathViolation(
-    () => resolveConfinedOutputPath(cwd, requestedPath),
-    cwd,
-    requestedPath
-  );
-}
-
-/** Write content to a sandboxed path within the working directory. */
-export function writeSandboxedOutput(
-  cwd: string,
-  requestedPath: string,
-  content: string
-): string {
-  return mapOutputPathViolation(
-    () => writeConfinedOutput(cwd, requestedPath, content),
-    cwd,
-    requestedPath
-  );
-}
-
-function mapOutputPathViolation<T>(
-  operation: () => T,
-  cwd: string,
-  requestedPath: string
-): T {
-  try {
-    return operation();
-  } catch (error) {
-    if (!(error instanceof OutputPathViolation)) {
-      throw error;
-    }
-    throw new CLIError(error.message, {
-      code: "INVALID_OUTPUT_PATH",
-      details: { cwd, requestedPath },
-      exitCode: 2,
-    });
-  }
-}
-
-function containsControlCharacters(value: string): boolean {
-  for (const character of value) {
-    const code = character.charCodeAt(0);
-    if (code <= 31 || code === 127) {
-      return true;
-    }
-  }
-  return false;
-}
-
-function stripControlCharacters(value: string): string {
-  let output = "";
-  for (const character of value) {
-    const code = character.charCodeAt(0);
-    if (code > 31 && code !== 127) {
-      output += character;
-    }
-  }
-  return output;
-}
+};

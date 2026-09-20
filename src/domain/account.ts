@@ -1,12 +1,13 @@
 import { z } from "zod";
 
 const ProviderSchema = z.enum(["claude", "codex", "cursor", "zai", "grok"]);
+
 export type Provider = z.infer<typeof ProviderSchema>;
 
 const AccountNameSchema = z
   .string()
   .regex(
-    /^[a-zA-Z0-9_-]+$/,
+    /^[a-zA-Z0-9_-]+$/u,
     "Account name must use only letters, numbers, hyphens, or underscores."
   );
 
@@ -14,6 +15,7 @@ export const AccountIdSchema = z.strictObject({
   name: AccountNameSchema,
   provider: ProviderSchema,
 });
+
 export type AccountId = z.infer<typeof AccountIdSchema>;
 
 export const AccountConfigV3Schema = z.strictObject({
@@ -24,17 +26,14 @@ export const AccountConfigV3Schema = z.strictObject({
   renewsAt: z.iso.datetime().optional(),
   schema_version: z.literal(3),
 });
+
 export type AccountConfigV3 = z.infer<typeof AccountConfigV3Schema>;
 
-export function parseProvider(value: unknown): Provider {
-  return ProviderSchema.parse(value);
-}
+export const parseProvider = (value: unknown): Provider =>
+  ProviderSchema.parse(value);
 
-export function parseAccountName(value: unknown): string {
-  return AccountNameSchema.parse(value);
-}
+export const parseAccountName = (value: unknown): string =>
+  AccountNameSchema.parse(value);
 
-/** Encode an account identity as a versioned, provider-scoped artifact key. */
-export function encodeAccountId(accountId: AccountId): string {
-  return `v3-${accountId.provider}-${accountId.name}`;
-}
+export const encodeAccountId = (accountId: AccountId): string =>
+  `v3-${accountId.provider}-${accountId.name}`;

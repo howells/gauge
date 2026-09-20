@@ -576,8 +576,8 @@ test("Codex rejects oversized provider responses without exposing their body", a
     const accounts = await fetchCodexAccounts([], {
       credentialRefresh: "never",
     });
-    assert.match(accounts[0]?.error ?? "", /exceeded the allowed size/);
-    assert.doesNotMatch(accounts[0]?.error ?? "", /upstream-secret-body/);
+    assert.match(accounts[0]?.error ?? "", /exceeded the allowed size/u);
+    assert.doesNotMatch(accounts[0]?.error ?? "", /upstream-secret-body/u);
   } finally {
     globalThis.fetch = originalFetch;
     if (originalHome === undefined) {
@@ -621,7 +621,7 @@ test("Codex cancels a streaming response as soon as the byte limit is crossed", 
     const accounts = await fetchCodexAccounts([], {
       credentialRefresh: "never",
     });
-    assert.match(accounts[0]?.error ?? "", /exceeded the allowed size/);
+    assert.match(accounts[0]?.error ?? "", /exceeded the allowed size/u);
     assert.equal(cancelled, true);
     assert.equal(pulls, 2);
   } finally {

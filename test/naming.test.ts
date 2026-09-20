@@ -2,7 +2,6 @@ import assert from "node:assert/strict";
 import fs from "node:fs";
 import path from "node:path";
 import { test } from "node:test";
-import { fileURLToPath } from "node:url";
 
 const root = path.resolve(import.meta.dirname, "..");
 
@@ -26,8 +25,8 @@ test("CLI help text references gauge", () => {
     path.join(root, "src", "commands", "specs.ts"),
     "utf-8"
   );
-  assert.match(programSource, /\.name\("gauge"\)/);
-  assert.match(specsSource, /gauge add/);
+  assert.match(programSource, /\.name\("gauge"\)/u);
+  assert.match(specsSource, /gauge add/u);
 });
 
 test("package ships dist through deterministic prepack gates", () => {
@@ -39,12 +38,12 @@ test("package ships dist through deterministic prepack gates", () => {
   assert.ok(pkg.files.includes("package.json"));
   // Semver, not a fixed number: this test is about the packaging shape, and
   // pinning the version here only guarantees a failure on the next release.
-  assert.match(pkg.version, /^\d+\.\d+\.\d+(?:-[\w.]+)?$/);
+  assert.match(pkg.version, /^\d+\.\d+\.\d+(?:-[\w.]+)?$/u);
   // The house git hooks install through prepare on local installs; pin the
   // exact script so nothing else can sneak into the install lifecycle.
   assert.equal(pkg.scripts?.prepare, "howells-husky");
-  assert.match(pkg.scripts?.prepack, /build/);
-  assert.match(pkg.scripts?.prepack, /schema:check/);
+  assert.match(pkg.scripts?.prepack, /build/u);
+  assert.match(pkg.scripts?.prepack, /schema:check/u);
   assert.deepEqual(pkg.exports, { "./package.json": "./package.json" });
 });
 

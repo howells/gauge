@@ -106,7 +106,7 @@ test("AccountRepository refresh preserves the committed file when replacement fa
 
   assert.throws(
     () => failing.refresh(id, { storageState: { cookies: [], origins: [] } }),
-    /injected replacement failure/
+    /injected replacement failure/u
   );
   assert.equal(fs.readFileSync(storagePath, "utf-8"), before);
 });
@@ -153,7 +153,7 @@ test("AccountRepository refresh rolls back an earlier replacement when a later o
           origins: [],
         },
       }),
-    /injected second-write failure/
+    /injected second-write failure/u
   );
   assert.equal(fs.readFileSync(before.paths.config, "utf-8"), beforeConfig);
   assert.equal(
@@ -178,13 +178,13 @@ test("AccountRepository hides an account before recursive tombstone cleanup", ()
     },
   });
 
-  assert.throws(() => accounts.remove(id), /injected cleanup failure/);
+  assert.throws(() => accounts.remove(id), /injected cleanup failure/u);
   assert.deepEqual(accounts.list(), []);
   assert.equal(
     fs.existsSync(path.join(dataRoot, "accounts", "v3", "cursor", "work")),
     false
   );
-  assert.match(removed[0] ?? "", /\.work\.tombstone-remove$/);
+  assert.match(removed[0] ?? "", /\.work\.tombstone-remove$/u);
   assert.equal(fs.existsSync(removed[0] ?? ""), true);
 });
 
@@ -263,7 +263,7 @@ test("AccountRepository rollback removes a newly introduced storage file", () =>
       failing.refresh(id, {
         storageState: { cookies: [], origins: [] },
       }),
-    /config replacement failed/
+    /config replacement failed/u
   );
   assert.equal(fs.existsSync(record.paths.storageState), false);
 });

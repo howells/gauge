@@ -11,7 +11,7 @@ fs.mkdirSync(smokeRoot, { recursive: true });
 const pack = run("pnpm", ["pack", "--pack-destination", smokeRoot], root);
 const tarballName = pack.stdout
   .trim()
-  .split(/\r?\n/)
+  .split(/\r?\n/u)
   .findLast((line) => line.endsWith(".tgz"));
 assert.ok(tarballName, `pnpm pack did not report a tarball:\n${pack.stdout}`);
 const tarball = path.resolve(root, tarballName);
@@ -43,11 +43,11 @@ const deepImport = spawnSync(
 assert.notEqual(deepImport.status, 0);
 assert.match(
   `${deepImport.stdout}\n${deepImport.stderr}`,
-  /ERR_PACKAGE_PATH_NOT_EXPORTED/
+  /ERR_PACKAGE_PATH_NOT_EXPORTED/u
 );
 
 const entries = run("tar", ["-tf", tarball], smokeRoot).stdout;
-assert.doesNotMatch(entries, /\.(?:d\.ts|map)$/m);
+assert.doesNotMatch(entries, /\.(?:d\.ts|map)$/mu);
 
 fs.rmSync(smokeRoot, { force: true, recursive: true });
 

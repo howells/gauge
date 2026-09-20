@@ -22,7 +22,7 @@ test("runAddCommand dry-runs provider-scoped Cursor accounts", async () => {
   assert.equal(result.data.auth_mode, "headless-storage-state");
   assert.match(
     JSON.stringify(result.data.writes),
-    /accounts\/v3\/cursor\/work/
+    /accounts\/v3\/cursor\/work/u
   );
 });
 
@@ -44,7 +44,10 @@ test("runAddCommand dry-runs provider-scoped Codex accounts", async () => {
   assert.equal(result.data.provider, "codex");
   assert.equal(result.data.auth_mode, "codex-home");
   assert.equal(result.data.renews_at, "2026-07-12T00:00:00.000Z");
-  assert.match(JSON.stringify(result.data.writes), /accounts\/v3\/codex\/work/);
+  assert.match(
+    JSON.stringify(result.data.writes),
+    /accounts\/v3\/codex\/work/u
+  );
 });
 
 test("Codex dry-run validates referenced credentials without creating Gauge state", async () => {
@@ -115,12 +118,12 @@ test("manual renewal accepts null clearing values", () => {
   assert.equal(normalizeRenewalInput(" "), null);
   assert.equal(normalizeRenewalInput(null), null);
   assert.equal(normalizeRenewalInput(), undefined);
-  assert.throws(() => normalizeRenewalInput(123), /date string or null/);
+  assert.throws(() => normalizeRenewalInput(123), /date string or null/u);
 });
 
 test("manual renewal rejects invalid timestamps", () => {
   assert.throws(() => normalizeRenewalInput("not-a-date"), {
-    message: /Invalid renews_at/,
+    message: /Invalid renews_at/u,
   });
 });
 

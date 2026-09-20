@@ -16,15 +16,14 @@ const CodexCredentialUpdateSchema = z.strictObject({
   refreshToken: z.string().min(1).optional(),
 });
 
-/** Validate and atomically apply provider-returned external credential updates. */
-export function applyPendingCredentialUpdates(
+export const applyPendingCredentialUpdates = (
   updates: PendingCredentialUpdate[],
   options: {
     allowedCodexHomes: string[];
     dataRoot: string;
     policy: CredentialRefreshPolicy;
   }
-): void {
+): void => {
   const external = updates.filter(
     (update) => update.kind === "external-credential"
   );
@@ -61,4 +60,4 @@ export function applyPendingCredentialUpdates(
       parseStorageStateObject(pending.value)
     );
   }
-}
+};

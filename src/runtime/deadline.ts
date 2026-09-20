@@ -1,9 +1,9 @@
 /** Resolve an operation or a typed fallback when its local deadline elapses. */
-export async function raceWithTimeout<T>(
+export const raceWithTimeout = async <T>(
   operation: Promise<T>,
   timeoutMs: number,
   timeoutValue: T
-): Promise<T> {
+): Promise<T> => {
   let timer: NodeJS.Timeout | undefined;
   try {
     return await Promise.race([
@@ -19,4 +19,4 @@ export async function raceWithTimeout<T>(
       clearTimeout(timer);
     }
   }
-}
+};

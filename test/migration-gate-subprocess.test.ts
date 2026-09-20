@@ -79,7 +79,9 @@ function json(stdout: string): Record<string, unknown> {
 
 test("account commands return exact MIGRATION_REQUIRED recovery steps", (t) => {
   const state = fixture();
-  t.after(() => fs.rmSync(state.root, { force: true, recursive: true }));
+  t.after(() => {
+    fs.rmSync(state.root, { force: true, recursive: true });
+  });
 
   for (const { args, command } of [
     { args: ["status", "--format", "json"], command: "status" },
@@ -108,7 +110,9 @@ test("account commands return exact MIGRATION_REQUIRED recovery steps", (t) => {
 
 test("v3 root metadata does not trigger the migration gate", (t) => {
   const state = v3Fixture();
-  t.after(() => fs.rmSync(state.root, { force: true, recursive: true }));
+  t.after(() => {
+    fs.rmSync(state.root, { force: true, recursive: true });
+  });
 
   const result = run(state, [
     "list",
@@ -125,7 +129,9 @@ test("v3 root metadata does not trigger the migration gate", (t) => {
 
 test("describe and doctor remain available while legacy state exists", (t) => {
   const state = fixture();
-  t.after(() => fs.rmSync(state.root, { force: true, recursive: true }));
+  t.after(() => {
+    fs.rmSync(state.root, { force: true, recursive: true });
+  });
 
   const describe = run(state, ["describe", "--format", "json"]);
   assert.equal(describe.status, 0);
@@ -144,7 +150,9 @@ test("describe and doctor remain available while legacy state exists", (t) => {
 
 test("migrate dry-run plans without writes and real migrate commits", (t) => {
   const state = fixture();
-  t.after(() => fs.rmSync(state.root, { force: true, recursive: true }));
+  t.after(() => {
+    fs.rmSync(state.root, { force: true, recursive: true });
+  });
   const legacyPath = path.join(state.dataRoot, "personal.json");
 
   const dryRun = run(state, ["migrate", "--dry-run", "--format", "json"]);
@@ -183,7 +191,9 @@ test("migrate dry-run plans without writes and real migrate commits", (t) => {
 
 test("doctor exits one for failed checks and does not mutate state", (t) => {
   const state = fixture();
-  t.after(() => fs.rmSync(state.root, { force: true, recursive: true }));
+  t.after(() => {
+    fs.rmSync(state.root, { force: true, recursive: true });
+  });
   fs.chmodSync(state.dataRoot, 0o755);
   const before = fs.readFileSync(
     path.join(state.dataRoot, "personal.json"),

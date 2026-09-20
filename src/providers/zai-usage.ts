@@ -4,16 +4,6 @@ import path from "node:path";
 
 import { z } from "zod";
 
-/**
- * Z.AI GLM coding-plan usage, read with the key OpenCode already holds.
- *
- * The plan's quota endpoint answers without a browser: an authorization
- * header carrying the raw API key (no Bearer prefix) returns the active
- * windows — a five-hour session pool and a monthly pool — with their
- * percentage, spend, and next reset. OpenCode stores that key in its auth
- * store under one of several provider ids, so discovery walks the same
- * candidate list its quota plugin does.
- */
 const QUOTA_URL = "https://api.z.ai/api/monitor/usage/quota/limit";
 
 const PROVIDER_IDS = [
@@ -64,10 +54,9 @@ export interface ZaiUsageReading {
   monthly: { resetsAt: string | null; usedPercent: number } | null;
 }
 
-/** Read the first Z.AI key OpenCode has stored, or null when none is there. */
-export function readZaiApiKey(
+export const readZaiApiKey = (
   env: NodeJS.ProcessEnv = process.env
-): string | null {
+): string | null => {
   if (typeof env.ZAI_API_KEY === "string" && env.ZAI_API_KEY.length > 0) {
     return env.ZAI_API_KEY;
   }
@@ -95,19 +84,11 @@ export function readZaiApiKey(
     }
   }
   return null;
-}
+};
 
-/**
- * One window from a quota limit entry, or null when it is absent.
- *
- * The `unit`/`number` pair names the horizon: unit 3 with number 5 is the
- * five-hour session pool; unit 6 with number 1 is the monthly pool. Percent
- * comes from spend against pool size, because the API's own `percentage`
- * field is an integer too coarse to be worth anything below 2%.
- */
-function quotaWindow(
+const quotaWindow = (
   limit: z.infer<typeof QuotaLimitSchema> | undefined
-): { resetsAt: string | null; usedPercent: number } | null {
+): { resetsAt: string | null; usedPercent: number } | null => {
   if (!limit) {
     return null;
   }
@@ -128,15 +109,19 @@ function quotaWindow(
         : null,
     usedPercent: Math.round(usedPercent * 10) / 10,
   };
-}
+};
 
-/**
- * Fetch the coding plan's usage windows, or null when the key is refused.
- */
-export async function fetchZaiUsage(
+const planFromLevel = (level: string | null | undefined): string => {
+  if (!level) {
+    return "Unknown";
+  }
+  return level.charAt(0).toUpperCase() + level.slice(1);
+};
+
+export const fetchZaiUsage = async (
   fetchImpl: typeof globalThis.fetch = globalThis.fetch,
   env: NodeJS.ProcessEnv = process.env
-): Promise<ZaiUsageReading | null> {
+): Promise<ZaiUsageReading | null> => {
   const key = readZaiApiKey(env);
   if (!key) {
     return null;
@@ -169,11 +154,4 @@ export async function fetchZaiUsage(
     return null;
   }
   return { email: null, monthly, plan: planFromLevel(data?.level), session };
-}
-
-function planFromLevel(level: string | null | undefined): string {
-  if (!level) {
-    return "Unknown";
-  }
-  return level.charAt(0).toUpperCase() + level.slice(1);
-}
+};

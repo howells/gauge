@@ -15,7 +15,6 @@ import {
 } from "./machine-logins.js";
 import { ADD_STEPS } from "./onboarding.js";
 
-/** One account as mapped by the status result for presentation. */
 export interface StatusAccountView {
   error: AccountSnapshot["error"];
   name: string;
@@ -24,26 +23,18 @@ export interface StatusAccountView {
   usage: AccountSnapshot["usage"];
 }
 
-// ─── ANSI-aware string helpers ───────────────────────────────────────────────
+const ANSI_RE = /\u001B\[[0-9;]*m/gu;
 
-// biome-ignore lint/suspicious/noControlCharactersInRegex: ANSI escape stripping needs ESC.
-const ANSI_RE = /\u001B\[[0-9;]*m/g;
+const visibleLength = (value: string): number =>
+  value.replace(ANSI_RE, "").length;
 
-function visibleLength(value: string): number {
-  return value.replace(ANSI_RE, "").length;
-}
+const pad = (value: string, width: number): string =>
+  value + " ".repeat(Math.max(0, width - visibleLength(value)));
 
-function pad(value: string, width: number): string {
-  return value + " ".repeat(Math.max(0, width - visibleLength(value)));
-}
+const truncate = (value: string, max: number): string =>
+  value.length > max ? `${value.slice(0, max - 1)}…` : value;
 
-function truncate(value: string, max: number): string {
-  return value.length > max ? `${value.slice(0, max - 1)}…` : value;
-}
-
-// ─── Time ────────────────────────────────────────────────────────────────────
-
-function timeUntil(iso: string, now: Date): string {
+const timeUntil = (iso: string, now: Date): string => {
   const ms = new Date(iso).getTime() - now.getTime();
   if (!Number.isFinite(ms) || ms <= 0) {
     return "now";
@@ -58,18 +49,9 @@ function timeUntil(iso: string, now: Date): string {
     return `${hours}h`;
   }
   return `${Math.max(1, minutes)}m`;
-}
+};
 
-/**
- * A renewal as the date it falls on, not a countdown to it.
- *
- * A usage window's reset is a countdown — "free in 2d" is the whole answer. A
- * billing date is a calendar fact the reader compares against payday and card
- * expiry, and a rolling "renews 19d" says nothing the reader can put in a
- * calendar. Rendered in UTC so the day shown is the day the subscription
- * system recorded, never a local-midnight artefact.
- */
-function renewalLabel(iso: string, now: Date): string | null {
+const renewalLabel = (iso: string, now: Date): string | null => {
   const date = new Date(iso);
   if (Number.isNaN(date.getTime())) {
     return null;
@@ -83,13 +65,11 @@ function renewalLabel(iso: string, now: Date): string | null {
   return year === now.getUTCFullYear()
     ? month
     : `${month} ${String(year).slice(2)}`;
-}
-
-// ─── Meters ──────────────────────────────────────────────────────────────────
+};
 
 const METER_WIDTH = 10;
 
-function meterColor(percent: number): (value: string) => string {
+const meterColor = (percent: number): ((value: string) => string) => {
   if (percent >= 90) {
     return chalk.red;
   }
@@ -97,22 +77,19 @@ function meterColor(percent: number): (value: string) => string {
     return chalk.yellow;
   }
   return chalk.green;
-}
+};
 
-function meter(percent: number): string {
+const meter = (percent: number): string => {
   const clamped = Math.min(100, Math.max(0, percent));
   // Any nonzero usage shows at least one cell so activity is never invisible.
   const filled =
     clamped > 0 ? Math.max(1, Math.round((clamped / 100) * METER_WIDTH)) : 0;
   const bar = "█".repeat(filled) + chalk.dim("░".repeat(METER_WIDTH - filled));
   return filled > 0 ? meterColor(clamped)(bar) : bar;
-}
-
-// ─── Account status ──────────────────────────────────────────────────────────
+};
 
 type WindowView = NonNullable<AccountSnapshot["usage"]>["windows"][number];
 
-/** What to call each limit in the one line of room a cell has for it. */
 const WINDOW_LABEL: Record<WindowView["kind"], string> = {
   included: "plan",
   monthly: "mo",
@@ -122,13 +99,12 @@ const WINDOW_LABEL: Record<WindowView["kind"], string> = {
   weekly: "wk",
 };
 
-/** Keep provider-owned model labels legible in one compact status cell. */
-function compactWindowLabel(window: WindowView): string | null {
+const compactWindowLabel = (window: WindowView): string | null => {
   if (!window.label) {
     return null;
   }
   return window.label.replace(/^GPT-[^-]+-Codex-/u, "");
-}
+};
 
 interface CellStatus {
   kind: "ready" | "blocked" | "error";
@@ -137,17 +113,7 @@ interface CellStatus {
   waitMs: number;
 }
 
-/**
- * The two windows a cell draws, and whether either of them blocks.
- *
- * Position picks which window goes where, but only the window's own `kind`
- * names it. Providers report the short horizon first, so the meter is the
- * account's most immediate limit and the detail line is the longer one; that
- * ordering is a presentation choice and no longer a claim about *meaning*,
- * which is what it silently became when an absent window let its neighbour
- * inherit its slot.
- */
-function cellStatus(account: StatusAccountView, now: Date): CellStatus {
+const cellStatus = (account: StatusAccountView, now: Date): CellStatus => {
   if (account.error || !account.usage) {
     return { kind: "error", primary: null, secondary: null, waitMs: Infinity };
   }
@@ -168,17 +134,16 @@ function cellStatus(account: StatusAccountView, now: Date): CellStatus {
     return { kind: "blocked", primary, secondary, waitMs: Math.min(...waits) };
   }
   return { kind: "ready", primary, secondary, waitMs: 0 };
-}
-
-// ─── Layout ──────────────────────────────────────────────────────────────────
+};
 
 const INDENT = "   ";
+
 const COL_LABEL = 21;
-// Wide enough for the widest claude detail — plan, reading, countdown and the
-// September renewal, whose en-GB month runs four letters.
+
 const COL_CELL = 34;
 
 const PROVIDER_ORDER: Provider[] = ["claude", "codex", "cursor", "zai", "grok"];
+
 const PROVIDER_NAME: Record<Provider, string> = {
   claude: "Claude",
   codex: "Codex",
@@ -193,24 +158,10 @@ interface GridRow {
   minWaitMs: number;
 }
 
-function isProvider(value: string): value is Provider {
-  return (PROVIDER_ORDER as string[]).includes(value);
-}
+const isProvider = (value: string): value is Provider =>
+  (PROVIDER_ORDER as string[]).includes(value);
 
-/**
- * The reader's own row order, from `display.json` in the data directory.
- *
- * Kept out of the per-account `config.json` files deliberately: those are
- * schema-versioned account *state* that the migration and packing gates police,
- * and which account a person likes to look at first is neither state nor an
- * account's business. A missing or malformed file simply means "no preference",
- * because a display nicety must never be able to stop a status reading.
- *
- * ```json
- * { "accountOrder": ["gmail", "danielhowells", "materialinstruments"] }
- * ```
- */
-function preferredOrder(): string[] {
+const preferredOrder = (): string[] => {
   try {
     const raw = fs.readFileSync(
       path.join(getDataDir(), "display.json"),
@@ -230,9 +181,9 @@ function preferredOrder(): string[] {
   } catch {
     return [];
   }
-}
+};
 
-function buildRows(accounts: StatusAccountView[], now: Date): GridRow[] {
+const buildRows = (accounts: StatusAccountView[], now: Date): GridRow[] => {
   const rows = new Map<string, GridRow>();
   for (const account of accounts) {
     if (!isProvider(account.provider)) {
@@ -276,15 +227,13 @@ function buildRows(accounts: StatusAccountView[], now: Date): GridRow[] {
     }
     return left.label.localeCompare(right.label);
   });
-}
+};
 
-// ─── Cells ───────────────────────────────────────────────────────────────────
-
-function meterCell(
+const meterCell = (
   account: StatusAccountView | undefined,
   now: Date,
   active = false
-): string {
+): string => {
   // Two columns of gutter on every cell so the marker costs no width and the
   // grid does not shift as the cursor moves across it.
   const gutter = active ? chalk.cyan("› ") : "  ";
@@ -330,9 +279,12 @@ function meterCell(
       ? ` ${chalk.dim(`· ${timeUntil(window.resetsAt, now)}`)}`
       : "";
   return cell(`${meter(percent)} ${percent}%${horizon}${reset}`);
-}
+};
 
-function detailCell(account: StatusAccountView | undefined, now: Date): string {
+const detailCell = (
+  account: StatusAccountView | undefined,
+  now: Date
+): string => {
   // The same two-column gutter `meterCell` reserves for the cursor, so a detail
   // line sits under its own meter and every column keeps one width.
   const width = COL_CELL - 2;
@@ -415,19 +367,17 @@ function detailCell(account: StatusAccountView | undefined, now: Date): string {
     }
   }
   return cell(chalk.dim(truncate(reading ?? plan ?? renews ?? "", width)));
-}
+};
 
-// ─── Sections ────────────────────────────────────────────────────────────────
-
-function header(accounts: StatusAccountView[], now: Date): string {
+const header = (accounts: StatusAccountView[], now: Date): string => {
   const ready = accounts.filter(
     (account) => cellStatus(account, now).kind === "ready"
   ).length;
   const counts = `${accounts.length} account${accounts.length === 1 ? "" : "s"} · ${ready} ready`;
   return `${INDENT}${chalk.bold("gauge")}  ${chalk.dim(counts)}`;
-}
+};
 
-function columnHeader(providers: Provider[]): string {
+const columnHeader = (providers: Provider[]): string => {
   const cells = providers
     // Two-space gutter to match the cells, so a heading sits over its column.
     .map(
@@ -435,13 +385,13 @@ function columnHeader(providers: Provider[]): string {
     )
     .join("  ");
   return `${INDENT}${" ".repeat(COL_LABEL)}  ${cells}`.trimEnd();
-}
+};
 
-function recommendationLine(
+const recommendationLine = (
   recommendation: UsageRecommendation | null,
   accounts: StatusAccountView[],
   now: Date
-): string {
+): string => {
   if (!recommendation) {
     return `${INDENT}${chalk.dim("No account is currently usable.")}`;
   }
@@ -474,9 +424,9 @@ function recommendationLine(
     ? timeUntil(recommendation.availableAt, now)
     : "soon";
   return `${INDENT}${chalk.yellow("→")} ${chalk.bold(id)}  ${chalk.dim(`free in ${wait}`)}${plan}`;
-}
+};
 
-function errorLines(accounts: StatusAccountView[]): string[] {
+const errorLines = (accounts: StatusAccountView[]): string[] => {
   const failed = accounts.filter((account) => account.error);
   if (failed.length === 0) {
     return [];
@@ -492,23 +442,9 @@ function errorLines(accounts: StatusAccountView[]): string[] {
       return `${INDENT}${chalk.yellow("⚠")} ${id} ${chalk.dim(`— ${fix}`)}`;
     }),
   ];
-}
+};
 
-/**
- * Which account each tool on this machine is signed into, and whether that is
- * one of the accounts above.
- *
- * The grid answers "how much is left"; this answers "and which one am I
- * actually typing into", which no amount of usage data can tell you. Worth its
- * four lines because the surfaces disagree silently: a Claude Code CLI, a Claude
- * desktop app and a Codex CLI on one machine can be three different accounts,
- * and nothing else on screen would say so.
- *
- * A login that matches a configured account is named with it. One that does not
- * is called out as untracked, because an account you are working in and not
- * watching is the one most likely to run out without warning.
- */
-function machineLines(accounts: StatusAccountView[]): string[] {
+const machineLines = (accounts: StatusAccountView[]): string[] => {
   const logins = readMachineLogins();
   if (logins.length === 0) {
     return [];
@@ -556,16 +492,8 @@ function machineLines(accounts: StatusAccountView[]): string[] {
     }),
   ];
   return lines;
-}
+};
 
-/**
- * How long a switch stays worth warning about.
- *
- * The warning exists because Claude Code sessions already running keep the
- * previous account's tokens until they exit, and a session can run for the best
- * part of a day. Past that horizon the sessions the warning describes are
- * unlikely to still exist, and one more permanent line on the dashboard is noise.
- */
 const SWITCH_WARNING_MAX_AGE_MS = 24 * 60 * 60 * 1000;
 
 export interface ClaudeSwitchWarning {
@@ -575,19 +503,10 @@ export interface ClaudeSwitchWarning {
   switchedAt: Date;
 }
 
-/**
- * The one-line cost of a recent account switch, or null when there is nothing
- * left to say.
- *
- * A switch rewrites the credentials on disk, but sessions opened before it hold
- * the old account's tokens in memory — so they keep spending that account while
- * every status panel shows the new one. The line names every account a recent
- * switch displaced and the one act that stops the spend.
- */
-export function renderSwitchWarning(
+export const renderSwitchWarning = (
   switched: ClaudeSwitchWarning | null,
   now: Date
-): string | null {
+): string | null => {
   if (!switched || switched.previous.length === 0) {
     return null;
   }
@@ -601,21 +520,36 @@ export function renderSwitchWarning(
   const names = switched.previous.join(" and ");
   const spend = switched.previous.length > 1 ? "one of them" : names;
   return `${INDENT}${chalk.yellow("⚠")} switched from ${chalk.white(names)} ${chalk.dim(`${ago} ago`)} ${chalk.dim("·")} Claude Code sessions opened before then may still be spending ${chalk.white(spend)} ${chalk.dim("· restart them")}`;
-}
+};
 
-/**
- * The warning for this machine right now: every account a recent switch
- * displaced, minus the one Claude Code is signed into again.
- *
- * Drawn at the top of the dashboard rather than beside the signed-in inventory
- * at the foot of it, because it is the one line that explains a grid that
- * disagrees with the tool on screen — and a warning below the fold explains
- * nothing.
- */
-function switchWarningLines(
+const readClaudeCodeLogin = (): {
+  uuid: string | null;
+  email: string | null;
+} => {
+  const login = readMachineLogins().find(
+    (candidate) => candidate.surface === "Claude Code"
+  );
+  return { email: login?.email ?? null, uuid: login?.accountId ?? null };
+};
+
+const sameIdentity = (
+  entry: LastClaudeSwitch,
+  signedIn: { uuid: string | null; email: string | null }
+): boolean => {
+  if (entry.previousUuid !== null && entry.previousUuid === signedIn.uuid) {
+    return true;
+  }
+  return (
+    entry.previousEmail != null &&
+    signedIn.email != null &&
+    entry.previousEmail.toLowerCase() === signedIn.email.toLowerCase()
+  );
+};
+
+const switchWarningLines = (
   accounts: StatusAccountView[],
   now: Date
-): string[] {
+): string[] => {
   const switches = claudeSwitchesWithin(
     getDataDir(),
     now,
@@ -658,32 +592,9 @@ function switchWarningLines(
     now
   );
   return warning ? [warning] : [];
-}
+};
 
-/** The Claude Code login as machine-logins sees it, for identity comparison. */
-function readClaudeCodeLogin(): { uuid: string | null; email: string | null } {
-  const login = readMachineLogins().find(
-    (candidate) => candidate.surface === "Claude Code"
-  );
-  return { email: login?.email ?? null, uuid: login?.accountId ?? null };
-}
-
-/** Whether a displaced account is the one Claude Code is signed into again. */
-function sameIdentity(
-  entry: LastClaudeSwitch,
-  signedIn: { uuid: string | null; email: string | null }
-): boolean {
-  if (entry.previousUuid !== null && entry.previousUuid === signedIn.uuid) {
-    return true;
-  }
-  return (
-    entry.previousEmail != null &&
-    signedIn.email != null &&
-    entry.previousEmail.toLowerCase() === signedIn.email.toLowerCase()
-  );
-}
-
-function renderEmptyState(): string {
+const renderEmptyState = (): string => {
   const width = Math.max(...ADD_STEPS.map((step) => step.label.length));
   const rows = ADD_STEPS.map(
     (step) =>
@@ -701,53 +612,26 @@ function renderEmptyState(): string {
     `${INDENT}${chalk.dim("Codex reads an existing Codex CLI login from a folder.")}`,
     "",
   ].join("\n");
-}
+};
 
-// ─── Entry points ────────────────────────────────────────────────────────────
-
-/** Render the full human status dashboard. */
-/**
- * The account rows in the order the dashboard draws them.
- *
- * Exported so a keyboard cursor can index the same sequence the reader sees.
- * Deriving it separately is how a cursor comes to land on a different row from
- * the one it highlights — the display is sorted by the reader's own preference,
- * and any second ordering will disagree with it the moment that file exists.
- */
-export function statusRowOrder(
+export const statusRowOrder = (
   accounts: StatusAccountView[],
   now: Date
-): string[] {
-  return buildRows(accounts, now).map((row) => row.label);
-}
+): string[] => buildRows(accounts, now).map((row) => row.label);
 
-/** The apps the dashboard draws columns for, in the order it draws them. */
-export function statusProviderOrder(accounts: StatusAccountView[]): Provider[] {
-  return PROVIDER_ORDER.filter((provider) =>
+export const statusProviderOrder = (
+  accounts: StatusAccountView[]
+): Provider[] =>
+  PROVIDER_ORDER.filter((provider) =>
     accounts.some((account) => account.provider === provider)
   );
-}
 
-export function renderStatusDashboard(
+export const renderStatusDashboard = (
   accounts: StatusAccountView[],
   recommendation: UsageRecommendation | null,
   now: Date,
-  /**
-   * The cell a keyboard is currently on, when a reader is driving this.
-   *
-   * A cell, not a row: this grid is accounts down and *apps* across, and which
-   * app a given account is signed into is an independent fact per app. A row
-   * selection could only ever offer to change all of them at once, which is not
-   * a thing anybody wants to do.
-   *
-   * Passed only by the interactive view; every other caller renders the same
-   * dashboard with nothing marked. Selection lives here rather than in a second
-   * renderer because this one string is what `gauge status --format human`
-   * prints too, and two renderers for one grid is how the piped output and the
-   * one on screen come to disagree.
-   */
   selected?: { label: string; provider: Provider }
-): string {
+): string => {
   if (accounts.length === 0) {
     return renderEmptyState();
   }
@@ -798,13 +682,12 @@ export function renderStatusDashboard(
     ""
   );
   return lines.join("\n");
-}
+};
 
-/** Render the single-line quick recommendation. */
-export function renderQuickRecommendation(
+export const renderQuickRecommendation = (
   recommendation: UsageRecommendation | null,
   now: Date
-): string {
+): string => {
   if (!recommendation) {
     return "No account recommendation available.\n";
   }
@@ -819,4 +702,4 @@ export function renderQuickRecommendation(
     ? timeUntil(recommendation.availableAt, now)
     : "soon";
   return `${chalk.yellow("→")} ${chalk.bold(id)}  ${chalk.dim(`free in ${wait}`)}\n`;
-}
+};

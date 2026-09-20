@@ -96,7 +96,7 @@ test("output writing rejects a regular-file ancestor", () => {
 
   assert.throws(
     () => writeSandboxedOutput(cwd, "blocked/result.json", "value"),
-    /ancestor must be a directory/
+    /ancestor must be a directory/u
   );
 });
 

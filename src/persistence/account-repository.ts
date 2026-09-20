@@ -46,7 +46,109 @@ export interface AccountRepositoryOptions {
 
 const PROVIDERS: Provider[] = ["claude", "codex", "cursor", "zai", "grok"];
 
-/** Own Gauge's provider-scoped v3 account tree. */
+const buildConfig = (
+  id: AccountId,
+  write: AccountWrite,
+  addedAt: Date
+): AccountConfigV3 =>
+  AccountConfigV3Schema.parse({
+    addedAt: addedAt.toISOString(),
+    name: id.name,
+    provider: id.provider,
+    schema_version: 3,
+    ...(write.codexHome !== undefined && { codexHome: write.codexHome }),
+    ...(write.renewsAt !== undefined &&
+      write.renewsAt !== null && { renewsAt: write.renewsAt }),
+  });
+
+const parseOptionalStorageState = (
+  value: unknown
+): PlaywrightStorageState | undefined =>
+  value === undefined ? undefined : parseStorageStateObject(value);
+
+export const isMigratableProfileEntry = (status: fs.Stats): boolean =>
+  status.isFile() || status.isDirectory();
+
+const unsafeAccountPath = (target: string): CLIError =>
+  new CLIError(
+    "Gauge account data paths must be real directories and regular files.",
+    {
+      code: "UNSAFE_ACCOUNT_PATH",
+      details: { target },
+    }
+  );
+
+const assertDirectoryNotSymlink = (status: fs.Stats, target: string): void => {
+  if (status.isSymbolicLink() || !status.isDirectory()) {
+    throw unsafeAccountPath(target);
+  }
+};
+
+const writeStagedFile = (target: string, content: string): void => {
+  const descriptor = fs.openSync(target, "wx", 0o600);
+  try {
+    fs.writeFileSync(descriptor, content, "utf-8");
+    fs.fsyncSync(descriptor);
+  } finally {
+    fs.closeSync(descriptor);
+  }
+};
+
+const flushDirectory = (directory: string): void => {
+  const descriptor = fs.openSync(directory, "r");
+  try {
+    fs.fsyncSync(descriptor);
+  } finally {
+    fs.closeSync(descriptor);
+  }
+};
+
+const isMissingPathError = (error: unknown): boolean =>
+  error instanceof Error &&
+  "code" in error &&
+  (error as NodeJS.ErrnoException).code === "ENOENT";
+
+const removeIfExists = (target: string): void => {
+  try {
+    fs.rmSync(target, { recursive: true });
+  } catch (error) {
+    if (!isMissingPathError(error)) {
+      throw error;
+    }
+  }
+};
+
+const readStatus = (target: string): fs.Stats | null => {
+  try {
+    return fs.lstatSync(target);
+  } catch (error) {
+    if (isMissingPathError(error)) {
+      return null;
+    }
+    throw error;
+  }
+};
+
+const ensureOwnedDirectory = (directory: string): void => {
+  const status = readStatus(directory);
+  if (!status) {
+    fs.mkdirSync(directory, { mode: 0o700 });
+    return;
+  }
+  assertDirectoryNotSymlink(status, directory);
+  fs.chmodSync(directory, 0o700);
+};
+
+const isRegularFile = (target: string): boolean => {
+  const status = readStatus(target);
+  return Boolean(status?.isFile() && !status.isSymbolicLink());
+};
+
+const isDirectory = (target: string): boolean => {
+  const status = readStatus(target);
+  return Boolean(status?.isDirectory() && !status.isSymbolicLink());
+};
+
 export class AccountRepository {
   readonly #dataRoot: string;
   readonly #now: () => Date;
@@ -304,124 +406,4 @@ export class AccountRepository {
     ensureOwnedDirectory(path.join(this.#dataRoot, "accounts"));
     ensureOwnedDirectory(this.accountsRoot);
   }
-}
-
-function buildConfig(
-  id: AccountId,
-  write: AccountWrite,
-  addedAt: Date
-): AccountConfigV3 {
-  return AccountConfigV3Schema.parse({
-    addedAt: addedAt.toISOString(),
-    name: id.name,
-    provider: id.provider,
-    schema_version: 3,
-    ...(write.codexHome !== undefined && { codexHome: write.codexHome }),
-    ...(write.renewsAt !== undefined &&
-      write.renewsAt !== null && { renewsAt: write.renewsAt }),
-  });
-}
-
-function parseOptionalStorageState(
-  value: unknown
-): PlaywrightStorageState | undefined {
-  return value === undefined ? undefined : parseStorageStateObject(value);
-}
-
-function ensureOwnedDirectory(directory: string): void {
-  const status = readStatus(directory);
-  if (!status) {
-    fs.mkdirSync(directory, { mode: 0o700 });
-    return;
-  }
-  assertDirectoryNotSymlink(status, directory);
-  fs.chmodSync(directory, 0o700);
-}
-
-function assertDirectoryNotSymlink(status: fs.Stats, target: string): void {
-  if (status.isSymbolicLink() || !status.isDirectory()) {
-    throw unsafeAccountPath(target);
-  }
-}
-
-/**
- * Whether a profile entry is real data worth migrating/copying.
- *
- * A live Chrome/Chromium profile is littered with transient singleton
- * artifacts — `SingletonLock`, `SingletonSocket`, `SingletonCookie`,
- * `RunningChromeVersion` — that are symlinks or sockets, not profile data, and
- * that Chrome recreates on its next launch. We never copy or fingerprint them:
- * copying a socket throws and copying a symlink out of the profile is exactly
- * the escape we want to avoid. Only regular files and directories migrate.
- */
-export function isMigratableProfileEntry(status: fs.Stats): boolean {
-  return status.isFile() || status.isDirectory();
-}
-
-function unsafeAccountPath(target: string): CLIError {
-  return new CLIError(
-    "Gauge account data paths must be real directories and regular files.",
-    {
-      code: "UNSAFE_ACCOUNT_PATH",
-      details: { target },
-    }
-  );
-}
-
-function writeStagedFile(target: string, content: string): void {
-  const descriptor = fs.openSync(target, "wx", 0o600);
-  try {
-    fs.writeFileSync(descriptor, content, "utf-8");
-    fs.fsyncSync(descriptor);
-  } finally {
-    fs.closeSync(descriptor);
-  }
-}
-
-function flushDirectory(directory: string): void {
-  const descriptor = fs.openSync(directory, "r");
-  try {
-    fs.fsyncSync(descriptor);
-  } finally {
-    fs.closeSync(descriptor);
-  }
-}
-
-function removeIfExists(target: string): void {
-  try {
-    fs.rmSync(target, { recursive: true });
-  } catch (error) {
-    if (!isMissingPathError(error)) {
-      throw error;
-    }
-  }
-}
-
-function readStatus(target: string): fs.Stats | null {
-  try {
-    return fs.lstatSync(target);
-  } catch (error) {
-    if (isMissingPathError(error)) {
-      return null;
-    }
-    throw error;
-  }
-}
-
-function isRegularFile(target: string): boolean {
-  const status = readStatus(target);
-  return Boolean(status?.isFile() && !status.isSymbolicLink());
-}
-
-function isDirectory(target: string): boolean {
-  const status = readStatus(target);
-  return Boolean(status?.isDirectory() && !status.isSymbolicLink());
-}
-
-function isMissingPathError(error: unknown): boolean {
-  return (
-    error instanceof Error &&
-    "code" in error &&
-    (error as NodeJS.ErrnoException).code === "ENOENT"
-  );
 }

@@ -1,12 +1,6 @@
 import type { Provider } from "../domain/account.js";
 import { CLIError } from "../security.js";
 
-/**
- * Single source of truth for how a person adds each provider, shared by the
- * empty-state dashboard, the missing-name errors, and the CLI help. The mental
- * model is deliberately small: Claude and Cursor open a browser to log in;
- * Codex reads an existing Codex CLI login from a folder.
- */
 interface AddStep {
   command: string;
   label: string;
@@ -31,13 +25,12 @@ const PROVIDER_LABEL: Record<Provider, string> = {
   zai: "Z.AI",
 };
 
-/** Aligned "how to add each provider" table, indented by `indent`. */
-export function addGuide(indent = ""): string {
+export const addGuide = (indent = ""): string => {
   const width = Math.max(...ADD_STEPS.map((step) => step.label.length));
   return ADD_STEPS.map(
     (step) => `${indent}${step.label.padEnd(width)}   ${step.command}`
   ).join("\n");
-}
+};
 
 interface ProviderDetail {
   command: string;
@@ -45,7 +38,7 @@ interface ProviderDetail {
   note: string;
 }
 
-function providerDetail(provider: Provider): ProviderDetail {
+const providerDetail = (provider: Provider): ProviderDetail => {
   switch (provider) {
     case "claude": {
       return {
@@ -83,29 +76,12 @@ function providerDetail(provider: Provider): ProviderDetail {
       };
     }
   }
-}
+};
 
-/**
- * A person ran a mutating command without naming the account. Return an error
- * that shows exactly what to type next instead of a schema-validation dump.
- */
-export function missingAccountName(
+const missingNameMessage = (
   command: "add" | "refresh" | "remove",
   provider?: Provider
-): CLIError {
-  return new CLIError(missingNameMessage(command, provider), {
-    code: "ACCOUNT_NAME_REQUIRED",
-    exitCode: 2,
-    details: provider ? { provider } : {},
-    // Static guidance with example paths (~/.codex); must survive redaction.
-    trustedMessage: true,
-  });
-}
-
-function missingNameMessage(
-  command: "add" | "refresh" | "remove",
-  provider?: Provider
-): string {
+): string => {
   if (command !== "add") {
     const verb = command === "refresh" ? "refresh" : "remove";
     const subject = provider
@@ -143,4 +119,16 @@ function missingNameMessage(
     "",
     "Example: gauge add personal",
   ].join("\n");
-}
+};
+
+export const missingAccountName = (
+  command: "add" | "refresh" | "remove",
+  provider?: Provider
+): CLIError =>
+  new CLIError(missingNameMessage(command, provider), {
+    code: "ACCOUNT_NAME_REQUIRED",
+    exitCode: 2,
+    details: provider ? { provider } : {},
+    // Static guidance with example paths (~/.codex); must survive redaction.
+    trustedMessage: true,
+  });

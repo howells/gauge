@@ -6,21 +6,26 @@ import { CLIError } from "./security.js";
 
 export type { PlaywrightStorageState };
 
-/** Validate a parsed value as a strict Playwright storage state. */
-export function parseStorageStateObject(
+const invalidStorageState = (error: unknown): CLIError =>
+  new CLIError("Storage state payload is not valid Playwright state.", {
+    code: "INVALID_STORAGE_STATE",
+    details: error instanceof Error ? error.message : String(error),
+    exitCode: 2,
+  });
+
+export const parseStorageStateObject = (
   storageState: unknown
-): PlaywrightStorageState {
+): PlaywrightStorageState => {
   try {
     return PlaywrightStorageStateSchema.parse(storageState);
   } catch (error) {
     throw invalidStorageState(error);
   }
-}
+};
 
-/** Parse JSON text and validate it as a strict Playwright storage state. */
-export function parseStorageStateJsonValue(
+export const parseStorageStateJsonValue = (
   storageStateJson: string
-): PlaywrightStorageState {
+): PlaywrightStorageState => {
   try {
     return parseStorageStateObject(JSON.parse(storageStateJson) as unknown);
   } catch (error) {
@@ -29,15 +34,12 @@ export function parseStorageStateJsonValue(
     }
     throw invalidStorageState(error);
   }
-}
+};
 
-/** Parse and normalize a raw JSON string as Playwright storage state. */
-function parseStorageStateJson(storageStateJson: string): string {
-  return JSON.stringify(parseStorageStateJsonValue(storageStateJson), null, 2);
-}
+const parseStorageStateJson = (storageStateJson: string): string =>
+  JSON.stringify(parseStorageStateJsonValue(storageStateJson), null, 2);
 
-/** Read and validate a Playwright storage-state JSON file from disk. */
-export function readStorageStateFile(filePath: string): string {
+export const readStorageStateFile = (filePath: string): string => {
   try {
     return parseStorageStateJson(fs.readFileSync(filePath, "utf-8"));
   } catch (error) {
@@ -53,12 +55,4 @@ export function readStorageStateFile(filePath: string): string {
       exitCode: 2,
     });
   }
-}
-
-function invalidStorageState(error: unknown): CLIError {
-  return new CLIError("Storage state payload is not valid Playwright state.", {
-    code: "INVALID_STORAGE_STATE",
-    details: error instanceof Error ? error.message : String(error),
-    exitCode: 2,
-  });
-}
+};

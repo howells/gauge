@@ -1,10 +1,10 @@
 import { migrateLegacyAccounts, planLegacyMigration } from "../migrate.js";
 import type { CommandResult } from "../output.js";
 
-export function runMigrateCommand(
+export const runMigrateCommand = (
   dataRoot: string,
   dryRun: boolean
-): CommandResult {
+): CommandResult => {
   if (dryRun) {
     const plan = planLegacyMigration(dataRoot);
     return {
@@ -20,4 +20,4 @@ export function runMigrateCommand(
     data: { action: "migrate", migrated: result.migrated },
     human: `Migrated ${result.migrated} account(s).\n`,
   };
-}
+};

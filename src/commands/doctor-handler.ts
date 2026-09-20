@@ -2,10 +2,12 @@ import { findChrome } from "../chrome.js";
 import type { CommandResult } from "../output.js";
 import { runDoctorChecks } from "../services/doctor.js";
 
-export function runDoctorCommand(dataRoot: string): {
+export const runDoctorCommand = (
+  dataRoot: string
+): {
   exitCode: number;
   result: CommandResult;
-} {
+} => {
   const report = runDoctorChecks({
     chromePath: findChrome(),
     dataRoot,
@@ -24,4 +26,4 @@ export function runDoctorCommand(dataRoot: string): {
     exitCode: report.failed > 0 ? 1 : 0,
     result: { command: "doctor", data: report, human },
   };
-}
+};

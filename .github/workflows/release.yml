@@ -127,7 +127,7 @@ jobs:
           set -euo pipefail
           pnpm audit --audit-level high
           pnpm typecheck
-          pnpm lint
+          pnpm lint:ratchet
           # Build before test: test/cli-subprocess runs the packaged bin out of
           # dist/, which exists on a developer machine and not on a fresh runner.
           pnpm build

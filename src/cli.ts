@@ -32,21 +32,145 @@ import { assertStateCommandAllowed } from "./services/state-preflight.js";
 import { runTUI } from "./tui.js";
 
 const require = createRequire(import.meta.url);
+
 const packageJson = require("../package.json") as { version?: string };
 
 const rawArgv = process.argv.slice(2);
+
 const argv = rawArgv[0] === "--" ? rawArgv.slice(1) : rawArgv;
+
 const parseArgv = [
   process.argv[0] ?? "node",
   process.argv[1] ?? "gauge",
   ...argv,
 ];
-const requestedFormat = detectRequestedFormat(argv);
+
 const isTTY = process.stdout.isTTY ?? false;
+
+const isMetaOutputRequest = (args: string[]): boolean =>
+  args.includes("--help") ||
+  args.includes("-h") ||
+  args.includes("--version") ||
+  args.includes("-V");
+
+const detectCommandName = (args: string[]): string =>
+  COMMAND_SPECS.find(
+    (spec) =>
+      args.includes(spec.name) ||
+      spec.aliases.some((alias) => args.includes(alias))
+  )?.name ?? "status";
+
+const peekFlagValue = (args: string[], flag: string): string | undefined => {
+  for (let index = 0; index < args.length; index += 1) {
+    if (args[index] === flag) {
+      return args[index + 1];
+    }
+    if (args[index]?.startsWith(`${flag}=`)) {
+      return args[index]?.slice(flag.length + 1);
+    }
+  }
+  return undefined;
+};
+
+const detectRequestedFormat = (args: string[]): string | undefined =>
+  peekFlagValue(args, "--format");
+
+const requestedFormat = detectRequestedFormat(argv);
+
 const resolvedFormat =
   requestedFormat !== undefined || isMetaOutputRequest(argv)
     ? resolveOutputFormat(requestedFormat ?? "human", true)
     : resolveOutputFormat(requestedFormat, isTTY);
+
+const emitRendered = (content: string, outputPath?: string): void => {
+  if (!outputPath) {
+    process.stdout.write(content);
+    return;
+  }
+
+  if (resolvedFormat === "human") {
+    process.stdout.write(`Wrote output to ${outputPath}\n`);
+    return;
+  }
+
+  process.stdout.write(
+    `${JSON.stringify({ ok: true, output_path: outputPath })}\n`
+  );
+};
+
+const isProvider = (value: string | undefined): value is Provider =>
+  value === "claude" ||
+  value === "codex" ||
+  value === "cursor" ||
+  value === "zai" ||
+  value === "grok";
+
+const resolveAccountTarget = (
+  first: string | undefined,
+  second: string | undefined,
+  providerOption: unknown
+): { name: string | undefined; provider?: Provider } => {
+  if (typeof providerOption === "string") {
+    return {
+      name: second ?? first,
+      provider: providerOption as Provider,
+    };
+  }
+
+  if (second && isProvider(first)) {
+    return {
+      name: second,
+      provider: first,
+    };
+  }
+
+  // A lone provider keyword ("gauge add cursor") means "add a <provider>
+  // account" with the name still missing — carry that intent through so the
+  // command can guide, instead of treating "cursor"/"codex" as a Claude
+  // account name and silently opening a Claude browser login.
+  if (second === undefined && isProvider(first)) {
+    return { name: undefined, provider: first };
+  }
+
+  return { name: first };
+};
+
+const parseOptionalInteger = (
+  value: string | undefined
+): number | undefined => {
+  if (!value) {
+    return undefined;
+  }
+  return Number.parseInt(value, 10);
+};
+
+const normalizeOutputOptions = (options: OutputOptions): OutputOptions => ({
+  ...options,
+  fields: options.fields ?? peekFlagValue(argv, "--fields"),
+  format: options.format ?? requestedFormat,
+  outputFile: options.outputFile ?? peekFlagValue(argv, "--output-file"),
+  page: options.page ?? parseOptionalInteger(peekFlagValue(argv, "--page")),
+  pageAll: options.pageAll ?? argv.includes("--page-all"),
+  pageSize:
+    options.pageSize ??
+    parseOptionalInteger(peekFlagValue(argv, "--page-size")),
+  sanitize: argv.includes("--no-sanitize") ? false : (options.sanitize ?? true),
+});
+
+const emitResult = (result: CommandResult, options: OutputOptions): void => {
+  const rendered = renderCommandResult(
+    result,
+    normalizeOutputOptions(options),
+    {
+      cwd: process.cwd(),
+      isTTY,
+    }
+  );
+  emitRendered(rendered.content, rendered.outputPath);
+  if (result.exitCode !== undefined) {
+    process.exitCode = result.exitCode;
+  }
+};
 
 const handlers: CommandHandlers = {
   add: async ({ arguments: positional, options }) => {
@@ -162,6 +286,7 @@ const program = createProgram({
   handlers,
   version: packageJson.version ?? "0.0.0",
 });
+
 program.configureOutput({
   outputError: (str, write) => {
     if (resolvedFormat === "human") {
@@ -180,180 +305,15 @@ program.configureOutput({
   },
 });
 
-try {
-  await program.parseAsync(parseArgv);
-} catch (error) {
-  if (error instanceof CommanderError && isBenignCommanderExit(error)) {
-    process.exitCode = error.exitCode;
-  } else {
-    const normalized = normalizeError(error);
-    const redactionContext = {
-      cwd: process.cwd(),
-      home: process.env.HOME,
-    };
-    const rendered = renderError(
-      {
-        code: normalized.code,
-        details: redactDiagnosticValue(normalized.details, redactionContext),
-        message: normalized.trustedMessage
-          ? normalized.message
-          : String(redactDiagnosticValue(normalized.message, redactionContext)),
-      },
-      {
-        debug: argv.includes("--debug"),
-        format: requestedFormat,
-        outputFile: peekFlagValue(argv, "--output-file"),
-        sanitize: !argv.includes("--no-sanitize"),
-      },
-      {
-        command: detectCommandName(argv),
-        cwd: process.cwd(),
-        isTTY,
-      }
-    );
-
-    emitRendered(rendered.content, rendered.outputPath);
-    process.exitCode = normalized.exitCode;
-  }
-}
-
-function emitResult(result: CommandResult, options: OutputOptions): void {
-  const rendered = renderCommandResult(
-    result,
-    normalizeOutputOptions(options),
-    {
-      cwd: process.cwd(),
-      isTTY,
-    }
-  );
-  emitRendered(rendered.content, rendered.outputPath);
-  if (result.exitCode !== undefined) {
-    process.exitCode = result.exitCode;
-  }
-}
-
-function emitRendered(content: string, outputPath?: string): void {
-  if (!outputPath) {
-    process.stdout.write(content);
-    return;
-  }
-
-  if (resolvedFormat === "human") {
-    process.stdout.write(`Wrote output to ${outputPath}\n`);
-    return;
-  }
-
-  process.stdout.write(
-    `${JSON.stringify({ ok: true, output_path: outputPath })}\n`
-  );
-}
-
-function detectRequestedFormat(args: string[]): string | undefined {
-  return peekFlagValue(args, "--format");
-}
-
-function isMetaOutputRequest(args: string[]): boolean {
-  return (
-    args.includes("--help") ||
-    args.includes("-h") ||
-    args.includes("--version") ||
-    args.includes("-V")
-  );
-}
-
-function detectCommandName(args: string[]): string {
-  return (
-    COMMAND_SPECS.find(
-      (spec) =>
-        args.includes(spec.name) ||
-        spec.aliases.some((alias) => args.includes(alias))
-    )?.name ?? "status"
-  );
-}
-
-function peekFlagValue(args: string[], flag: string): string | undefined {
-  for (let index = 0; index < args.length; index += 1) {
-    if (args[index] === flag) {
-      return args[index + 1];
-    }
-    if (args[index]?.startsWith(`${flag}=`)) {
-      return args[index]?.slice(flag.length + 1);
-    }
-  }
-  return undefined;
-}
-
-function resolveAccountTarget(
-  first: string | undefined,
-  second: string | undefined,
-  providerOption: unknown
-): { name: string | undefined; provider?: Provider } {
-  if (typeof providerOption === "string") {
-    return {
-      name: second ?? first,
-      provider: providerOption as Provider,
-    };
-  }
-
-  if (second && isProvider(first)) {
-    return {
-      name: second,
-      provider: first,
-    };
-  }
-
-  // A lone provider keyword ("gauge add cursor") means "add a <provider>
-  // account" with the name still missing — carry that intent through so the
-  // command can guide, instead of treating "cursor"/"codex" as a Claude
-  // account name and silently opening a Claude browser login.
-  if (second === undefined && isProvider(first)) {
-    return { name: undefined, provider: first };
-  }
-
-  return { name: first };
-}
-
-function isProvider(value: string | undefined): value is Provider {
-  return (
-    value === "claude" ||
-    value === "codex" ||
-    value === "cursor" ||
-    value === "zai" ||
-    value === "grok"
-  );
-}
-
-function normalizeOutputOptions(options: OutputOptions): OutputOptions {
-  return {
-    ...options,
-    fields: options.fields ?? peekFlagValue(argv, "--fields"),
-    format: options.format ?? requestedFormat,
-    outputFile: options.outputFile ?? peekFlagValue(argv, "--output-file"),
-    page: options.page ?? parseOptionalInteger(peekFlagValue(argv, "--page")),
-    pageAll: options.pageAll ?? argv.includes("--page-all"),
-    pageSize:
-      options.pageSize ??
-      parseOptionalInteger(peekFlagValue(argv, "--page-size")),
-    sanitize: argv.includes("--no-sanitize")
-      ? false
-      : (options.sanitize ?? true),
-  };
-}
-
-function parseOptionalInteger(value: string | undefined): number | undefined {
-  if (!value) {
-    return undefined;
-  }
-  return Number.parseInt(value, 10);
-}
-
-function normalizeError(error: unknown): {
+const normalizeError = (
+  error: unknown
+): {
   code: string;
   details?: unknown;
   exitCode: number;
   message: string;
   trustedMessage?: boolean;
-} {
+} => {
   if (error instanceof CLIError) {
     return {
       code: error.code,
@@ -392,12 +352,46 @@ function normalizeError(error: unknown): {
     exitCode: 1,
     message: String(error),
   };
-}
+};
 
-function isBenignCommanderExit(error: CommanderError): boolean {
-  return (
-    error.code === "commander.help" ||
-    error.code === "commander.helpDisplayed" ||
-    error.code === "commander.version"
-  );
+const isBenignCommanderExit = (error: CommanderError): boolean =>
+  error.code === "commander.help" ||
+  error.code === "commander.helpDisplayed" ||
+  error.code === "commander.version";
+
+try {
+  await program.parseAsync(parseArgv);
+} catch (error) {
+  if (error instanceof CommanderError && isBenignCommanderExit(error)) {
+    process.exitCode = error.exitCode;
+  } else {
+    const normalized = normalizeError(error);
+    const redactionContext = {
+      cwd: process.cwd(),
+      home: process.env.HOME,
+    };
+    const rendered = renderError(
+      {
+        code: normalized.code,
+        details: redactDiagnosticValue(normalized.details, redactionContext),
+        message: normalized.trustedMessage
+          ? normalized.message
+          : String(redactDiagnosticValue(normalized.message, redactionContext)),
+      },
+      {
+        debug: argv.includes("--debug"),
+        format: requestedFormat,
+        outputFile: peekFlagValue(argv, "--output-file"),
+        sanitize: !argv.includes("--no-sanitize"),
+      },
+      {
+        command: detectCommandName(argv),
+        cwd: process.cwd(),
+        isTTY,
+      }
+    );
+
+    emitRendered(rendered.content, rendered.outputPath);
+    process.exitCode = normalized.exitCode;
+  }
 }

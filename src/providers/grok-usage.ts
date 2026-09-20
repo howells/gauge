@@ -5,15 +5,6 @@ import process from "node:process";
 
 import { z } from "zod";
 
-/**
- * Grok Build usage, read with the OAuth session the Grok CLI keeps.
- *
- * The CLI stores one or more OIDC logins in `~/.grok/auth.json`, keyed by
- * issuer and client. Quota comes from the same Connect endpoint the CLI and
- * grok.com call; a JSON POST avoids the protobuf payload the dashboards use.
- * An expired token is a reading, not a failure to hide: the account shows as
- * expired and the fix is running the CLI once to refresh.
- */
 const CREDITS_URL =
   "https://grok.com/grok_api_v2.GrokBuildBilling/GetGrokCreditsConfig";
 
@@ -55,10 +46,12 @@ export interface GrokAccount {
   token: string;
 }
 
-/** Read every OAuth login the Grok CLI has stored, oldest expiry last. */
-export function readGrokAccounts(
+const defaultGrokHome = (): string =>
+  process.env.GROK_HOME ?? path.join(os.homedir(), ".grok");
+
+export const readGrokAccounts = (
   grokHome: string = defaultGrokHome()
-): GrokAccount[] {
+): GrokAccount[] => {
   let parsed: unknown;
   try {
     parsed = JSON.parse(
@@ -86,16 +79,11 @@ export function readGrokAccounts(
         (left.expiresAt?.getTime() ?? Infinity) -
         (right.expiresAt?.getTime() ?? Infinity)
     );
-}
+};
 
-export function defaultGrokHome(): string {
-  return process.env.GROK_HOME ?? path.join(os.homedir(), ".grok");
-}
-
-/** The newest login that has not expired, or null when none qualifies. */
-export function liveGrokAccount(
+export const liveGrokAccount = (
   accounts: readonly GrokAccount[]
-): GrokAccount | null {
+): GrokAccount | null => {
   const now = Date.now();
   for (let index = accounts.length - 1; index >= 0; index -= 1) {
     const account = accounts[index];
@@ -104,21 +92,12 @@ export function liveGrokAccount(
     }
   }
   return null;
-}
+};
 
-/**
- * Fetch the coding plan's usage, or null when the endpoint refuses.
- *
- * Product 2 is Grok Build in the response's product table; its usagePercent
- * is the reading. The top-level creditUsagePercent covers the shared credit
- * pool and is the fallback when the product entry is missing. No reset time
- * has been observed in this response, so the window reports null and the
- * dashboard shows the percentage alone.
- */
-export async function fetchGrokUsage(
+export const fetchGrokUsage = async (
   account: GrokAccount,
   fetchImpl: typeof globalThis.fetch = globalThis.fetch
-): Promise<GrokUsageReading | null> {
+): Promise<GrokUsageReading | null> => {
   let response: Response;
   try {
     response = await fetchImpl(CREDITS_URL, {
@@ -160,16 +139,13 @@ export async function fetchGrokUsage(
     },
     tokenExpired: false,
   };
-}
+};
 
-/** The reading served when every stored login has expired. */
-export function expiredGrokReading(
+export const expiredGrokReading = (
   account: GrokAccount | undefined
-): GrokUsageReading {
-  return {
-    email: account?.email ?? null,
-    plan: "Grok Build",
-    session: null,
-    tokenExpired: true,
-  };
-}
+): GrokUsageReading => ({
+  email: account?.email ?? null,
+  plan: "Grok Build",
+  session: null,
+  tokenExpired: true,
+});

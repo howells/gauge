@@ -128,9 +128,9 @@ test("request acquisition fetches usage and renewal concurrently and returns pen
 test("request acquisition contains authentication and malformed organization failures", async () => {
   const storagePath = temporaryFile("state.json", "{}");
   for (const [status, body, expected] of [
-    [401, {}, /Session expired/],
-    [403, {}, /Session expired/],
-    [200, [], /No organizations/],
+    [401, {}, /Session expired/u],
+    [403, {}, /Session expired/u],
+    [200, [], /No organizations/u],
   ] as const) {
     const result = await fetchUsageForAccount(
       { authKey: "work", name: "work", storagePath },
@@ -163,7 +163,7 @@ test("request acquisition contains usage and optional-renewal failures", async (
       ),
     }
   );
-  assert.match(usageRejected.error ?? "", /Session expired/);
+  assert.match(usageRejected.error ?? "", /Session expired/u);
 
   const renewalIgnored = await fetchUsageForAccount(
     {
@@ -218,7 +218,7 @@ test("missing, aborted, and never-refresh acquisitions fail without browser writ
     profileDir: path.join(os.tmpdir(), "does-not-exist-profile"),
     storagePath: path.join(os.tmpdir(), "does-not-exist-state"),
   });
-  assert.match(missing.error ?? "", /No saved session/);
+  assert.match(missing.error ?? "", /No saved session/u);
 
   const storagePath = temporaryFile("state.json", "{}");
   const controller = new AbortController();
@@ -229,7 +229,7 @@ test("missing, aborted, and never-refresh acquisitions fail without browser writ
         { authKey: "work", name: "work", storagePath },
         { signal: controller.signal }
       ),
-    /cancelled/
+    /cancelled/u
   );
 
   const rejected = await fetchUsageForAccount(
@@ -239,7 +239,7 @@ test("missing, aborted, and never-refresh acquisitions fail without browser writ
       runtime: requestRuntime(async () => response(403, {}, "text/html")),
     }
   );
-  assert.match(rejected.error ?? "", /refresh is disabled/);
+  assert.match(rejected.error ?? "", /refresh is disabled/u);
 });
 
 test("in-flight request cancellation settles and disposes the request context once", async () => {
@@ -262,7 +262,7 @@ test("in-flight request cancellation settles and disposes the request context on
 
   await new Promise<void>((resolve) => setImmediate(resolve));
   controller.abort();
-  await assert.rejects(async () => await acquisition, /aborted/i);
+  await assert.rejects(async () => await acquisition, /aborted/iu);
   assert.equal(disposed, 1);
 });
 
@@ -287,7 +287,7 @@ test("request context resolving after cancellation is disposed exactly once", as
 
   await new Promise<void>((resolve) => setImmediate(resolve));
   controller.abort();
-  await assert.rejects(async () => await acquisition, /aborted/i);
+  await assert.rejects(async () => await acquisition, /aborted/iu);
   resolveContext({
     dispose: async () => {
       disposed += 1;
@@ -323,7 +323,7 @@ test("request body cancellation settles and disposes the context once", async ()
   );
   await new Promise<void>((resolve) => setImmediate(resolve));
   controller.abort();
-  await assert.rejects(async () => await acquisition, /aborted/i);
+  await assert.rejects(async () => await acquisition, /aborted/iu);
   assert.equal(disposed, 1);
 });
 
@@ -374,7 +374,7 @@ test("oversized request responses without a content length are still bounded", a
       })),
     }
   );
-  assert.match(result.error ?? "", /refresh is disabled/);
+  assert.match(result.error ?? "", /refresh is disabled/u);
 });
 
 test("request promise rejection is contained and disposes the context", async () => {
@@ -395,7 +395,7 @@ test("request promise rejection is contained and disposes the context", async ()
     }
   );
 
-  assert.match(result.error ?? "", /Session expired/);
+  assert.match(result.error ?? "", /Session expired/u);
   assert.equal(disposed, 1);
 });
 
@@ -466,7 +466,7 @@ test("visible browser fallback aborts pending navigation and closes once", async
   controller.abort();
   const result = await acquisition;
 
-  assert.match(result.error ?? "", /aborted/i);
+  assert.match(result.error ?? "", /aborted/iu);
   assert.equal(closed, 1);
 });
 
@@ -496,7 +496,7 @@ test("visible browser fallback closes when new-page creation is aborted", async 
   await new Promise<void>((resolve) => setImmediate(resolve));
   controller.abort();
   const result = await acquisition;
-  assert.match(result.error ?? "", /aborted/i);
+  assert.match(result.error ?? "", /aborted/iu);
   assert.equal(closed, 1);
 });
 
@@ -527,7 +527,7 @@ test("browser context resolving after cancellation is closed exactly once", asyn
 
   await new Promise<void>((resolve) => setImmediate(resolve));
   controller.abort();
-  await assert.rejects(async () => await acquisition, /aborted/i);
+  await assert.rejects(async () => await acquisition, /aborted/iu);
   resolveContext({
     close: async () => {
       closed += 1;
@@ -559,7 +559,7 @@ test("Claude browser responses are bounded before schema validation", async () =
       ),
     }
   );
-  assert.match(result.error ?? "", /exceeded the allowed size/);
+  assert.match(result.error ?? "", /exceeded the allowed size/u);
 });
 
 test("interactive Claude and Cursor login use injected browser seams and close once", async () => {

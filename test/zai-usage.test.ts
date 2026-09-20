@@ -97,15 +97,12 @@ test("readZaiApiKey finds a key under the known provider ids", () => {
       path.join(dir, "auth.json"),
       JSON.stringify({ "zai-coding-plan": { key: "sk-zai", type: "api" } })
     );
-    assert.equal(readZaiApiKey({ HOME: home } as NodeJS.ProcessEnv), "sk-zai");
+    assert.equal(readZaiApiKey({ HOME: home }), "sk-zai");
   } finally {
     fs.rmSync(home, { force: true, recursive: true });
   }
 });
 
 test("readZaiApiKey prefers the environment key", () => {
-  assert.equal(
-    readZaiApiKey({ ZAI_API_KEY: "env-key" } as NodeJS.ProcessEnv),
-    "env-key"
-  );
+  assert.equal(readZaiApiKey({ ZAI_API_KEY: "env-key" }), "env-key");
 });

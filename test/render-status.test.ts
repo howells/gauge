@@ -58,7 +58,7 @@ test("a claude cell shows the renewal date beside the plan and reading", () => {
       ],
     })
   );
-  assert.match(output, /Max 20x · wk 0% · renews 5 Sep/);
+  assert.match(output, /Max 20x · wk 0% · renews 5 Sep/u);
 });
 
 test("the plan label gives way before the renewal date does", () => {
@@ -78,7 +78,7 @@ test("the plan label gives way before the renewal date does", () => {
       ],
     })
   );
-  assert.match(output, /wk 100% · 2d · renews 12 Sep/);
+  assert.match(output, /wk 100% · 2d · renews 12 Sep/u);
   assert.equal(output.includes("Max 20x"), false);
 });
 
@@ -98,7 +98,7 @@ test("a countdown that lands on the renewal instant is not said twice", () => {
     })
   );
   assert.equal(output.includes("renews"), false);
-  assert.match(output, /23d/);
+  assert.match(output, /23d/u);
 });
 
 test("an idle window on the renewal instant still names the date", () => {
@@ -114,7 +114,7 @@ test("an idle window on the renewal instant still names the date", () => {
       windows: [{ kind: "included", resetsAt: renewal, usedPercent: 0 }],
     })
   );
-  assert.match(output, /Cursor Pro · renews 19 Sep/);
+  assert.match(output, /Cursor Pro · renews 19 Sep/u);
 });
 
 test("a renewal in a later year carries the year", () => {
@@ -124,7 +124,7 @@ test("a renewal in a later year carries the year", () => {
       windows: [{ kind: "session", resetsAt: null, usedPercent: 0 }],
     })
   );
-  assert.match(output, /renews 5 Mar 27/);
+  assert.match(output, /renews 5 Mar 27/u);
 });
 
 test("renewal year formatting follows the supplied rendering clock", () => {
@@ -138,7 +138,7 @@ test("renewal year formatting follows the supplied rendering clock", () => {
     null,
     new Date("2027-01-10T12:00:00Z")
   );
-  assert.match(output, /renews 5 Mar/);
+  assert.match(output, /renews 5 Mar/u);
   assert.equal(output.includes("5 Mar 27"), false);
 });
 
@@ -170,7 +170,7 @@ test("a blocked codex cell names its applicable resets instead of the wait", () 
       ],
     })
   );
-  assert.match(output, /full · 1 reset/);
+  assert.match(output, /full · 1 reset/u);
 });
 
 test("a blocked cell without resets still counts down", () => {
@@ -189,7 +189,7 @@ test("a blocked cell without resets still counts down", () => {
       ],
     })
   );
-  assert.match(output, /full · 2d/);
+  assert.match(output, /full · 2d/u);
 });
 
 test("the detail line names the resets an account holds", () => {
@@ -205,7 +205,7 @@ test("the detail line names the resets an account holds", () => {
       ],
     })
   );
-  assert.match(output, /wk 40% · 3 resets/);
+  assert.match(output, /wk 40% · 3 resets/u);
 });
 
 test("a holding of zero resets draws nothing", () => {
@@ -231,9 +231,9 @@ test("a recent switch warns that running sessions still spend the old account", 
   );
   assert.ok(line);
   const text = stripVTControlCharacters(line);
-  assert.match(text, /switched from gmail 40m ago/);
-  assert.match(text, /may still be spending gmail/);
-  assert.match(text, /restart them/);
+  assert.match(text, /switched from gmail 40m ago/u);
+  assert.match(text, /may still be spending gmail/u);
+  assert.match(text, /restart them/u);
 });
 
 test("several recent switches name every displaced account", () => {
@@ -246,8 +246,8 @@ test("several recent switches name every displaced account", () => {
   );
   assert.ok(line);
   const text = stripVTControlCharacters(line);
-  assert.match(text, /switched from danielhowells and materialinstruments/);
-  assert.match(text, /may still be spending one of them/);
+  assert.match(text, /switched from danielhowells and materialinstruments/u);
+  assert.match(text, /may still be spending one of them/u);
 });
 
 test("a switch older than a day stops warning", () => {

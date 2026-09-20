@@ -81,7 +81,7 @@ test("rejects malformed documented fields and top-level junk", () => {
 
   for (const state of invalidStates) {
     assert.throws(() => parseStorageStateObject(state), {
-      message: /not valid Playwright state/,
+      message: /not valid Playwright state/u,
       name: "CLIError",
     });
   }

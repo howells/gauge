@@ -245,7 +245,7 @@ test("preserves old auth when atomic replacement fails without exposing tokens",
         "refresh-if-stale"
       ),
     (error: unknown) => {
-      assert.doesNotMatch(String(error), /sensitive-new-token/);
+      assert.doesNotMatch(String(error), /sensitive-new-token/u);
       return (
         error instanceof Error &&
         error.message.includes("injected replacement failure")
@@ -300,8 +300,8 @@ test("does not expose stored or pending tokens in validation errors", () => {
         "refresh-if-stale"
       ),
     (error: unknown) => {
-      assert.doesNotMatch(String(error), /stored-sensitive-token/);
-      assert.doesNotMatch(String(error), /pending-sensitive-token/);
+      assert.doesNotMatch(String(error), /stored-sensitive-token/u);
+      assert.doesNotMatch(String(error), /pending-sensitive-token/u);
       return error instanceof CLIError && error.code === "INVALID_CODEX_AUTH";
     }
   );

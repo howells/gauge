@@ -11,12 +11,29 @@ export interface AtomicReplaceOptions {
   write?: (descriptor: number, content: string) => void;
 }
 
-/** Flush content to a sibling temporary file, then atomically replace the destination. */
-export function atomicReplace(
+const flushDirectory = (
+  directory: string,
+  fsync: (descriptor: number) => void,
+  close: (descriptor: number) => void
+): void => {
+  const descriptor = fs.openSync(directory, "r");
+  try {
+    fsync(descriptor);
+  } finally {
+    close(descriptor);
+  }
+};
+
+const isMissingPathError = (error: unknown): boolean =>
+  error instanceof Error &&
+  "code" in error &&
+  (error as NodeJS.ErrnoException).code === "ENOENT";
+
+export const atomicReplace = (
   destinationPath: string,
   content: string,
   options: AtomicReplaceOptions = {}
-): void {
+): void => {
   const directory = path.dirname(destinationPath);
   const temporaryPath = path.join(
     directory,
@@ -58,25 +75,4 @@ export function atomicReplace(
     }
     throw error;
   }
-}
-
-function flushDirectory(
-  directory: string,
-  fsync: (descriptor: number) => void,
-  close: (descriptor: number) => void
-): void {
-  const descriptor = fs.openSync(directory, "r");
-  try {
-    fsync(descriptor);
-  } finally {
-    close(descriptor);
-  }
-}
-
-function isMissingPathError(error: unknown): boolean {
-  return (
-    error instanceof Error &&
-    "code" in error &&
-    (error as NodeJS.ErrnoException).code === "ENOENT"
-  );
-}
+};

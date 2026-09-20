@@ -40,7 +40,7 @@ test("atomicReplace preserves the old file when replacement fails", () => {
         throw new Error("injected rename failure");
       },
     });
-  }, /injected rename failure/);
+  }, /injected rename failure/u);
 
   assert.equal(fs.readFileSync(destination, "utf-8"), "old-content");
   assert.deepEqual(fs.readdirSync(directory), ["result.json"]);
@@ -61,7 +61,7 @@ test("atomicReplace closes an open descriptor and removes its temporary after wr
         throw new Error("injected write failure");
       },
     });
-  }, /injected write failure/);
+  }, /injected write failure/u);
   assert.equal(closes, 1);
   assert.deepEqual(fs.readdirSync(directory), []);
 });

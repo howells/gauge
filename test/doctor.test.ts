@@ -73,7 +73,7 @@ test("doctor reports legacy migration and unsafe data-root failures without cred
 
   assert.ok(report.failed > 0);
   assert.ok(report.checks.some((check) => check.id === "state/migration"));
-  assert.doesNotMatch(serialized, /super-secret-cookie/);
+  assert.doesNotMatch(serialized, /super-secret-cookie/u);
 });
 
 test("doctor fails unsupported Node versions", () => {
@@ -172,7 +172,7 @@ test("doctor detects ambient and configured Codex readiness without credentials"
         check.id === "readiness/codex-configured" && check.status === "pass"
     )
   );
-  assert.doesNotMatch(serialized, /super-secret-token/);
+  assert.doesNotMatch(serialized, /super-secret-token/u);
 });
 
 test("doctor rejects malformed storage state and unusable Codex auth", () => {

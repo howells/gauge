@@ -11,17 +11,9 @@ export interface ServeCommandOptions {
   port?: number;
 }
 
-/**
- * Serve the local dashboard.
- *
- * Resolves with the startup result once the socket is listening; the open
- * server handle keeps the process alive afterwards. Collection reuses the
- * status pipeline untouched, cached between polls so the browser never drives
- * provider traffic directly.
- */
-export async function runServeCommand(
+export const runServeCommand = async (
   options: ServeCommandOptions
-): Promise<CommandResult> {
+): Promise<CommandResult> => {
   const cache = new StatusSnapshotCache({
     fetch: async () =>
       await runStatusCommand({
@@ -72,4 +64,4 @@ export async function runServeCommand(
     data: { refreshIntervalSeconds: 30, url: address.url },
     human,
   };
-}
+};

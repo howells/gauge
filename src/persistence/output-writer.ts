@@ -10,11 +10,47 @@ export class OutputPathViolation extends Error {
   }
 }
 
-/** Resolve an output path against the canonical cwd without following child symlinks. */
-export function resolveConfinedOutputPath(
+const canonicalDirectory = (directoryPath: string): string => {
+  let canonicalPath: string;
+  try {
+    canonicalPath = fs.realpathSync(directoryPath);
+  } catch {
+    throw new OutputPathViolation(
+      "Output working directory must be an existing directory."
+    );
+  }
+  if (!fs.statSync(canonicalPath).isDirectory()) {
+    throw new OutputPathViolation(
+      "Output working directory must be an existing directory."
+    );
+  }
+  return canonicalPath;
+};
+
+const isConfinedRelativePath = (relativePath: string): boolean =>
+  relativePath !== ".." &&
+  !relativePath.startsWith(`..${path.sep}`) &&
+  !path.isAbsolute(relativePath);
+
+const escapedCwdError = (): OutputPathViolation =>
+  new OutputPathViolation(
+    "Output path must stay inside the current working directory. The agent is not a trusted operator."
+  );
+
+const containsControlCharacters = (value: string): boolean => {
+  for (const character of value) {
+    const code = character.charCodeAt(0);
+    if (code <= 31 || code === 127) {
+      return true;
+    }
+  }
+  return false;
+};
+
+export const resolveConfinedOutputPath = (
   cwd: string,
   requestedPath: string
-): string {
+): string => {
   if (containsControlCharacters(requestedPath)) {
     throw new OutputPathViolation("Output path contains control characters.");
   }
@@ -36,66 +72,41 @@ export function resolveConfinedOutputPath(
     throw escapedCwdError();
   }
   return canonicalDestination;
-}
+};
 
-/** Write output beneath the canonical cwd without following symlinked path components. */
-export function writeConfinedOutput(
-  cwd: string,
-  requestedPath: string,
-  content: string,
-  runtime: {
-    lstat?: typeof fs.lstatSync;
-    mkdir?: typeof fs.mkdirSync;
-  } = {}
-): string {
-  const canonicalCwd = canonicalDirectory(path.resolve(cwd));
-  const destinationPath = resolveConfinedOutputPath(cwd, requestedPath);
-  ensureSafeParentDirectories(
-    canonicalCwd,
-    path.dirname(destinationPath),
-    runtime
-  );
-  const destination = readPathStatus(destinationPath, runtime.lstat);
-  if (destination?.isSymbolicLink()) {
-    throw new OutputPathViolation(
-      "Output path has a symlinked output destination."
-    );
-  }
-  if (destination && !destination.isFile()) {
-    throw new OutputPathViolation("Output destination must be a regular file.");
-  }
+const isErrorCode = (error: unknown, code: string): boolean =>
+  error instanceof Error &&
+  "code" in error &&
+  (error as NodeJS.ErrnoException).code === code;
 
-  atomicReplace(destinationPath, content, {
-    ...(destination && { mode: destination.mode & 0o777 }),
-  });
-  return destinationPath;
-}
+const isMissingPathError = (error: unknown): boolean =>
+  isErrorCode(error, "ENOENT");
 
-function canonicalDirectory(directoryPath: string): string {
-  let canonicalPath: string;
+const readPathStatus = (
+  filePath: string,
+  lstat: typeof fs.lstatSync = fs.lstatSync
+): fs.Stats | null => {
   try {
-    canonicalPath = fs.realpathSync(directoryPath);
-  } catch {
-    throw new OutputPathViolation(
-      "Output working directory must be an existing directory."
-    );
+    return lstat(filePath);
+  } catch (error) {
+    if (isMissingPathError(error)) {
+      return null;
+    }
+    throw error;
   }
-  if (!fs.statSync(canonicalPath).isDirectory()) {
-    throw new OutputPathViolation(
-      "Output working directory must be an existing directory."
-    );
-  }
-  return canonicalPath;
-}
+};
 
-function ensureSafeParentDirectories(
+const isAlreadyExistsError = (error: unknown): boolean =>
+  isErrorCode(error, "EEXIST");
+
+const ensureSafeParentDirectories = (
   canonicalCwd: string,
   destinationParent: string,
   runtime: {
     lstat?: typeof fs.lstatSync;
     mkdir?: typeof fs.mkdirSync;
   }
-): void {
+): void => {
   const relativeParent = path.relative(canonicalCwd, destinationParent);
   if (!isConfinedRelativePath(relativeParent)) {
     throw escapedCwdError();
@@ -115,69 +126,47 @@ function ensureSafeParentDirectories(
       }
       status = readPathStatus(currentPath, runtime.lstat);
     }
-    if (status?.isSymbolicLink()) {
+    if (status?.isSymbolicLink() === true) {
       throw new OutputPathViolation(
         "Output path has a symlinked output path component."
       );
     }
-    if (!status?.isDirectory()) {
+    if (status === null || !status.isDirectory()) {
       throw new OutputPathViolation(
         "Every output path ancestor must be a directory."
       );
     }
   }
-}
+};
 
-function readPathStatus(
-  filePath: string,
-  lstat: typeof fs.lstatSync = fs.lstatSync
-): fs.Stats | null {
-  try {
-    return lstat(filePath);
-  } catch (error) {
-    if (isMissingPathError(error)) {
-      return null;
-    }
-    throw error;
+export const writeConfinedOutput = (
+  cwd: string,
+  requestedPath: string,
+  content: string,
+  runtime: {
+    lstat?: typeof fs.lstatSync;
+    mkdir?: typeof fs.mkdirSync;
+  } = {}
+): string => {
+  const canonicalCwd = canonicalDirectory(path.resolve(cwd));
+  const destinationPath = resolveConfinedOutputPath(cwd, requestedPath);
+  ensureSafeParentDirectories(
+    canonicalCwd,
+    path.dirname(destinationPath),
+    runtime
+  );
+  const destination = readPathStatus(destinationPath, runtime.lstat);
+  if (destination?.isSymbolicLink() === true) {
+    throw new OutputPathViolation(
+      "Output path has a symlinked output destination."
+    );
   }
-}
-
-function isConfinedRelativePath(relativePath: string): boolean {
-  return (
-    relativePath !== ".." &&
-    !relativePath.startsWith(`..${path.sep}`) &&
-    !path.isAbsolute(relativePath)
-  );
-}
-
-function escapedCwdError(): OutputPathViolation {
-  return new OutputPathViolation(
-    "Output path must stay inside the current working directory. The agent is not a trusted operator."
-  );
-}
-
-function containsControlCharacters(value: string): boolean {
-  for (const character of value) {
-    const code = character.charCodeAt(0);
-    if (code <= 31 || code === 127) {
-      return true;
-    }
+  if (destination && !destination.isFile()) {
+    throw new OutputPathViolation("Output destination must be a regular file.");
   }
-  return false;
-}
 
-function isMissingPathError(error: unknown): boolean {
-  return isErrorCode(error, "ENOENT");
-}
-
-function isAlreadyExistsError(error: unknown): boolean {
-  return isErrorCode(error, "EEXIST");
-}
-
-function isErrorCode(error: unknown, code: string): boolean {
-  return (
-    error instanceof Error &&
-    "code" in error &&
-    (error as NodeJS.ErrnoException).code === code
-  );
-}
+  atomicReplace(destinationPath, content, {
+    ...(destination && { mode: destination.mode & 0o777 }),
+  });
+  return destinationPath;
+};

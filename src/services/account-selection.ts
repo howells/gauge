@@ -11,11 +11,10 @@ export interface AccountFilter {
   provider?: Provider;
 }
 
-/** Resolve status filters against configured identities before network work. */
-export function selectConfiguredAccounts<T extends ConfiguredAccount>(
+export const selectConfiguredAccounts = <T extends ConfiguredAccount>(
   accounts: readonly T[],
   filter: AccountFilter
-): T[] {
+): T[] => {
   const providerMatches = filter.provider
     ? accounts.filter((account) => account.id.provider === filter.provider)
     : [...accounts];
@@ -44,4 +43,4 @@ export function selectConfiguredAccounts<T extends ConfiguredAccount>(
     code: "ACCOUNT_NOT_FOUND",
     exitCode: 2,
   });
-}
+};

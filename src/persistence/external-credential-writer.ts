@@ -37,7 +37,67 @@ interface ExternalCredentialWriterOptions {
   replaceFile?: ReplaceFile;
 }
 
-/** Apply pending OAuth token updates only to explicitly allowlisted Codex homes. */
+const isSymlink = (homePath: string): boolean => {
+  try {
+    return fs.lstatSync(homePath).isSymbolicLink();
+  } catch (error) {
+    if (
+      error instanceof Error &&
+      "code" in error &&
+      (error as NodeJS.ErrnoException).code === "ENOENT"
+    ) {
+      return false;
+    }
+    throw error;
+  }
+};
+
+const homeSymlinkError = (): CLIError =>
+  new CLIError("Codex home must not be a symlink.", {
+    code: "CODEX_HOME_SYMLINK",
+    exitCode: 1,
+  });
+
+const assertHomeNotSymlink = (homePath: string): void => {
+  if (fs.lstatSync(homePath).isSymbolicLink()) {
+    throw homeSymlinkError();
+  }
+};
+
+const canonicalAllowedHome = (homePath: string): string => {
+  const resolvedPath = path.resolve(homePath);
+  assertHomeNotSymlink(resolvedPath);
+  return fs.realpathSync(resolvedPath);
+};
+
+const homeNotAllowedError = (): CLIError =>
+  new CLIError("Codex home is not explicitly allowed.", {
+    code: "CODEX_HOME_NOT_ALLOWED",
+    exitCode: 1,
+  });
+
+const isRecord = (value: unknown): value is Record<string, unknown> =>
+  value !== null && typeof value === "object" && !Array.isArray(value);
+
+const parseAuth = (content: string): Record<string, unknown> => {
+  let parsed: unknown;
+  try {
+    parsed = JSON.parse(content) as unknown;
+  } catch {
+    throw new CLIError("Codex auth file is not valid JSON.", {
+      code: "INVALID_CODEX_AUTH",
+      exitCode: 1,
+    });
+  }
+  if (!isRecord(parsed)) {
+    throw new CLIError("Codex auth file must contain a JSON object.", {
+      code: "INVALID_CODEX_AUTH",
+      exitCode: 1,
+    });
+  }
+  return parsed;
+};
+
 export class ExternalCredentialWriter {
   readonly #allowedHomes: Map<string, string>;
   readonly #replaceFile: ReplaceFile;
@@ -113,11 +173,12 @@ export class ExternalCredentialWriter {
   }
 }
 
-/** Validate an externally owned Codex home without changing it or exposing credentials. */
-export function validateCodexHome(homePath: string): {
+export const validateCodexHome = (
+  homePath: string
+): {
   authPath: string;
   homePath: string;
-} {
+} => {
   const resolvedHome = path.resolve(homePath);
   let homeStatus: fs.Stats;
   try {
@@ -177,68 +238,4 @@ export function validateCodexHome(homePath: string): {
     });
   }
   return { authPath, homePath: canonicalHome };
-}
-
-function canonicalAllowedHome(homePath: string): string {
-  const resolvedPath = path.resolve(homePath);
-  assertHomeNotSymlink(resolvedPath);
-  return fs.realpathSync(resolvedPath);
-}
-
-function assertHomeNotSymlink(homePath: string): void {
-  if (fs.lstatSync(homePath).isSymbolicLink()) {
-    throw homeSymlinkError();
-  }
-}
-
-function isSymlink(homePath: string): boolean {
-  try {
-    return fs.lstatSync(homePath).isSymbolicLink();
-  } catch (error) {
-    if (
-      error instanceof Error &&
-      "code" in error &&
-      (error as NodeJS.ErrnoException).code === "ENOENT"
-    ) {
-      return false;
-    }
-    throw error;
-  }
-}
-
-function homeSymlinkError(): CLIError {
-  return new CLIError("Codex home must not be a symlink.", {
-    code: "CODEX_HOME_SYMLINK",
-    exitCode: 1,
-  });
-}
-
-function homeNotAllowedError(): CLIError {
-  return new CLIError("Codex home is not explicitly allowed.", {
-    code: "CODEX_HOME_NOT_ALLOWED",
-    exitCode: 1,
-  });
-}
-
-function parseAuth(content: string): Record<string, unknown> {
-  let parsed: unknown;
-  try {
-    parsed = JSON.parse(content) as unknown;
-  } catch {
-    throw new CLIError("Codex auth file is not valid JSON.", {
-      code: "INVALID_CODEX_AUTH",
-      exitCode: 1,
-    });
-  }
-  if (!isRecord(parsed)) {
-    throw new CLIError("Codex auth file must contain a JSON object.", {
-      code: "INVALID_CODEX_AUTH",
-      exitCode: 1,
-    });
-  }
-  return parsed;
-}
-
-function isRecord(value: unknown): value is Record<string, unknown> {
-  return value !== null && typeof value === "object" && !Array.isArray(value);
-}
+};

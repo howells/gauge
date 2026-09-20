@@ -2,10 +2,20 @@ import { COMMAND_SPECS } from "./commands/specs.js";
 import type { CommandSpec } from "./commands/specs.js";
 import { COMMAND_WIRE_JSON_SCHEMAS } from "./commands/wire-schemas.js";
 
-/** Return metadata-derived schemas for all (or a specific) CLI command. */
-export function describeCommands(
+const matchesCommand = (
+  spec: CommandSpec,
+  commandName: string | undefined
+): boolean =>
+  !commandName ||
+  spec.name === commandName ||
+  spec.aliases.some((alias) => alias === commandName);
+
+const hasWriteEffect = (spec: CommandSpec): boolean =>
+  spec.sideEffects.some((effect) => effect === "writes_local_state");
+
+export const describeCommands = (
   commandName?: string
-): Record<string, unknown> {
+): Record<string, unknown> => {
   const commands = COMMAND_SPECS.filter((spec) =>
     matchesCommand(spec, commandName)
   ).map((spec) => ({
@@ -47,19 +57,4 @@ export function describeCommands(
     security_posture:
       "The agent is not a trusted operator. Use --dry-run for mutating commands, use --fields on reads, and keep output paths inside the current working directory.",
   };
-}
-
-function matchesCommand(
-  spec: CommandSpec,
-  commandName: string | undefined
-): boolean {
-  return (
-    !commandName ||
-    spec.name === commandName ||
-    spec.aliases.some((alias) => alias === commandName)
-  );
-}
-
-function hasWriteEffect(spec: CommandSpec): boolean {
-  return spec.sideEffects.some((effect) => effect === "writes_local_state");
-}
+};

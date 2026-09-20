@@ -49,6 +49,6 @@ test("integer option values are validated through the metadata arg parsers", asy
   program.configureOutput({ writeErr: () => {} });
   await assert.rejects(
     program.parseAsync(["status", "--page-size", "0"], { from: "user" }),
-    /positive integer/
+    /positive integer/u
   );
 });

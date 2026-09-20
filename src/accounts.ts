@@ -20,37 +20,32 @@ export interface AccountDetails extends AccountConfigV3 {
   storagePath: string;
 }
 
-function accountRepository(): AccountRepository {
-  return new AccountRepository({ dataRoot: getDataDir() });
-}
+const accountRepository = (): AccountRepository =>
+  new AccountRepository({ dataRoot: getDataDir() });
 
-function accountId(name: string, provider: Provider = "claude"): AccountId {
-  return { name, provider };
-}
+const accountId = (name: string, provider: Provider = "claude"): AccountId => ({
+  name,
+  provider,
+});
 
-/** Return all configured v3 accounts in deterministic provider/name order. */
-export function listAccounts(): AccountConfigV3[] {
-  return accountRepository()
+export const listAccounts = (): AccountConfigV3[] =>
+  accountRepository()
     .list()
     .map((record) => record.config);
-}
 
-/** Check whether a provider-qualified account exists. */
-export function accountExists(name: string, provider?: Provider): boolean {
-  return fs.existsSync(
+export const accountExists = (name: string, provider?: Provider): boolean =>
+  fs.existsSync(
     accountRepository().pathsFor(accountId(name, provider)).directory
   );
-}
 
-/** Add or update account configuration through the v3 repository. */
-export function saveAccount(
+export const saveAccount = (
   name: string,
   options: {
     codexHome?: string;
     provider?: Provider;
     renewsAt?: string | null;
   } = {}
-): void {
+): void => {
   const repository = accountRepository();
   const id = accountId(name, options.provider);
   const write = {
@@ -62,10 +57,9 @@ export function saveAccount(
   } else {
     repository.add(id, write);
   }
-}
+};
 
-/** Atomically expose a complete configured account. */
-export function createAccount(
+export const createAccount = (
   name: string,
   options: {
     codexHome?: string;
@@ -74,17 +68,16 @@ export function createAccount(
     renewsAt?: string | null;
     storageState?: PlaywrightStorageState;
   } = {}
-): void {
+): void => {
   accountRepository().add(accountId(name, options.provider), {
     codexHome: options.codexHome,
     profileSource: options.profileSource,
     renewsAt: options.renewsAt,
     storageState: options.storageState,
   });
-}
+};
 
-/** Atomically replace validated account config and credential files. */
-export function refreshAccount(
+export const refreshAccount = (
   name: string,
   options: {
     codexHome?: string;
@@ -92,20 +85,19 @@ export function refreshAccount(
     renewsAt?: string | null;
     storageState?: PlaywrightStorageState;
   }
-): void {
+): void => {
   accountRepository().refresh(accountId(name, options.provider), {
     codexHome: options.codexHome,
     renewsAt: options.renewsAt,
     storageState: options.storageState,
   });
-}
+};
 
-/** Import validated Playwright storage state into an existing account. */
-export function importStorageState(
+export const importStorageState = (
   name: string,
   options: { json?: string; filePath?: string },
   provider?: Provider
-): string {
+): string => {
   const repository = accountRepository();
   const id = accountId(name, provider);
   const normalized =
@@ -116,10 +108,27 @@ export function importStorageState(
     storageState: JSON.parse(normalized) as unknown,
   });
   return repository.pathsFor(id).storageState;
-}
+};
 
-/** Return all paths owned by a provider-qualified account. */
-export function getAccountArtifacts(
+export const removeAccount = (name: string, provider?: Provider): boolean =>
+  accountRepository().remove(accountId(name, provider));
+
+const mapPaths = (
+  id: AccountId,
+  paths: AccountPaths
+): {
+  accountPath: string;
+  authKey: string;
+  profileDir: string;
+  storagePath: string;
+} => ({
+  accountPath: paths.config,
+  authKey: encodeAccountId(id),
+  profileDir: paths.profile,
+  storagePath: paths.storageState,
+});
+
+export const getAccountArtifacts = (
   name: string,
   provider?: Provider
 ): {
@@ -127,15 +136,14 @@ export function getAccountArtifacts(
   authKey: string;
   profileDir: string;
   storagePath: string;
-} {
+} => {
   const id = accountId(name, provider);
   const paths = accountRepository().pathsFor(id);
   return mapPaths(id, paths);
-}
+};
 
-/** List configured accounts with local artifact readiness. */
-export function listAccountDetails(provider?: Provider): AccountDetails[] {
-  return accountRepository()
+export const listAccountDetails = (provider?: Provider): AccountDetails[] =>
+  accountRepository()
     .list()
     .filter(
       (record) => provider === undefined || record.id.provider === provider
@@ -146,26 +154,3 @@ export function listAccountDetails(provider?: Provider): AccountDetails[] {
       hasProfileDir: record.hasProfile,
       hasStorageState: record.hasStorageState,
     }));
-}
-
-/** Tombstone and remove a provider-qualified account. */
-export function removeAccount(name: string, provider?: Provider): boolean {
-  return accountRepository().remove(accountId(name, provider));
-}
-
-function mapPaths(
-  id: AccountId,
-  paths: AccountPaths
-): {
-  accountPath: string;
-  authKey: string;
-  profileDir: string;
-  storagePath: string;
-} {
-  return {
-    accountPath: paths.config,
-    authKey: encodeAccountId(id),
-    profileDir: paths.profile,
-    storagePath: paths.storageState,
-  };
-}

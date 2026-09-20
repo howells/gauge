@@ -114,12 +114,14 @@ function writeAccount(
 
 test("source CLI exposes stable help and package version", (t) => {
   const fixture = createFixture();
-  t.after(() => fs.rmSync(fixture.root, { force: true, recursive: true }));
+  t.after(() => {
+    fs.rmSync(fixture.root, { force: true, recursive: true });
+  });
 
   const help = runSource(fixture, ["--help"]);
   assert.equal(help.status, 0);
   assert.equal(help.stderr, "");
-  assert.match(help.stdout, /^Usage: gauge \[options\] \[command\]/);
+  assert.match(help.stdout, /^Usage: gauge \[options\] \[command\]/u);
   for (const command of [
     "status",
     "list",
@@ -139,7 +141,9 @@ test("source CLI exposes stable help and package version", (t) => {
 
 test("root and status aliases return the same empty structured status", (t) => {
   const fixture = createFixture();
-  t.after(() => fs.rmSync(fixture.root, { force: true, recursive: true }));
+  t.after(() => {
+    fs.rmSync(fixture.root, { force: true, recursive: true });
+  });
 
   const rootStatus = runSource(fixture, ["--format", "json"]);
   const namedStatus = runSource(fixture, ["status", "--format", "json"]);
@@ -163,7 +167,9 @@ test("root and status aliases return the same empty structured status", (t) => {
 
 test("describe supports the non-TTY JSON default and field masks", (t) => {
   const fixture = createFixture();
-  t.after(() => fs.rmSync(fixture.root, { force: true, recursive: true }));
+  t.after(() => {
+    fs.rmSync(fixture.root, { force: true, recursive: true });
+  });
 
   const result = runSource(fixture, [
     "describe",
@@ -189,7 +195,9 @@ test("describe supports the non-TTY JSON default and field masks", (t) => {
 
 test("list emits JSON and paginated NDJSON envelopes", (t) => {
   const fixture = createFixture();
-  t.after(() => fs.rmSync(fixture.root, { force: true, recursive: true }));
+  t.after(() => {
+    fs.rmSync(fixture.root, { force: true, recursive: true });
+  });
   writeAccount(fixture, { name: "alpha", provider: "claude" });
   writeAccount(fixture, {
     codexHome: "/tmp/codex-beta",
@@ -236,7 +244,9 @@ test("list emits JSON and paginated NDJSON envelopes", (t) => {
 
 test("add dry-run reports writes without creating account artifacts", (t) => {
   const fixture = createFixture();
-  t.after(() => fs.rmSync(fixture.root, { force: true, recursive: true }));
+  t.after(() => {
+    fs.rmSync(fixture.root, { force: true, recursive: true });
+  });
   const codexHome = path.join(fixture.root, "codex-home");
   fs.mkdirSync(codexHome);
   fs.writeFileSync(
@@ -297,7 +307,9 @@ test("add dry-run reports writes without creating account artifacts", (t) => {
 
 test("refresh and remove dry-runs characterize existing Codex account changes", (t) => {
   const fixture = createFixture();
-  t.after(() => fs.rmSync(fixture.root, { force: true, recursive: true }));
+  t.after(() => {
+    fs.rmSync(fixture.root, { force: true, recursive: true });
+  });
   writeAccount(fixture, {
     codexHome: "/tmp/codex-work",
     name: "work",
@@ -364,7 +376,9 @@ test("refresh and remove dry-runs characterize existing Codex account changes", 
 
 test("structured argument errors preserve error code and exit status", (t) => {
   const fixture = createFixture();
-  t.after(() => fs.rmSync(fixture.root, { force: true, recursive: true }));
+  t.after(() => {
+    fs.rmSync(fixture.root, { force: true, recursive: true });
+  });
 
   const result = runSource(fixture, [
     "add",
@@ -385,7 +399,9 @@ test("structured argument errors preserve error code and exit status", (t) => {
 
 test("raw mutation payloads reject unknown properties before writes", (t) => {
   const fixture = createFixture();
-  t.after(() => fs.rmSync(fixture.root, { force: true, recursive: true }));
+  t.after(() => {
+    fs.rmSync(fixture.root, { force: true, recursive: true });
+  });
 
   const result = runSource(fixture, [
     "add",
@@ -403,7 +419,9 @@ test("raw mutation payloads reject unknown properties before writes", (t) => {
 
 test("structured errors omit absolute input paths by default", (t) => {
   const fixture = createFixture();
-  t.after(() => fs.rmSync(fixture.root, { force: true, recursive: true }));
+  t.after(() => {
+    fs.rmSync(fixture.root, { force: true, recursive: true });
+  });
   const missing = path.join(fixture.home, "credentials", "missing.json");
 
   const result = runSource(fixture, [
@@ -418,12 +436,14 @@ test("structured errors omit absolute input paths by default", (t) => {
 
   assert.equal(result.status, 2);
   assert.doesNotMatch(result.stdout, new RegExp(fixture.home));
-  assert.doesNotMatch(result.stdout, /missing\.json/);
+  assert.doesNotMatch(result.stdout, /missing\.json/u);
 });
 
 test("status account filters report provider-qualified ambiguity before acquisition", (t) => {
   const fixture = createFixture();
-  t.after(() => fs.rmSync(fixture.root, { force: true, recursive: true }));
+  t.after(() => {
+    fs.rmSync(fixture.root, { force: true, recursive: true });
+  });
   writeAccount(fixture, { name: "work", provider: "claude" });
   writeAccount(fixture, {
     codexHome: "/tmp/codex-work",
@@ -449,7 +469,9 @@ test("status account filters report provider-qualified ambiguity before acquisit
 
 test("filtered all-failed quick status emits snapshot data and exits one", (t) => {
   const fixture = createFixture();
-  t.after(() => fs.rmSync(fixture.root, { force: true, recursive: true }));
+  t.after(() => {
+    fs.rmSync(fixture.root, { force: true, recursive: true });
+  });
   writeAccount(fixture, { name: "work", provider: "cursor" });
 
   const result = runSource(fixture, [
@@ -480,7 +502,9 @@ test("filtered all-failed quick status emits snapshot data and exits one", (t) =
 
 test("built package bin executes via its shebang", (t) => {
   const fixture = createFixture();
-  t.after(() => fs.rmSync(fixture.root, { force: true, recursive: true }));
+  t.after(() => {
+    fs.rmSync(fixture.root, { force: true, recursive: true });
+  });
   // Says what to do about it. As a bare `false !== true` this reported the one
   // thing the reader already knew — something is wrong — while the fix, and the
   // fact that this test reads a build artifact at all, had to be inferred.

@@ -12,11 +12,78 @@ export interface StatusResultOptions {
   quick: boolean;
 }
 
-/** Render one usage snapshot consistently for every CLI presentation mode. */
-export function buildStatusResult(
+interface PresentedAccount {
+  account: AccountSnapshot;
+  name: string;
+}
+
+const displayName = (account: AccountSnapshot): string => {
+  if ("name" in account.source.id) {
+    return account.source.id.name;
+  }
+  const email = account.usage?.email;
+  if (email) {
+    const domain = email.split("@")[1] ?? email;
+    return domain.split(".")[0] ?? email;
+  }
+  return account.source.id.ambient;
+};
+
+const presentAccounts = (accounts: AccountSnapshot[]): PresentedAccount[] => {
+  const configuredIdentities = new Set(
+    accounts.flatMap((account) =>
+      account.source.source === "configured" && account.usage?.email
+        ? [`${account.source.provider}\0${account.usage.email}`]
+        : []
+    )
+  );
+  return accounts
+    .filter(
+      (account) =>
+        account.source.source !== "ambient" ||
+        !account.usage?.email ||
+        !configuredIdentities.has(
+          `${account.source.provider}\0${account.usage.email}`
+        )
+    )
+    .map((account) => ({ account, name: displayName(account) }));
+};
+
+const toRecommendationCandidate = (
+  { account, name }: PresentedAccount,
+  index: number
+): RecommendationCandidate => ({
+  id: {
+    name,
+    provider: account.source.provider,
+  },
+  order: index,
+  // A labelled window is scoped to one provider-owned model pool. It belongs
+  // in status output, but exhausting it does not make the whole account
+  // unusable, so only account-wide windows drive the recommendation.
+  windows: account.usage?.windows.filter((window) => !window.label) ?? [],
+  // Carried so the policy can tell a Max 20x from a free tier. It never
+  // reorders the recommendation — see `findWaitFor`.
+  ...(account.usage?.plan && { plan: account.usage.plan }),
+  ...(account.usage?.resetsApplicable !== undefined && {
+    applicableResets: account.usage.resetsApplicable,
+  }),
+  ...(account.error && { error: account.error }),
+});
+
+const classifySnapshot = (
+  snapshot: UsageSnapshot
+): "complete" | "failed" | "partial" => {
+  if (snapshot.summary.total > 0 && snapshot.summary.succeeded === 0) {
+    return "failed";
+  }
+  return snapshot.summary.failed > 0 ? "partial" : "complete";
+};
+
+export const buildStatusResult = (
   snapshot: UsageSnapshot,
   options: StatusResultOptions
-): CommandResult {
+): CommandResult => {
   const presented = presentAccounts(snapshot.accounts);
   const recommendation = recommendUsage(
     presented.map(toRecommendationCandidate),
@@ -51,83 +118,4 @@ export function buildStatusResult(
     }),
     result,
   };
-}
-
-interface PresentedAccount {
-  account: AccountSnapshot;
-  name: string;
-}
-
-/**
- * Resolve display identities for the snapshot's accounts.
- *
- * Ambient accounts (auto-discovered credentials such as ~/.codex) have no
- * configured name. When one resolves to the same signed-in identity as a
- * configured account it is a duplicate reading of the same account and is
- * dropped; otherwise it is named from its email domain the way configured
- * account names conventionally are, falling back to the ambient key.
- */
-function presentAccounts(accounts: AccountSnapshot[]): PresentedAccount[] {
-  const configuredIdentities = new Set(
-    accounts.flatMap((account) =>
-      account.source.source === "configured" && account.usage?.email
-        ? [`${account.source.provider}\0${account.usage.email}`]
-        : []
-    )
-  );
-  return accounts
-    .filter(
-      (account) =>
-        account.source.source !== "ambient" ||
-        !account.usage?.email ||
-        !configuredIdentities.has(
-          `${account.source.provider}\0${account.usage.email}`
-        )
-    )
-    .map((account) => ({ account, name: displayName(account) }));
-}
-
-function displayName(account: AccountSnapshot): string {
-  if ("name" in account.source.id) {
-    return account.source.id.name;
-  }
-  const email = account.usage?.email;
-  if (email) {
-    const domain = email.split("@")[1] ?? email;
-    return domain.split(".")[0] ?? email;
-  }
-  return account.source.id.ambient;
-}
-
-function toRecommendationCandidate(
-  { account, name }: PresentedAccount,
-  index: number
-): RecommendationCandidate {
-  return {
-    id: {
-      name,
-      provider: account.source.provider,
-    },
-    order: index,
-    // A labelled window is scoped to one provider-owned model pool. It belongs
-    // in status output, but exhausting it does not make the whole account
-    // unusable, so only account-wide windows drive the recommendation.
-    windows: account.usage?.windows.filter((window) => !window.label) ?? [],
-    // Carried so the policy can tell a Max 20x from a free tier. It never
-    // reorders the recommendation — see `findWaitFor`.
-    ...(account.usage?.plan && { plan: account.usage.plan }),
-    ...(account.usage?.resetsApplicable !== undefined && {
-      applicableResets: account.usage.resetsApplicable,
-    }),
-    ...(account.error && { error: account.error }),
-  };
-}
-
-function classifySnapshot(
-  snapshot: UsageSnapshot
-): "complete" | "failed" | "partial" {
-  if (snapshot.summary.total > 0 && snapshot.summary.succeeded === 0) {
-    return "failed";
-  }
-  return snapshot.summary.failed > 0 ? "partial" : "complete";
-}
+};

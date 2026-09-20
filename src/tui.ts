@@ -36,39 +36,23 @@ import {
   switchCodexLogin,
 } from "./services/switch-login.js";
 
-/** One account a surface on this machine can be signed into from here. */
 interface SwitchTarget {
   name: string;
   provider: "claude" | "codex";
 }
 
-/** An account the last reading could not read, and the keystroke that fixes it. */
 interface BrokenAccount {
   name: string;
   provider: string;
 }
 
-/**
- * What each column is called when the subject is the account, not the app.
- *
- * Deliberately not the app names the sign-in offer uses: you sign *Claude Code*
- * in, but the thing you add is a *Claude* account, and the two are only the same
- * word by coincidence for Codex.
- */
 const SURFACE_NAME: Record<"claude" | "codex" | "cursor", string> = {
   claude: "Claude",
   codex: "Codex",
   cursor: "Cursor",
 };
 
-/**
- * The accounts in a status payload that failed to read.
- *
- * Read defensively from the command's own data rather than re-deriving it: the
- * dashboard and this list must always name the same accounts, and the payload is
- * the one thing both already agree on.
- */
-function brokenAccounts(data: unknown): BrokenAccount[] {
+const brokenAccounts = (data: unknown): BrokenAccount[] => {
   if (typeof data !== "object" || data === null || !("accounts" in data)) {
     return [];
   }
@@ -93,30 +77,13 @@ function brokenAccounts(data: unknown): BrokenAccount[] {
     }
     return [{ name: entry.name, provider: entry.provider }];
   });
-}
+};
 
-/**
- * The key legend, and the re-auth offers when there is anything to fix.
- *
- * A dashboard that prints `gauge refresh codex danielhowells` has already done
- * the thinking; making the reader copy it back into the same terminal is the
- * part worth removing. Numbering the broken accounts turns that into one
- * keystroke, and the numbers match the order they appear in above.
- */
-/**
- * The keys, and what Enter would do to the cell the cursor is on.
- *
- * Written against the selection rather than as a fixed legend, because a key
- * that is listed but does nothing to the thing you are looking at is worse than
- * no legend at all. Cursor is the only surface gauge cannot sign in — it has no
- * per-account credential store to move — so the legend says that where it is
- * true instead of offering an action that would fail.
- */
-function footer(
+const footer = (
   broken: BrokenAccount[],
   selected: { label: string; provider: string } | undefined,
   targets: SwitchTarget[]
-): string {
+): string => {
   const surface =
     selected?.provider === "codex"
       ? "Codex"
@@ -166,10 +133,9 @@ function footer(
     );
   }
   return `${lines.map((line) => `   ${line}`).join("\n")}\n`;
-}
+};
 
-/** Present the shared status service as a small keyboard-controlled terminal view. */
-export async function runTUI(): Promise<void> {
+export const runTUI = async (): Promise<void> => {
   let previousLineCount = 0;
   let processing = false;
   // A typed answer is not a set of shortcuts. While a prompt is open every key
@@ -188,7 +154,7 @@ export async function runTUI(): Promise<void> {
       process.stdout.write(`\u001B[${previousLineCount}A\u001B[0J`);
     }
     process.stdout.write(content);
-    previousLineCount = (content.match(/\n/g) ?? []).length;
+    previousLineCount = (content.match(/\n/gu) ?? []).length;
   };
 
   /**
@@ -858,4 +824,4 @@ export async function runTUI(): Promise<void> {
     process.stdin.pause();
     process.stdout.write("\n");
   }
-}
+};
