@@ -8,9 +8,9 @@ import type {
   StatusSnapshotCache,
 } from "../src/serve/snapshot.js";
 
-function cacheWith(
+const cacheWith = (
   result: CommandResult | null
-): Pick<StatusSnapshotCache, "get"> & { calls(): number } {
+): Pick<StatusSnapshotCache, "get"> & { calls(): number } => {
   let calls = 0;
   return {
     calls: () => calls,
@@ -26,23 +26,21 @@ function cacheWith(
       return snapshot;
     },
   };
-}
+};
 
-function statusResult(): CommandResult {
-  return {
-    command: "status",
-    data: {
-      accounts: [{ name: "personal", provider: "claude" }],
-      summary: { failed: 0, succeeded: 1, timed_out: 0, total: 1 },
-    },
-    human: "",
-  };
-}
+const statusResult = (): CommandResult => ({
+  command: "status",
+  data: {
+    accounts: [{ name: "personal", provider: "claude" }],
+    summary: { failed: 0, succeeded: 1, timed_out: 0, total: 1 },
+  },
+  human: "",
+});
 
-async function withServer(
+const withServer = async (
   cache: Pick<StatusSnapshotCache, "get">,
   run: (port: number) => Promise<void>
-): Promise<void> {
+): Promise<void> => {
   const server = createServeServer({ cache, port: 0 });
   const address = await server.listen();
   try {
@@ -50,7 +48,7 @@ async function withServer(
   } finally {
     await server.close();
   }
-}
+};
 
 test("GET / serves the dashboard page", async () => {
   await withServer(cacheWith(statusResult()), async (port) => {

@@ -7,9 +7,13 @@ import {
   scopedClaudeLimits,
 } from "../src/providers/upstream-schemas.js";
 
-function limitWith(kind: string, scope: unknown, percent: number) {
-  return { is_active: true, kind, percent, resets_at: null, scope };
-}
+const limitWith = (kind: string, scope: unknown, percent: number) => ({
+  is_active: true,
+  kind,
+  percent,
+  resets_at: null,
+  scope,
+});
 
 test("scopedClaudeLimits extracts model-scoped weekly sub-limits", () => {
   const scoped = scopedClaudeLimits([

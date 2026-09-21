@@ -5,7 +5,7 @@ import { sanitizeForAgent } from "../security.js";
 import { DASHBOARD_HTML } from "./dashboard.js";
 import type { ServedSnapshot, StatusSnapshotCache } from "./snapshot.js";
 
-const DEFAULT_SERVE_PORT = 42_843;
+export const DEFAULT_SERVE_PORT = 42_843;
 
 export interface ServeServerOptions {
   cache: Pick<StatusSnapshotCache, "get">;

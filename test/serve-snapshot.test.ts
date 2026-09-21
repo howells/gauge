@@ -4,11 +4,13 @@ import { test } from "node:test";
 import type { CommandResult } from "../src/output.js";
 import { StatusSnapshotCache } from "../src/serve/snapshot.js";
 
-function result(command: string): CommandResult {
-  return { command, data: {}, human: "" };
-}
+const result = (command: string): CommandResult => ({
+  command,
+  data: {},
+  human: "",
+});
 
-function manualClock() {
+const manualClock = () => {
   let now = 1_000_000;
   return {
     advance: (ms: number) => {
@@ -16,7 +18,7 @@ function manualClock() {
     },
     now: () => now,
   };
-}
+};
 
 test("first get collects and caches", async () => {
   let fetches = 0;
@@ -49,7 +51,7 @@ test("a poll inside the minimum age never re-collects", async () => {
   assert.equal(fetches, 1);
 });
 
-function deferredFetch() {
+const deferredFetch = () => {
   const resolvers: ((value: CommandResult) => void)[] = [];
   return {
     fetch: async () =>
@@ -58,11 +60,11 @@ function deferredFetch() {
       }),
     resolvers,
   };
-}
+};
 
-async function flush(): Promise<void> {
+const flush = async (): Promise<void> => {
   await new Promise((resolve) => setImmediate(resolve));
-}
+};
 
 test("a stale poll returns the cached reading and refreshes in the background", async () => {
   const clock = manualClock();

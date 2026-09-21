@@ -21,13 +21,13 @@ function writeAuthStore(entries: Record<string, unknown>): string {
   return home;
 }
 
-function creditsResponder(body: unknown, status = 200) {
-  return async () =>
+const creditsResponder =
+  (body: unknown, status = 200) =>
+  async () =>
     new Response(JSON.stringify(body), {
       headers: { "content-type": "application/json" },
       status,
     });
-}
 
 test("readGrokAccounts reads every stored login with its expiry", () => {
   const home = writeAuthStore({

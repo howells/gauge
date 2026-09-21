@@ -6,10 +6,11 @@ import { test } from "node:test";
 
 import { fetchZaiUsage, readZaiApiKey } from "../src/providers/zai-usage.js";
 
-function fetchResponder(
-  routes: Record<string, { body?: unknown; status: number }>
-) {
-  return async (url: string) => {
+const fetchResponder =
+  (
+    routes: Record<string, { body?: unknown; status: number }>
+  ): ((url: string) => Promise<Response>) =>
+  async (url: string) => {
     const route = Object.entries(routes).find(([routeUrl]) => url === routeUrl);
     const found = route?.[1] ?? { status: 404 };
     return new Response(JSON.stringify(found.body ?? {}), {
@@ -17,7 +18,6 @@ function fetchResponder(
       status: found.status,
     });
   };
-}
 
 const QUOTA_URL = "https://api.z.ai/api/monitor/usage/quota/limit";
 
@@ -31,20 +31,20 @@ const QUOTA_BODY = {
         nextResetTime: 1_789_754_518_889,
         number: 5,
         percentage: 1,
-        remaining: 27541,
+        remaining: 27_541,
         type: "CREDIT_LIMIT",
         unit: 3,
-        usage: 28000,
+        usage: 28_000,
       },
       {
         currentValue: 1634,
         nextResetTime: 1_790_129_901_961,
         number: 1,
         percentage: 1,
-        remaining: 138365,
+        remaining: 138_365,
         type: "CREDIT_LIMIT",
         unit: 6,
-        usage: 140000,
+        usage: 140_000,
       },
     ],
   },

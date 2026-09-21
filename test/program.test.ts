@@ -5,11 +5,10 @@ import { COMMAND_SPECS } from "../src/commands/specs.js";
 import { createProgram } from "../src/program.js";
 import type { CommandHandlers } from "../src/program.js";
 
-function handlers(): CommandHandlers {
-  return Object.fromEntries(
+const handlers = (): CommandHandlers =>
+  Object.fromEntries(
     COMMAND_SPECS.map((spec) => [spec.name, () => {}])
   ) as CommandHandlers;
-}
 
 test("createProgram registers every command and option from metadata", () => {
   const program = createProgram({ handlers: handlers(), version: "test" });

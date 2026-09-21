@@ -27,9 +27,8 @@ function writeLegacy(
   );
 }
 
-function migrationConflictError(error: unknown): boolean {
-  return error instanceof CLIError && error.code === "MIGRATION_CONFLICT";
-}
+const migrationConflictError = (error: unknown): boolean =>
+  error instanceof CLIError && error.code === "MIGRATION_CONFLICT";
 
 test("legacy migration preflight detects v2 state without mutating it", () => {
   const root = dataRoot();
