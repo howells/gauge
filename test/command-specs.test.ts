@@ -151,10 +151,11 @@ test("generated command example reference exactly matches canonical specs", () =
   );
 });
 
-test("canonical command examples are published in README, AGENTS, or bundled skills", () => {
+test("canonical command examples are published in bundled documentation or skills", () => {
   const documentation = [
     "README.md",
     "AGENTS.md",
+    "docs/command-examples.md",
     "skills/README.md",
     "skills/headless-auth/SKILL.md",
     "skills/mutations/SKILL.md",

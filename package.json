@@ -11,6 +11,7 @@
     "gauge": "dist/cli.js"
   },
   "files": [
+    "docs/command-examples.md",
     "dist",
     "AGENTS.md",
     "skills",
