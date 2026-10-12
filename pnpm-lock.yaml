@@ -34,8 +34,8 @@ importers:
         specifier: ^3.5.1
         version: 3.5.1
       '@howells/typescript-config':
-        specifier: ^0.1.6
-        version: 0.1.6
+        specifier: ^0.1.8
+        version: 0.1.8
       '@types/node':
         specifier: ^26.6.2
         version: 26.6.2
@@ -276,8 +276,9 @@ packages:
       pg:
         optional: true
 
-  '@howells/typescript-config@0.1.6':
-    resolution: {integrity: sha512-oZkchm5DCCfzWOGoowP/NlXlHKyj1UBYFYZRtbz4F9/dQOhfAkcoINvcuB2DbxuIrx9XB5/PR2z0XtX5N/au0Q==}
+  '@howells/typescript-config@0.1.8':
+    resolution: {integrity: sha512-e/VMw9IJwL/ktF2eXrQGJeaE/pzTbeZ0zz9vjQYLf/4ljsad5JU67bKK00qB3iAPuw+Crt8HgSZS2W4F5cnB+A==}
+    engines: {node: '>=24.15.0'}
 
   '@istanbuljs/schema@0.1.6':
     resolution: {integrity: sha512-+Sg6GCR/wy1oSmQDFq4LQDAhm3ETKnorxN+y5nbLULOR3P0c14f2Wurzj3/xqPXtasLFfHd5iRFQ7AJt4KH2cw==}
@@ -2191,7 +2192,7 @@ snapshots:
 
   '@howells/neon@0.2.0': {}
 
-  '@howells/typescript-config@0.1.6': {}
+  '@howells/typescript-config@0.1.8': {}
 
   '@istanbuljs/schema@0.1.6': {}
 
