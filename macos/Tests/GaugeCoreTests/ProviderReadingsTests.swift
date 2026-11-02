@@ -3,7 +3,7 @@ import Testing
 @testable import GaugeCore
 
 @Test func missingSessionIsUnknownAndWeeklyScopeKeepsItsIdentity() throws {
-    let reading = try ProviderReadings.claude(Data(#"{"five_hour":null,"seven_day":{"utilization":100,"resets_at":"2026-11-02T21:00:00.123456Z"},"limits":[{"kind":"weekly_scoped","percent":32,"scope":{"model":{"display_name":"Fable"}}}]}"#.utf8))
+    let reading = try ProviderReadings.claude(Data(#"{"five_hour":null,"seven_day":{"utilization":100,"resets_at":"2026-11-02T21:00:00.123456Z"},"limits":[{"kind":"weekly_scoped","percent":32,"is_active":false,"scope":{"model":{"display_name":"Fable"}}}]}"#.utf8))
     #expect(reading.windows[0].kind == "five_hour")
     #expect(reading.windows[0].remainingPercent == nil)
     #expect(reading.windows[1].kind == "weekly")
@@ -11,6 +11,7 @@ import Testing
     #expect(reading.windows[1].resetsAt != nil)
     #expect(reading.windows[2].scope == "Fable")
     #expect(reading.windows[2].remainingPercent == 68)
+    #expect(reading.windows[2].isActive == false)
     #expect(reading.limited)
 }
 

@@ -71,7 +71,8 @@ enum ProviderReadings {
             let model = scope?["model"] as? [String: Any]
             if let name = text(model?["display_name"]), let used = percent(limit["percent"]) {
                 windows.append(UsageWindow(id: "scoped_\(index)", kind: "weekly", scope: name, usedPercent: used,
-                                           resetsAt: date(limit["resets_at"]), durationSeconds: 604_800))
+                                           resetsAt: date(limit["resets_at"]), durationSeconds: 604_800,
+                                           isActive: limit["is_active"] as? Bool))
             }
         }
         guard windows.contains(where: { $0.usedPercent != nil }) else { throw AcquisitionError(.notReported) }

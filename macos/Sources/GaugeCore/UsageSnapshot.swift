@@ -44,18 +44,20 @@ public struct UsageWindow: Identifiable, Codable, Sendable {
     public let usedPercent: Double?
     public let resetsAt: Date?
     public let durationSeconds: Int?
+    public let isActive: Bool?
 
     public var remainingPercent: Double? {
         usedPercent.map { max(0, 100 - $0) }
     }
 
-    public init(id: String, kind: String, scope: String? = nil, usedPercent: Double?, resetsAt: Date?, durationSeconds: Int? = nil) {
+    public init(id: String, kind: String, scope: String? = nil, usedPercent: Double?, resetsAt: Date?, durationSeconds: Int? = nil, isActive: Bool? = nil) {
         self.id = id
         self.kind = kind
         self.scope = scope
         self.usedPercent = usedPercent
         self.resetsAt = resetsAt
         self.durationSeconds = durationSeconds
+        self.isActive = isActive
     }
 }
 
