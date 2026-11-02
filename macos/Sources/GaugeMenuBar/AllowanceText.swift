@@ -48,7 +48,18 @@ enum AllowanceText {
         case .discovery: "Can't find proxy accounts"
         case .cache: "Couldn't save last reading"
         case .trace: "Can't read recent failures"
+        case .providerPaused: "Provider checks paused"
+        case .collectionInProgress: "Check in progress"
+        case .scheduling: "Checks paused · can't save schedule"
         }
         return failure.httpStatus.map { "\(message) (\($0))" } ?? message
+    }
+
+    static func nextCheck(_ date: Date, now: Date, paused: Bool) -> String {
+        if date <= now { return "Next check due" }
+        let time = Calendar.current.isDate(date, inSameDayAs: now)
+            ? date.formatted(.dateTime.hour().minute())
+            : date.formatted(.dateTime.day().month(.abbreviated).hour().minute())
+        return paused ? "Checks paused until \(time)" : "Next check after \(time)"
     }
 }

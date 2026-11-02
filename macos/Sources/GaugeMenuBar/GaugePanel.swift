@@ -47,7 +47,7 @@ struct GaugePanel: View {
                 Text("Account allowance").font(.system(size: 12)).foregroundStyle(GaugePalette.secondary)
             }
             Spacer()
-            if model.isRefreshing { ProgressView().controlSize(.small).accessibilityLabel("Checking allowance") }
+            if model.isRefreshing { ProgressView().controlSize(.small).accessibilityLabel("Loading allowance") }
             Button {
                 editedHost = model.host
                 editedIdentityFile = model.identityFile
@@ -74,6 +74,9 @@ struct GaugePanel: View {
             }
             if model.cacheFailed || model.snapshot?.cacheFailure != nil {
                 Notice(message: "Couldn't save the last reading for offline use.", symbol: "exclamationmark.triangle")
+            }
+            if model.snapshot?.schedulingFailure != nil {
+                Notice(message: "Provider checks paused. Couldn't save the shared check schedule.", symbol: "pause.circle")
             }
             if let failed = accounts.filter({ $0.recentProxyFailure != nil }).max(by: {
                 ($0.recentProxyFailure?.observedAt ?? .distantPast) < ($1.recentProxyFailure?.observedAt ?? .distantPast)
@@ -141,7 +144,7 @@ struct GaugePanel: View {
                 Text("Uses your existing SSH access. Only allowance readings leave the proxy Mac.")
                     .font(.system(size: 12)).foregroundStyle(GaugePalette.secondary)
             }
-            Button("Save and refresh") {
+            Button("Save and reload") {
                 showSettings = false
                 Task { await model.configure(host: remote ? editedHost : "", identityFile: editedIdentityFile) }
             }
@@ -151,7 +154,7 @@ struct GaugePanel: View {
             )))
             .buttonStyle(.borderedProminent)
             Spacer()
-            Text("Checks every minute and after wake. Times use \(TimeZone.current.identifier).")
+            Text("Reloads saved readings every minute. Provider checks are at least 10 minutes apart, with longer pauses after rate limits. Times use \(TimeZone.current.identifier).")
                 .font(.system(size: 12)).foregroundStyle(GaugePalette.secondary)
         }.padding(20).frame(maxWidth: .infinity, alignment: .leading)
     }
@@ -159,9 +162,9 @@ struct GaugePanel: View {
     private var footer: some View {
         VStack(spacing: 10) {
             HStack {
-                if let checked = model.snapshot?.generatedAt {
-                    Text("Checked \(checked, style: .relative) ago")
-                } else { Text("No reading yet") }
+                if let checked = visibleAccounts.compactMap(\.lastSucceededAt).max() {
+                    Text("Last success \(checked, style: .relative) ago")
+                } else { Text("No successful check yet") }
                 Spacer()
                 Text(TimeZone.current.identifier)
             }
@@ -171,8 +174,9 @@ struct GaugePanel: View {
                     .font(.system(size: 11)).lineLimit(1).truncationMode(.middle)
                     .help(model.sourceName)
                 Spacer()
-                Button("Refresh", systemImage: "arrow.clockwise") { Task { await model.refresh() } }
+                Button("Reload", systemImage: "arrow.clockwise") { Task { await model.refresh() } }
                     .disabled(model.isRefreshing).keyboardShortcut("r")
+                    .help("Reload saved readings. Checks run only when the shared schedule allows.")
                 Button("Quit") { NSApplication.shared.terminate(nil) }
             }
         }.padding(.horizontal, 16).padding(.vertical, 12)

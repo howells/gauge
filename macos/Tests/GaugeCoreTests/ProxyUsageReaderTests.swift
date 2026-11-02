@@ -32,10 +32,13 @@ private func temporaryDirectory() throws -> URL {
         UsageHTTPResponse(status: 401, data: Data("private provider body".utf8))
     ])
     let time = Date(timeIntervalSince1970: 1_793_612_000)
-    let reader = ProxyUsageReader(directory: directory, transport: { try await transport.send($0) }, now: { time })
+    let state = directory.appendingPathComponent("state/collection.json")
+    let reader = ProxyUsageReader(directory: directory, stateURL: state, transport: { try await transport.send($0) }, now: { time })
     let first = await reader.refresh()
     #expect(first.accounts[0].state == .ready)
-    let second = await reader.refresh()
+    let restarted = ProxyUsageReader(directory: directory, stateURL: state,
+                                    transport: { try await transport.send($0) }, now: { time.addingTimeInterval(601) })
+    let second = await restarted.refresh()
     let row = try #require(second.accounts.first)
     #expect(row.state == .unavailable)
     #expect(row.failure?.code == .authentication)
@@ -63,19 +66,20 @@ private func temporaryDirectory() throws -> URL {
     ]
     for (name, contents) in files { try Data(contents.utf8).write(to: directory.appendingPathComponent(name)) }
     let transport = Responses([])
-    let reader = ProxyUsageReader(directory: directory, transport: { try await transport.send($0) }, now: { Date() })
+    let reader = ProxyUsageReader(directory: directory, stateURL: directory.appendingPathComponent("state/collection.json"),
+                                  transport: { try await transport.send($0) }, now: { Date() })
     let snapshot = await reader.refresh()
     #expect(snapshot.accounts.count == 3)
     #expect(Set(snapshot.accounts.map(\.state)) == [.disabled, .unsupported, .unavailable])
     #expect(await transport.requests.isEmpty)
-    #expect(try FileManager.default.contentsOfDirectory(atPath: directory.path).count == 3)
+    #expect(try FileManager.default.contentsOfDirectory(atPath: directory.path).filter { $0.hasSuffix(".json") }.count == 3)
 }
 
 @Test func malformedUpstreamDataIsNotMisclassifiedAsANetworkFailure() async throws {
     let directory = try temporaryDirectory()
     defer { try? FileManager.default.removeItem(at: directory) }
     try Data(#"{"type":"codex","access_token":"test"}"#.utf8).write(to: directory.appendingPathComponent("codex-one.json"))
-    let reader = ProxyUsageReader(directory: directory,
+    let reader = ProxyUsageReader(directory: directory, stateURL: directory.appendingPathComponent("state/collection.json"),
         transport: { _ in UsageHTTPResponse(status: 200, data: Data("not JSON".utf8)) }, now: { Date() })
     let snapshot = await reader.refresh()
     #expect(snapshot.accounts[0].state == .unavailable)
@@ -91,13 +95,14 @@ private func temporaryDirectory() throws -> URL {
     try Data(#"{"type":"claude","access_token":"test"}"#.utf8).write(to: directory.appendingPathComponent("claude-one.json"))
     let cache = root.appendingPathComponent("cache/snapshot.json")
     let time = Date(timeIntervalSince1970: 1_793_612_000)
-    let reader = ProxyUsageReader(directory: directory, cacheURL: cache,
+    let state = root.appendingPathComponent("cache/collection.json")
+    let reader = ProxyUsageReader(directory: directory, cacheURL: cache, stateURL: state,
         transport: { _ in UsageHTTPResponse(status: 200, data: Data(#"{"seven_day":{"utilization":87}}"#.utf8)) }, now: { time })
     _ = await reader.refresh()
     let mode = try FileManager.default.attributesOfItem(atPath: cache.path)[.posixPermissions] as? NSNumber
     #expect(mode?.intValue == 0o600)
     try FileManager.default.removeItem(at: directory)
-    let restarted = ProxyUsageReader(directory: directory, cacheURL: cache,
+    let restarted = ProxyUsageReader(directory: directory, cacheURL: cache, stateURL: state,
         transport: { _ in throw AcquisitionError(.network) }, now: { time.addingTimeInterval(600) })
     let snapshot = await restarted.refresh()
     #expect(snapshot.discoveryFailure?.code == .discovery)

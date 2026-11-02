@@ -3,6 +3,7 @@ import Foundation
 struct UsageHTTPResponse: Sendable {
     let status: Int
     let data: Data
+    var retryAfter: String? = nil
 }
 
 typealias UsageTransport = @Sendable (URLRequest) async throws -> UsageHTTPResponse
@@ -30,7 +31,8 @@ enum UsageHTTP {
             guard let response = response as? HTTPURLResponse, data.count <= 1_000_000 else {
                 throw AcquisitionError(.invalidResponse)
             }
-            return UsageHTTPResponse(status: response.statusCode, data: data)
+            return UsageHTTPResponse(status: response.statusCode, data: data,
+                                     retryAfter: response.value(forHTTPHeaderField: "Retry-After"))
         }
     }
 

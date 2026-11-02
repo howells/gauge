@@ -7,14 +7,16 @@ public struct UsageSnapshot: Codable, Sendable {
     public let discoveryFailure: UsageFailure?
     public let cacheFailure: UsageFailure?
     public let traceFailure: UsageFailure?
+    public let schedulingFailure: UsageFailure?
 
-    public init(generatedAt: Date, accounts: [AccountUsage], discoveryFailure: UsageFailure? = nil, cacheFailure: UsageFailure? = nil, traceFailure: UsageFailure? = nil) {
+    public init(generatedAt: Date, accounts: [AccountUsage], discoveryFailure: UsageFailure? = nil, cacheFailure: UsageFailure? = nil, traceFailure: UsageFailure? = nil, schedulingFailure: UsageFailure? = nil) {
         self.schemaVersion = 1
         self.generatedAt = generatedAt
         self.accounts = accounts
         self.discoveryFailure = discoveryFailure
         self.cacheFailure = cacheFailure
         self.traceFailure = traceFailure
+        self.schedulingFailure = schedulingFailure
     }
 }
 
@@ -25,6 +27,11 @@ public enum AccountState: String, Codable, Sendable {
 public enum FailureCode: String, Codable, Sendable {
     case authentication, forbidden, rateLimited, network, invalidResponse
     case unreadableCredentials, missingCredentials, unsupportedProvider, discovery, cache, trace, notReported
+    case providerPaused, collectionInProgress, scheduling
+}
+
+public enum CheckStatus: String, Codable, Sendable {
+    case cached, paused, inProgress
 }
 
 public struct UsageFailure: Codable, Sendable {
@@ -68,14 +75,16 @@ public struct AccountUsage: Identifiable, Codable, Sendable {
     public let plan: String?
     public let state: AccountState
     public let windows: [UsageWindow]
-    public let checkedAt: Date
+    public let checkedAt: Date?
     public let lastSucceededAt: Date?
     public let failure: UsageFailure?
     public let recentProxyFailure: ProxyFailure?
+    public let nextCheckAt: Date?
+    public let checkStatus: CheckStatus?
 
     public var isStale: Bool { state == .unavailable && lastSucceededAt != nil }
 
-    public init(id: String, provider: String, email: String, plan: String? = nil, state: AccountState, windows: [UsageWindow] = [], checkedAt: Date, lastSucceededAt: Date? = nil, failure: UsageFailure? = nil, recentProxyFailure: ProxyFailure? = nil) {
+    public init(id: String, provider: String, email: String, plan: String? = nil, state: AccountState, windows: [UsageWindow] = [], checkedAt: Date?, lastSucceededAt: Date? = nil, failure: UsageFailure? = nil, recentProxyFailure: ProxyFailure? = nil, nextCheckAt: Date? = nil, checkStatus: CheckStatus? = nil) {
         self.id = id
         self.provider = provider
         self.email = email
@@ -86,6 +95,8 @@ public struct AccountUsage: Identifiable, Codable, Sendable {
         self.lastSucceededAt = lastSucceededAt
         self.failure = failure
         self.recentProxyFailure = recentProxyFailure
+        self.nextCheckAt = nextCheckAt
+        self.checkStatus = checkStatus
     }
 }
 

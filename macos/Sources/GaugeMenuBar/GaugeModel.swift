@@ -94,7 +94,8 @@ final class GaugeModel {
     func isCurrent(_ account: AccountUsage, at now: Date) -> Bool {
         guard connectionFailure == nil, account.state != .unavailable,
               let success = account.lastSucceededAt,
-              now.timeIntervalSince(success) <= 300 else { return false }
+              account.checkStatus != .paused, account.checkStatus != .inProgress,
+              now.timeIntervalSince(success) < 600 else { return false }
         return !account.windows.contains { window in
             guard window.scope == nil, let reset = window.resetsAt else { return false }
             return reset > success && reset <= now

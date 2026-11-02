@@ -18,13 +18,15 @@ struct AccountCard: View {
         return account.state == .limited ? GaugePalette.red : GaugePalette.green
     }
 
+    private var lastKnown: Bool { !current || account.checkStatus != nil }
+
     private var status: String {
         switch account.state {
         case .disabled: "Disabled"
         case .unsupported: "Allowance unknown"
         case .unavailable: AllowanceText.failure(account.failure)
-        case .limited: current ? "Limit reached" : "Last known · limit reached"
-        case .ready: current ? "Allowance available" : "Reading out of date"
+        case .limited: lastKnown ? "Last known · limit reached" : "Limit reached"
+        case .ready: lastKnown ? "Last known · allowance available" : "Allowance available"
         }
     }
 
@@ -45,6 +47,10 @@ struct AccountCard: View {
                         if showProvider { Text(AllowanceText.provider(account.provider)).font(.system(size: 11)).foregroundStyle(GaugePalette.secondary) }
                     }
                     if let primary, let remaining = primary.remainingPercent {
+                        if lastKnown && account.state == .unavailable {
+                            Text("Last known allowance").font(.system(size: 11, weight: .medium))
+                                .foregroundStyle(GaugePalette.secondary)
+                        }
                         HStack(alignment: .firstTextBaseline, spacing: 6) {
                             Text("\(AllowanceText.percent(remaining)) left").font(.system(size: 20, weight: .semibold, design: .rounded))
                                 .foregroundStyle(colour)
@@ -55,6 +61,14 @@ struct AccountCard: View {
                             .font(.system(size: 11)).foregroundStyle(GaugePalette.secondary)
                     } else if account.state == .unsupported {
                         Text("No live allowance reading").font(.system(size: 11)).foregroundStyle(GaugePalette.secondary)
+                    }
+                    if let last = account.lastSucceededAt {
+                        Text("Last success \(last, style: .relative) ago")
+                            .font(.system(size: 11)).foregroundStyle(GaugePalette.secondary)
+                    }
+                    if let next = account.nextCheckAt {
+                        Text(AllowanceText.nextCheck(next, now: now, paused: account.checkStatus == .paused))
+                            .font(.system(size: 11)).foregroundStyle(account.checkStatus == .paused ? GaugePalette.amber : GaugePalette.secondary)
                     }
                 }
                 .contentShape(Rectangle())
@@ -68,8 +82,12 @@ struct AccountCard: View {
                     AllowanceWindowRow(window: window, now: now, current: current)
                 }
                 if let plan = account.plan { Text("Plan: \(plan.capitalized)").font(.system(size: 11)) }
-                Text("Checked \(account.checkedAt.formatted(.dateTime.day().month(.abbreviated).hour().minute()))")
-                    .font(.system(size: 11)).foregroundStyle(GaugePalette.secondary)
+                if let checked = account.checkedAt {
+                    Text("Last attempt \(checked.formatted(.dateTime.day().month(.abbreviated).hour().minute()))")
+                        .font(.system(size: 11)).foregroundStyle(GaugePalette.secondary)
+                } else {
+                    Text("No check attempted").font(.system(size: 11)).foregroundStyle(GaugePalette.secondary)
+                }
                 if !current, let last = account.lastSucceededAt {
                     Text("Last known allowance: \(last.formatted(.dateTime.day().month(.abbreviated).hour().minute()))")
                         .font(.system(size: 11)).foregroundStyle(GaugePalette.amber)

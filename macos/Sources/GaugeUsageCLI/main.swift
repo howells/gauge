@@ -23,6 +23,7 @@ struct GaugeUsageCLI {
             case "--no-proxy-log": log = nil
             case "--help":
                 print("gauge-proxy-usage [--auth-dir PATH] [--cache-file PATH | --no-cache] [--proxy-log PATH | --no-proxy-log]")
+                print("Provider checks share a persisted schedule for each auth directory. --no-cache skips only the output cache; it never bypasses shared scheduling or cooldowns.")
                 return
             default: exit(2)
             }
