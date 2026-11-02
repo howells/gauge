@@ -27,8 +27,9 @@ private struct CollectionFixture {
         }
     }
 
-    func reader(_ clock: TestClock, cache: URL? = nil, transport: @escaping UsageTransport) -> ProxyUsageReader {
-        ProxyUsageReader(directory: auth, cacheURL: cache, stateURL: state, transport: transport, now: { clock.now() })
+    func reader(_ clock: TestClock, cache: URL? = nil, bootstrapCache: URL? = nil, transport: @escaping UsageTransport) -> ProxyUsageReader {
+        ProxyUsageReader(directory: auth, cacheURL: cache, stateURL: state, bootstrapCacheURL: bootstrapCache,
+                         transport: transport, now: { clock.now() })
     }
 
     func remove() { try? FileManager.default.removeItem(at: root) }
@@ -255,7 +256,9 @@ private actor GatedTransport {
                            checkedAt: checked, lastSucceededAt: lastSuccess, failure: UsageFailure(.rateLimited, httpStatus: 429))
     try SnapshotCache.write(UsageSnapshot(generatedAt: clock.now(), accounts: [old]), to: fixture.cache)
     let transport = CountingTransport()
-    let snapshot = await fixture.reader(clock, cache: fixture.cache) { await transport.send($0) }.refresh()
+    let previousBytes = try Data(contentsOf: fixture.cache)
+    // Suppressing output-cache writes must still migrate the shared old reading.
+    let snapshot = await fixture.reader(clock, bootstrapCache: fixture.cache) { await transport.send($0) }.refresh()
     #expect(await transport.claudeRequests == 0)
     #expect(snapshot.accounts[0].failure?.httpStatus == 429)
     #expect(snapshot.accounts[0].checkedAt == checked)
@@ -263,6 +266,7 @@ private actor GatedTransport {
     #expect(snapshot.accounts[0].windows[0].remainingPercent == 0)
     #expect(snapshot.accounts[0].nextCheckAt == checked.addingTimeInterval(1800))
     #expect(snapshot.accounts[0].checkStatus == .paused)
+    #expect(try Data(contentsOf: fixture.cache) == previousBytes)
 }
 
 @Test func anUnsavedReservationPreventsHTTPAndASavedReservationSurvivesAbandonedWork() async throws {

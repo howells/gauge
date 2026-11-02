@@ -16,6 +16,7 @@ public actor ProxyUsageReader {
 
     private let directory: URL
     private let cacheURL: URL?
+    private let bootstrapCacheURL: URL?
     private let logURL: URL?
     private let store: CollectionStore
     private let transport: UsageTransport
@@ -27,16 +28,20 @@ public actor ProxyUsageReader {
         let directory = directory ?? Self.defaultDirectory
         self.directory = directory
         self.cacheURL = cacheURL
+        // Even --no-cache must inherit a recent 429 from the previous version.
+        self.bootstrapCacheURL = directory.resolvingSymlinksInPath().standardizedFileURL == Self.defaultDirectory.resolvingSymlinksInPath().standardizedFileURL
+            ? Self.defaultCache : cacheURL
         self.logURL = logURL
         self.store = CollectionStore(url: CollectionStore.defaultURL(for: directory))
         self.transport = UsageHTTP.transport()
         self.now = { Date() }
     }
 
-    init(directory: URL, cacheURL: URL? = nil, logURL: URL? = nil, stateURL: URL,
+    init(directory: URL, cacheURL: URL? = nil, logURL: URL? = nil, stateURL: URL, bootstrapCacheURL: URL? = nil,
          transport: @escaping UsageTransport, now: @escaping @Sendable () -> Date) {
         self.directory = directory
         self.cacheURL = cacheURL
+        self.bootstrapCacheURL = bootstrapCacheURL ?? cacheURL
         self.logURL = logURL
         self.store = CollectionStore(url: stateURL)
         self.transport = transport
@@ -54,7 +59,7 @@ public actor ProxyUsageReader {
 
     private func acquire() async -> UsageSnapshot {
         var cacheFailure: UsageFailure?
-        do { if let cached = try SnapshotCache.load(cacheURL) { lastSnapshot = cached } }
+        do { if let cached = try SnapshotCache.load(bootstrapCacheURL) { lastSnapshot = cached } }
         catch { cacheFailure = UsageFailure(.cache) }
         var state: CollectionState
         let lease: CollectionLease?
