@@ -2,13 +2,22 @@
 set -eu
 GAUGE_MACOS_DIR=$(CDPATH= cd -- "$(dirname -- "$0")/.." && pwd)
 GAUGE_PROXY_HOST=""
-if [ "$#" -gt 0 ]; then
-    if [ "$#" -ne 2 ] || [ "$1" != "--proxy-host" ]; then
-        echo 'Usage: build-app.sh [--proxy-host SSH_HOST]' >&2
+GAUGE_SSH_IDENTITY_FILE=""
+while [ "$#" -gt 0 ]; do
+    if [ "$#" -lt 2 ]; then
+        echo 'Usage: build-app.sh [--proxy-host SSH_HOST] [--ssh-identity-file EXISTING_KEY_PATH]' >&2
         exit 2
     fi
-    GAUGE_PROXY_HOST=$2
-fi
+    case "$1" in
+        --proxy-host) GAUGE_PROXY_HOST=$2 ;;
+        --ssh-identity-file) GAUGE_SSH_IDENTITY_FILE=$2 ;;
+        *)
+            echo 'Usage: build-app.sh [--proxy-host SSH_HOST] [--ssh-identity-file EXISTING_KEY_PATH]' >&2
+            exit 2
+            ;;
+    esac
+    shift 2
+done
 swift build --package-path "$GAUGE_MACOS_DIR" -c release
 GAUGE_BINARY_DIR=$(swift build --package-path "$GAUGE_MACOS_DIR" -c release --show-bin-path)
 GAUGE_BUNDLE="$GAUGE_MACOS_DIR/dist/Gauge.app"
@@ -23,6 +32,9 @@ if [ -n "$(git -C "$GAUGE_MACOS_DIR" status --porcelain -- .)" ]; then
 fi
 if [ -n "$GAUGE_PROXY_HOST" ]; then
     /usr/libexec/PlistBuddy -c "Add :GaugeDefaultProxyHost string $GAUGE_PROXY_HOST" "$GAUGE_BUNDLE/Contents/Info.plist"
+fi
+if [ -n "$GAUGE_SSH_IDENTITY_FILE" ]; then
+    /usr/bin/plutil -insert GaugeDefaultSSHIdentityFile -string "$GAUGE_SSH_IDENTITY_FILE" "$GAUGE_BUNDLE/Contents/Info.plist"
 fi
 codesign --force --sign - --timestamp=none "$GAUGE_BUNDLE/Contents/Helpers/gauge-proxy-usage"
 codesign --force --sign - --timestamp=none "$GAUGE_BUNDLE"

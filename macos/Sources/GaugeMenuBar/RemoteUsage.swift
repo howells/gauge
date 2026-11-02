@@ -3,11 +3,12 @@ import GaugeCore
 
 enum RemoteUsage {
     enum Failure: Error {
-        case invalidHost, connection, invalidSnapshot
+        case invalidHost, invalidIdentity, connection, invalidSnapshot
 
         var message: String {
             switch self {
             case .invalidHost: "Enter an SSH host name, such as studio-m5."
+            case .invalidIdentity: "Can't read that SSH key. Choose an existing key file or leave the field empty."
             case .connection: "Couldn't connect. Check SSH access and that Gauge's collector is installed on the proxy Mac."
             case .invalidSnapshot: "The proxy Mac didn't return a valid allowance reading."
             }
@@ -22,18 +23,34 @@ enum RemoteUsage {
             }
     }
 
+    static func valid(identityFile: String) -> Bool {
+        guard !identityFile.isEmpty else { return true }
+        let path = (identityFile as NSString).expandingTildeInPath
+        var directory: ObjCBool = false
+        return path.hasPrefix("/")
+            && !path.unicodeScalars.contains(where: CharacterSet.controlCharacters.contains)
+            && FileManager.default.fileExists(atPath: path, isDirectory: &directory)
+            && !directory.boolValue && FileManager.default.isReadableFile(atPath: path)
+    }
+
     // Process pipes block, so this operation must not occupy the UI actor.
-    @concurrent static func read(host: String) async throws -> UsageSnapshot {
+    @concurrent static func read(host: String, identityFile: String) async throws -> UsageSnapshot {
         guard valid(host: host) else { throw Failure.invalidHost }
+        guard valid(identityFile: identityFile) else { throw Failure.invalidIdentity }
         let process = Process()
         let output = Pipe()
         process.executableURL = URL(fileURLWithPath: "/usr/bin/ssh")
-        process.arguments = [
+        var arguments = [
             "-T", "-o", "BatchMode=yes", "-o", "StrictHostKeyChecking=yes",
+            "-o", "UpdateHostKeys=no", "-o", "CheckHostIP=no",
             "-o", "ConnectTimeout=8", "-o", "ConnectionAttempts=1",
-            "-o", "ServerAliveInterval=5", "-o", "ServerAliveCountMax=2",
-            host, "exec \"$HOME/Library/Application Support/Gauge/bin/gauge-proxy-usage\""
+            "-o", "ServerAliveInterval=5", "-o", "ServerAliveCountMax=2"
         ]
+        if !identityFile.isEmpty {
+            arguments += ["-o", "IdentitiesOnly=yes", "-i", (identityFile as NSString).expandingTildeInPath]
+        }
+        arguments += [host, "exec \"$HOME/Library/Application Support/Gauge/bin/gauge-proxy-usage\""]
+        process.arguments = arguments
         process.standardOutput = output
         process.standardError = FileHandle.nullDevice
         process.standardInput = FileHandle.nullDevice

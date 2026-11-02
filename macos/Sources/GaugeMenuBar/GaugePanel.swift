@@ -8,6 +8,7 @@ struct GaugePanel: View {
     @State private var showSettings = false
     @State private var remote = false
     @State private var editedHost = ""
+    @State private var editedIdentityFile = ""
 
     private var accounts: [AccountUsage] { model.snapshot?.accounts ?? [] }
     private var visibleAccounts: [AccountUsage] {
@@ -49,6 +50,7 @@ struct GaugePanel: View {
             if model.isRefreshing { ProgressView().controlSize(.small).accessibilityLabel("Checking allowance") }
             Button {
                 editedHost = model.host
+                editedIdentityFile = model.identityFile
                 remote = !model.host.isEmpty
                 showSettings.toggle()
             } label: { Image(systemName: showSettings ? "xmark" : "gearshape") }
@@ -126,14 +128,27 @@ struct GaugePanel: View {
                 TextField("SSH host", text: $editedHost)
                     .textFieldStyle(.roundedBorder)
                     .accessibilityLabel("SSH host")
+                VStack(alignment: .leading, spacing: 6) {
+                    Text("SSH key (optional)").font(.system(size: 12))
+                    TextField("Use SSH defaults", text: $editedIdentityFile)
+                        .textFieldStyle(.roundedBorder)
+                        .accessibilityLabel("SSH key")
+                    if !RemoteUsage.valid(identityFile: editedIdentityFile.trimmingCharacters(in: .whitespacesAndNewlines)) {
+                        Text("Choose a readable SSH key file.")
+                            .font(.system(size: 12)).foregroundStyle(GaugePalette.red)
+                    }
+                }
                 Text("Uses your existing SSH access. Only allowance readings leave the proxy Mac.")
                     .font(.system(size: 12)).foregroundStyle(GaugePalette.secondary)
             }
             Button("Save and refresh") {
                 showSettings = false
-                Task { await model.configure(host: remote ? editedHost : "") }
+                Task { await model.configure(host: remote ? editedHost : "", identityFile: editedIdentityFile) }
             }
-            .disabled(model.isRefreshing || (remote && !RemoteUsage.valid(host: editedHost.trimmingCharacters(in: .whitespacesAndNewlines))))
+            .disabled(model.isRefreshing || (remote && (
+                !RemoteUsage.valid(host: editedHost.trimmingCharacters(in: .whitespacesAndNewlines))
+                    || !RemoteUsage.valid(identityFile: editedIdentityFile.trimmingCharacters(in: .whitespacesAndNewlines))
+            )))
             .buttonStyle(.borderedProminent)
             Spacer()
             Text("Checks every minute and after wake. Times use \(TimeZone.current.identifier).")

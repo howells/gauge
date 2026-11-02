@@ -10,6 +10,7 @@ final class GaugeModel {
     var connectionFailure: String?
     var cacheFailed = false
     private(set) var host: String
+    private(set) var identityFile: String
     private var lastAttempt: Date?
     @ObservationIgnored private let reader = ProxyUsageReader()
     @ObservationIgnored private var refreshLoop: Task<Void, Never>?
@@ -20,6 +21,9 @@ final class GaugeModel {
         host = UserDefaults.standard.string(forKey: "proxyHost")
             ?? (Bundle.main.object(forInfoDictionaryKey: "GaugeDefaultProxyHost") as? String)
             ?? (local ? "" : "studio-m5.rattlesnake-boa.ts.net")
+        identityFile = UserDefaults.standard.string(forKey: "proxyIdentityFile")
+            ?? (Bundle.main.object(forInfoDictionaryKey: "GaugeDefaultSSHIdentityFile") as? String)
+            ?? ""
         do { snapshot = try SnapshotCache.load(cacheURL) }
         catch { cacheFailed = true }
         refreshLoop = Task { [weak self] in
@@ -44,10 +48,12 @@ final class GaugeModel {
             .appendingPathComponent("Library/Caches/Gauge/remote-\(host).json")
     }
 
-    func configure(host: String) async {
+    func configure(host: String, identityFile: String) async {
         guard !isRefreshing else { return }
         self.host = host.trimmingCharacters(in: .whitespacesAndNewlines)
+        self.identityFile = identityFile.trimmingCharacters(in: .whitespacesAndNewlines)
         UserDefaults.standard.set(self.host, forKey: "proxyHost")
+        UserDefaults.standard.set(self.identityFile, forKey: "proxyIdentityFile")
         snapshot = nil
         connectionFailure = nil
         cacheFailed = false
@@ -72,7 +78,7 @@ final class GaugeModel {
                 snapshot = await reader.refresh()
                 cacheFailed = false
             } else {
-                let reading = try await RemoteUsage.read(host: host)
+                let reading = try await RemoteUsage.read(host: host, identityFile: identityFile)
                 snapshot = reading
                 do { try SnapshotCache.write(reading, to: cacheURL); cacheFailed = false }
                 catch { cacheFailed = true }
