@@ -1,7 +1,5 @@
 # gauge
 
-Issues live in Linear (howells, HOW).
-
 ```sh
 pnpm dev
 pnpm typecheck
@@ -10,4 +8,18 @@ pnpm test
 pnpm build
 ```
 
-Do not add local documentation or task reports.
+No plans or task reports in the repo.
+
+## Agent skills
+
+### Issue tracker
+
+Issues live in Linear (howells, HOW). See `docs/agents/issue-tracker.md`.
+
+### Triage labels
+
+Default triage labels. See `docs/agents/triage-labels.md`.
+
+### Domain docs
+
+Single-context. See `docs/agents/domain.md`.
